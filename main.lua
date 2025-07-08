@@ -3,6 +3,9 @@
     Permite leer artículos guardados en Raindrop.io directamente en tu Kindle
     
     Versión: 1.2 (Corregida)
+    
+    IMPORTANTE: SSL está desactivado para evitar problemas de certificados
+    en dispositivos Kindle. Esto es necesario para que funcione correctamente.
 ]]
 
 local BD = require("ui/bidi")
@@ -405,8 +408,6 @@ function Raindrop:makeRequest(endpoint, method)
     end
 end
 
--- ... (resto de las funciones sin cambios)
-
 function Raindrop:showCollections()
     local collections, err = self:makeRequest("/collections")
     
@@ -441,6 +442,205 @@ function Raindrop:showCollections()
     }
     
     UIManager:show(collections_menu)
+end
+
+function Raindrop:showRaindrops(collection_id, collection_name, page)
+    page = page or 0
+    local perpage = 25
+    local endpoint = string.format("/raindrops/%s?perpage=%d&page=%d", collection_id, perpage, page)
+    
+    local raindrops, err = self:makeRequest(endpoint)
+    
+    if not raindrops then
+        self:notify(T(_("Error al obtener artículos: %1"), err), 4)
+        return
+    end
+    
+    local menu_items = {}
+    
+    if raindrops.items then
+        for _, raindrop in ipairs(raindrops.items) do
+            local title = raindrop.title or _("Sin título")
+            local domain = raindrop.domain or ""
+            local date = ""
+            if raindrop.created then
+                date = " • " .. raindrop.created:sub(1, 10)
+            end
+            
+            table.insert(menu_items, {
+                text = title .. "\n" .. domain .. date,
+                callback = function()
+                    self:showRaindropContent(raindrop)
+                end,
+            })
+        end
+    end
+    
+    -- Navegación de páginas con fallback para count
+    local total_count = raindrops.count or (#raindrops.items + page * perpage)
+    if total_count > perpage then
+        local total_pages = math.ceil(total_count / perpage)
+        local current_page = page + 1
+        
+        if #menu_items > 0 then
+            table.insert(menu_items, {text = "──────────────────", enabled = false})
+        end
+        
+        if page > 0 then
+            table.insert(menu_items, {
+                text = _("← Página anterior"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page - 1)
+                end,
+            })
+        end
+        
+        if current_page < total_pages then
+            table.insert(menu_items, {
+                text = _("Página siguiente →"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page + 1)
+                end,
+            })
+        end
+    end
+    
+    if #menu_items == 0 then
+        table.insert(menu_items, {
+            text = _("No hay artículos en esta colección"),
+            enabled = false,
+        })
+    end
+    
+    local raindrops_menu = Menu:new{
+        title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
+        item_table = menu_items,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(raindrops_menu)
+end
+
+function Raindrop:showRaindropContent(raindrop)
+    -- Verificar si necesitamos obtener el contenido completo
+    if not raindrop.cache or not raindrop.cache.text then
+        -- Intentar obtener el artículo completo
+        local full_raindrop, err = self:makeRequest("/raindrop/" .. raindrop._id)
+        if full_raindrop and full_raindrop.item then
+            raindrop = full_raindrop.item
+        end
+    end
+    
+    local content = ""
+    
+    -- Información básica
+    content = content .. (raindrop.title or _("Sin título")) .. "\n"
+    content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    if raindrop.link then
+        content = content .. _("URL: ") .. raindrop.link .. "\n\n"
+    end
+    
+    if raindrop.domain then
+        content = content .. _("Dominio: ") .. raindrop.domain .. "\n"
+    end
+    
+    if raindrop.created then
+        local date = raindrop.created:sub(1, 10)
+        local time = raindrop.created:sub(12, 19)
+        content = content .. _("Guardado: ") .. date .. " " .. time .. "\n\n"
+    end
+    
+    -- Tipo de contenido
+    if raindrop.type then
+        local type_names = {
+            link = _("Enlace"),
+            article = _("Artículo"),
+            image = _("Imagen"),
+            video = _("Video"),
+            document = _("Documento"),
+            audio = _("Audio")
+        }
+        content = content .. _("Tipo: ") .. (type_names[raindrop.type] or raindrop.type) .. "\n\n"
+    end
+    
+    -- Extracto/descripción
+    if raindrop.excerpt and raindrop.excerpt ~= "" then
+        content = content .. _("Extracto:") .. "\n"
+        content = content .. raindrop.excerpt .. "\n\n"
+    end
+    
+    -- Notas del usuario
+    if raindrop.note and raindrop.note ~= "" then
+        content = content .. _("Notas:") .. "\n"
+        content = content .. raindrop.note .. "\n\n"
+    end
+    
+    -- Tags
+    if raindrop.tags and #raindrop.tags > 0 then
+        content = content .. _("Etiquetas: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
+    end
+    
+    -- Información de caché
+    if raindrop.cache then
+        if raindrop.cache.status == "ready" and raindrop.cache.text then
+            content = content .. "\n" .. _("Contenido completo:") .. "\n"
+            content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            content = content .. raindrop.cache.text
+        elseif raindrop.cache.status then
+            local status_names = {
+                ready = _("Listo"),
+                retry = _("Reintentando"),
+                failed = _("Falló"),
+                ["invalid-origin"] = _("Origen inválido"),
+                ["invalid-timeout"] = _("Tiempo agotado"),
+                ["invalid-size"] = _("Tamaño inválido")
+            }
+            content = content .. _("Estado del caché: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n\n"
+        end
+    end
+    
+    local text_viewer = TextViewer:new{
+        title = raindrop.title or _("Artículo"),
+        text = content,
+        width = Device.screen:getWidth() * 0.95,
+        height = Device.screen:getHeight() * 0.95,
+    }
+    
+    UIManager:show(text_viewer)
+end
+
+function Raindrop:showSearchDialog()
+    self.search_dialog = InputDialog:new{
+        title = _("Buscar en Raindrop"),
+        input_hint = _("Término de búsqueda..."),
+        buttons = {
+            {
+                {
+                    text = _("Cancelar"),
+                    callback = function()
+                        UIManager:close(self.search_dialog)
+                    end,
+                },
+                {
+                    text = _("Buscar"),
+                    is_enter_default = true,
+                    callback = function()
+                        local search_term = self.search_dialog:getInputText()
+                        if search_term and search_term ~= "" then
+                            UIManager:close(self.search_dialog)
+                            NetworkMgr:runWhenOnline(function()
+                                self:searchRaindrops(search_term)
+                            end)
+                        end
+                    end,
+                }
+            }
+        },
+    }
+    UIManager:show(self.search_dialog)
+    self.search_dialog:onShowKeyboard()
 end
 
 function Raindrop:testToken(test_token)
@@ -503,6 +703,89 @@ function Raindrop:showDebugInfo()
     UIManager:show(text_viewer)
 end
 
--- ... (resto del código sin cambios para búsqueda, etc.)
+function Raindrop:searchRaindrops(search_term, page)
+    page = page or 0
+    local perpage = 25
+    
+    local endpoint = string.format("/raindrops/0?search=%s&perpage=%d&page=%d", 
+                                   urlEncode(search_term), perpage, page)
+    
+    logger.dbg("Raindrop: Buscando con endpoint:", endpoint)
+    
+    local results, err = self:makeRequest(endpoint)
+    
+    if not results then
+        self:notify(T(_("Error en la búsqueda: %1"), err), 4)
+        return
+    end
+    
+    local menu_items = {}
+    
+    if results.items and #results.items > 0 then
+        for _, raindrop in ipairs(results.items) do
+            local title = raindrop.title or _("Sin título")
+            local domain = raindrop.domain or ""
+            local excerpt = ""
+            if raindrop.excerpt then
+                excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
+            end
+            
+            table.insert(menu_items, {
+                text = title .. "\n" .. domain .. excerpt,
+                callback = function()
+                    self:showRaindropContent(raindrop)
+                end,
+            })
+        end
+        
+        -- Agregar navegación de páginas para búsquedas
+        local total_count = results.count or 0
+        if total_count > perpage then
+            local total_pages = math.ceil(total_count / perpage)
+            local current_page = page + 1
+            
+            table.insert(menu_items, {text = "──────────────────", enabled = false})
+            
+            if page > 0 then
+                table.insert(menu_items, {
+                    text = _("← Página anterior"),
+                    callback = function()
+                        self:searchRaindrops(search_term, page - 1)
+                    end,
+                })
+            end
+            
+            table.insert(menu_items, {
+                text = string.format(_("Página %d de %d"), current_page, total_pages),
+                enabled = false,
+            })
+            
+            if current_page < total_pages then
+                table.insert(menu_items, {
+                    text = _("Página siguiente →"),
+                    callback = function()
+                        self:searchRaindrops(search_term, page + 1)
+                    end,
+                })
+            end
+        end
+        
+    else
+        table.insert(menu_items, {
+            text = T(_("No se encontraron resultados para: %1"), search_term),
+            enabled = false,
+        })
+    end
+    
+    local search_menu = Menu:new{
+        title = T(_("Resultados: '%1' (%2)"), search_term, results.count or 0),
+        item_table = menu_items,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(search_menu)
+end
 
+-- Necesario para que KOReader registre el plugin
 return Raindrop
