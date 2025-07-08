@@ -65,20 +65,40 @@ end
 
 function Raindrop:loadSettings()
     local settings = {}
+    
+    -- Método más robusto de carga de configuración
     if self.settings_file then
         local file = io.open(self.settings_file, "r")
         if file then
             local content = file:read("*all")
             file:close()
-            local ok, data = pcall(loadstring("return " .. content))
-            if ok and type(data) == "table" then
-                settings = data
+            
+            logger.dbg("Raindrop: Contenido leído del archivo:", content and #content or "nil")
+            
+            if content and content ~= "" then
+                -- Método más seguro de parsing
+                local chunk, err = loadstring(content)
+                if chunk then
+                    local ok, data = pcall(chunk)
+                    if ok and type(data) == "table" then
+                        settings = data
+                        logger.dbg("Raindrop: Configuración cargada exitosamente")
+                    else
+                        logger.warn("Raindrop: Error ejecutando configuración:", data)
+                    end
+                else
+                    logger.warn("Raindrop: Error parseando configuración:", err)
+                end
             end
+        else
+            logger.dbg("Raindrop: Archivo de configuración no existe, usando defaults")
         end
     end
     
     self.token = settings.token or ""
     self.server_url = "https://api.raindrop.io/rest/v1"
+    
+    logger.dbg("Raindrop: Token cargado, longitud:", #self.token)
 end
 
 function Raindrop:saveSettings()
@@ -86,16 +106,19 @@ function Raindrop:saveSettings()
         token = self.token,
     }
     
-    local file = io.open(self.settings_file, "w")
+    logger.dbg("Raindrop: Intentando guardar token, longitud:", #self.token)
+    
+    local file, err = io.open(self.settings_file, "w")
     if file then
-        -- Serialización simple sin dependencias externas
-        file:write("return {\n")
-        file:write(string.format('  token = %q,\n', settings.token))
-        file:write("}\n")
+        -- Serialización más robusta
+        local serialized = "return {\n  token = " .. string.format("%q", settings.token) .. ",\n}\n"
+        file:write(serialized)
         file:close()
-        logger.dbg("Raindrop: Configuración guardada")
+        logger.dbg("Raindrop: Configuración guardada exitosamente")
+        logger.dbg("Raindrop: Contenido guardado:", serialized)
     else
-        logger.warn("Raindrop: No se pudo guardar configuración")
+        logger.err("Raindrop: No se pudo abrir archivo para escritura:", err)
+        self:notify("Error: No se pudo guardar la configuración")
     end
 end
 
@@ -108,6 +131,12 @@ function Raindrop:addToMainMenu(menu_items)
                 text = _("Configurar token de acceso"),
                 callback = function()
                     self:showTokenDialog()
+                end,
+            },
+            {
+                text = _("Debug: Ver configuración"),
+                callback = function()
+                    self:showDebugInfo()
                 end,
             },
             {
@@ -206,45 +235,96 @@ function Raindrop:showTokenDialog()
     self.token_dialog:onShowKeyboard()
 end
 
--- Función para probar el token sin guardarlo
+-- Función para probar el token sin guardarlo - SIMPLIFICADA
 function Raindrop:testToken(test_token)
+    logger.dbg("Raindrop: Iniciando test de token, longitud:", #test_token)
+    
     local old_token = self.token
     self.token = test_token -- Temporalmente usar el token de prueba
+    
+    self:notify(_("Probando token..."), 1)
     
     local user_data, err = self:makeRequest("/user")
     
     self.token = old_token -- Restaurar token original
     
     if user_data then
+        logger.dbg("Raindrop: Test de token exitoso")
         local user_name = "Usuario verificado"
-        if user_data.user and user_data.user.fullName then
-            user_name = user_data.user.fullName
-        elseif user_data.user and user_data.user.email then
-            user_name = user_data.user.email
+        if user_data.user then
+            if user_data.user.fullName then
+                user_name = user_data.user.fullName
+            elseif user_data.user.email then
+                user_name = user_data.user.email
+            end
         end
         
-        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name)
+        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name, 4)
     else
-        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 4)
+        logger.err("Raindrop: Test de token falló:", err)
+        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
     end
 end
 
--- Función simplificada para hacer requests HTTP
+-- Función de debug para ver el estado de la configuración
+function Raindrop:showDebugInfo()
+    local debug_info = "DEBUG RAINDROP PLUGIN\n"
+    debug_info = debug_info .. "══════════════════════\n\n"
+    debug_info = debug_info .. "Token actual: " .. (self.token ~= "" and ("SET (" .. #self.token .. " chars)") or "NO SET") .. "\n"
+    debug_info = debug_info .. "Archivo config: " .. (self.settings_file or "NO SET") .. "\n\n"
+    
+    -- Verificar si el archivo existe
+    if self.settings_file then
+        local file = io.open(self.settings_file, "r")
+        if file then
+            local content = file:read("*all")
+            file:close()
+            debug_info = debug_info .. "Archivo existe: SÍ\n"
+            debug_info = debug_info .. "Contenido (" .. #content .. " chars):\n"
+            debug_info = debug_info .. content .. "\n"
+        else
+            debug_info = debug_info .. "Archivo existe: NO\n"
+        end
+    end
+    
+    debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
+    
+    local text_viewer = TextViewer:new{
+        title = "Debug Info - Raindrop Plugin",
+        text = debug_info,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(text_viewer)
+end
+
+-- Función MEJORADA para hacer requests HTTP según documentación oficial
 function Raindrop:makeRequest(endpoint, method)
     local url = self.server_url .. endpoint
-    logger.dbg("Raindrop: Realizando solicitud a", url)
+    logger.dbg("Raindrop: Iniciando solicitud a", url)
     
     if not self.token or self.token == "" then
         logger.err("Raindrop: Token no configurado")
         return nil, "Token de acceso no configurado"
     end
     
-    local sink = {}
+    -- Mostrar mensaje de carga
+    local loading_msg = InfoMessage:new{
+        text = _("Conectando con Raindrop.io..."),
+        timeout = 0,
+    }
+    UIManager:show(loading_msg)
+    UIManager:forceRePaint()
     
-    -- CRÍTICO: Deshabilitar verificación SSL para pruebas
+    local sink = {}
+    local result_data = nil
+    local error_msg = nil
+    
+    -- SSL deshabilitado para Kindle
     https.cert_verify = false
     
-    -- Configuración HTTP simplificada
+    -- Request según documentación Raindrop.io
     local request = {
         url = url,
         method = method or "GET",
@@ -254,50 +334,100 @@ function Raindrop:makeRequest(endpoint, method)
             ["User-Agent"] = "KOReader-Raindrop-Plugin/1.1"
         },
         sink = ltn12.sink.table(sink),
-        timeout = 15,
-        -- Configuración SSL sin verificación para evitar errores de certificados
-        protocol = "tlsv1_2",
-        mode = "client",
-        verify = "none",
+        timeout = 10,
     }
     
-    -- CORRECCIÓN: Capturar valores correctamente de https.request
-    local ok, body, status_code, headers, status = pcall(function()
+    logger.dbg("Raindrop: Enviando request con método:", method or "GET")
+    
+    -- Realizar request con captura CORRECTA de valores según documentación HTTP
+    local ok, status_code, response_headers, status_line = pcall(function()
         return https.request(request)
     end)
     
-    if not ok then
-        logger.err("Raindrop: Error en conexión HTTPS:", body)
-        return nil, "Error de conexión: " .. tostring(body)
-    end
+    -- Cerrar mensaje de carga
+    UIManager:close(loading_msg)
     
-    -- body contiene la respuesta, status_code es el código HTTP
-    if status_code ~= 200 then
-        logger.err("Raindrop: Error HTTP", status_code, status)
+    if not ok then
+        error_msg = "Error de conexión: " .. tostring(status_code)
+        logger.err("Raindrop: Error en conexión:", status_code)
+    else
+        logger.dbg("Raindrop: Response status code:", status_code)
+        logger.dbg("Raindrop: Response status line:", status_line)
         
-        if status_code == 401 then
-            return nil, "Token de acceso inválido o expirado"
+        -- Manejo de códigos según documentación oficial Raindrop.io
+        if status_code == 200 then
+            -- 200: The request was processed successfully
+            local response = table.concat(sink)
+            logger.dbg("Raindrop: Respuesta exitosa, longitud:", #response)
+            
+            if #response == 0 then
+                error_msg = "Respuesta vacía del servidor"
+            else
+                local decode_ok, data = pcall(JSON.decode, response)
+                if decode_ok then
+                    result_data = data
+                    logger.dbg("Raindrop: JSON parseado exitosamente")
+                else
+                    error_msg = "Error al procesar respuesta JSON: " .. tostring(data)
+                    logger.err("Raindrop: Error JSON:", data)
+                end
+            end
+            
+        elseif status_code == 204 then
+            -- 204: The request was processed successfully without any data to return
+            logger.dbg("Raindrop: Respuesta exitosa sin contenido (204)")
+            result_data = {} -- Respuesta vacía pero exitosa
+            
+        elseif status_code == 401 then
+            -- 4xx: Client error - token inválido
+            error_msg = "Token de acceso inválido o expirado (401)"
+            logger.err("Raindrop: Error de autenticación")
+            
         elseif status_code == 403 then
-            return nil, "Acceso denegado - verificar permisos del token"
+            -- 4xx: Client error - acceso denegado
+            error_msg = "Acceso denegado - verificar permisos del token (403)"
+            logger.err("Raindrop: Error de permisos")
+            
         elseif status_code == 429 then
-            return nil, "Demasiadas solicitudes - intenta más tarde"
+            -- Rate limiting según documentación
+            error_msg = "Rate limit excedido - intenta más tarde (429)"
+            logger.err("Raindrop: Rate limit alcanzado")
+            
+            -- Leer headers de rate limiting si están disponibles
+            if response_headers then
+                local rate_limit = response_headers["X-RateLimit-Limit"]
+                local rate_remaining = response_headers["X-RateLimit-Remaining"]  
+                local rate_reset = response_headers["X-RateLimit-Reset"]
+                
+                if rate_limit or rate_remaining then
+                    logger.dbg("Raindrop: Rate limit info - Limit:", rate_limit, "Remaining:", rate_remaining, "Reset:", rate_reset)
+                    error_msg = error_msg .. string.format("\nLímite: %s req/min, Restantes: %s", 
+                                                          rate_limit or "?", rate_remaining or "?")
+                end
+            end
+            
+        elseif status_code and status_code >= 400 and status_code < 500 then
+            -- 4xx: Client errors - no reintentar
+            error_msg = string.format("Error del cliente (%d): %s", status_code, status_line or "Error no especificado")
+            logger.err("Raindrop: Error 4xx:", status_code, status_line)
+            
+        elseif status_code and status_code >= 500 then
+            -- 5xx: Server errors - safe to retry later según documentación
+            error_msg = string.format("Error del servidor (%d): %s - Puedes reintentar", status_code, status_line or "Error interno")
+            logger.err("Raindrop: Error 5xx:", status_code, status_line)
+            
         else
-            return nil, string.format("Error HTTP %d: %s", status_code, status or "Sin respuesta")
+            -- Otros códigos no esperados
+            error_msg = string.format("Código de respuesta inesperado: %s", tostring(status_code))
+            logger.err("Raindrop: Status code inesperado:", status_code)
         end
     end
     
-    local response = table.concat(sink)
-    if #response == 0 then
-        return nil, "Respuesta vacía del servidor"
+    if result_data then
+        return result_data
+    else
+        return nil, error_msg or "Error desconocido"
     end
-    
-    local decode_ok, data = pcall(JSON.decode, response)
-    if not decode_ok then
-        logger.err("Raindrop: Error al parsear JSON:", data)
-        return nil, "Error al procesar respuesta del servidor"
-    end
-    
-    return data
 end
 
 function Raindrop:showCollections()
