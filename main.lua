@@ -281,130 +281,89 @@ function Raindrop:makeRequest(endpoint, method)
     local url = self.server_url .. endpoint
     logger.dbg("Raindrop: Iniciando solicitud a", url)
     
-    if not self.token or self.token == "" then
-        logger.err("Raindrop: Token no configurado")
-        return nil, "Token de acceso no configurado"
-    end
-    
-    -- Mostrar mensaje de carga
-    local loading_msg = InfoMessage:new{
-        text = _("Conectando con Raindrop.io..."),
-        timeout = 0,
-    }
-    UIManager:show(loading_msg)
-    UIManager:forceRePaint()
+    -- ya lo hicimos en init(): https.cert_verify = false
+    -- https.cert_verify = false  <––– ELIMINAR esta línea redundante
     
     local sink = {}
-    
-    -- Request según documentación Raindrop.io
     local request = {
-        url = url,
-        method = method or "GET",
+        url     = url,
+        method  = method or "GET",
         headers = {
             ["Authorization"] = "Bearer " .. self.token,
-            ["Content-Type"] = "application/json",
-            ["User-Agent"] = "KOReader-Raindrop-Plugin/1.2"
+            ["Content-Type"]  = "application/json",
+            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.2",
         },
-        sink = ltn12.sink.table(sink),
+        sink    = ltn12.sink.table(sink),
         timeout = 15,
     }
     
-    logger.dbg("Raindrop: Enviando request con método:", method or "GET")
-    logger.dbg("Raindrop: Headers:", JSON.encode(request.headers))
-    
-    -- CORRECCIÓN CRÍTICA: manejo correcto de https.request con pcall
-    local success, result, status_code, response_headers, status_line = pcall(https.request, request)
-    
-    -- Cerrar mensaje de carga
+    -- si hay body (POST/PUT), lo serializamos
+    if method and (method == "POST" or method == "PUT") then
+        local body = JSON.encode(request.body or {})
+        request.source         = ltn12.source.string(body)
+        request.headers["Content-Length"] = #body
+    end
+
+    -- reemplazamos pcall directo por captura del resultado crudo
+    local ok, res1, res2, res3, res4 = pcall(https.request, request)
     UIManager:close(loading_msg)
     
-    -- CORRECCIÓN: verificar primero si pcall fue exitoso
-    if not success then
-        logger.err("Raindrop: Error en pcall https.request:", result)
-        return nil, "Error de conexión SSL: " .. tostring(result)
+    if not ok then
+        logger.err("Raindrop: Error en https.request:", res1)
+        return nil, "Error de conexión SSL: " .. tostring(res1)
     end
+
+    -- res1=1 o código de error, res2=HTTP-status, res3=headers, res4=status_line
+    local result, status_code, response_headers, status_line = res1, res2, res3, res4
+    logger.dbg("Raindrop: Debug raw result:", result, "status_code:", status_code)
     
-    -- Debug: mostrar qué devolvió https.request
-    logger.dbg("Raindrop: https.request result:", result, "type:", type(result))
-    logger.dbg("Raindrop: https.request status_code:", status_code, "type:", type(status_code))
-    logger.dbg("Raindrop: https.request status_line:", status_line)
-    
-    -- CORRECCIÓN: lógica simplificada para determinar status
-    local actual_status
-    
-    if result == 1 then
-        -- Caso exitoso: result=1, status en status_code
-        if type(status_code) == "number" then
-            actual_status = status_code
-        else
-            logger.warn("Raindrop: result=1 pero status_code no es número, asumiendo 200")
-            actual_status = 200
-        end
-    elseif type(result) == "number" then
-        -- Caso de error: result contiene el código de error
+    -- deducir el status real
+    local actual_status = status_code
+    if result ~= 1 and type(result) == "number" then
         actual_status = result
-    else
-        logger.err("Raindrop: Respuesta inesperada de https.request")
-        return nil, "Respuesta inesperada del servidor"
     end
-    
     logger.dbg("Raindrop: Status determinado:", actual_status)
     
-    -- Procesar respuesta según código de estado
     if actual_status == 200 then
         local response = table.concat(sink)
-        logger.dbg("Raindrop: Respuesta exitosa, longitud:", #response)
-        
+        logger.dbg("Raindrop: Respuesta OK, longitud:", #response)
         if #response > 0 then
-            local decode_ok, data = pcall(JSON.decode, response)
+            -- JSON.decode via pcall-función para respetar el método
+            local decode_ok, data = pcall(function() return JSON.decode(response) end)
             if decode_ok then
-                logger.dbg("Raindrop: JSON parseado exitosamente")
                 return data
             else
-                logger.err("Raindrop: Error JSON:", tostring(data))
-                logger.err("Raindrop: Response raw (200 chars):", response:sub(1, 200))
+                logger.err("Raindrop: Error decodificando JSON:", data)
                 return nil, "Error al decodificar JSON"
             end
         else
-            logger.warn("Raindrop: Respuesta vacía con status 200")
             return {}
         end
         
     elseif actual_status == 204 then
-        logger.dbg("Raindrop: Respuesta exitosa sin contenido (204)")
         return {}
         
     elseif actual_status == 401 then
-        logger.err("Raindrop: Error de autenticación (401)")
-        return nil, "Token de acceso inválido o expirado (401)"
+        return nil, "Token inválido o expirado (401)"
         
     elseif actual_status == 403 then
-        logger.err("Raindrop: Error de permisos (403)")
-        return nil, "Acceso denegado - verificar permisos del token (403)"
+        return nil, "Acceso denegado (403)"
         
     elseif actual_status == 429 then
-        logger.err("Raindrop: Rate limit alcanzado (429)")
-        local error_msg = "Rate limit excedido - intenta más tarde (429)"
-        
-        if type(response_headers) == "table" then
-            local rate_limit = response_headers["X-RateLimit-Limit"]
-            local rate_remaining = response_headers["X-RateLimit-Remaining"]
-            if rate_limit or rate_remaining then
-                error_msg = error_msg .. string.format("\nLímite: %s req/min, Restantes: %s", 
-                                                      rate_limit or "?", rate_remaining or "?")
+        local msg = "Rate limit excedido (429)"
+        if response_headers then
+            local lim = response_headers["X-RateLimit-Limit"]
+            local rem = response_headers["X-RateLimit-Remaining"]
+            if lim or rem then
+                msg = msg .. string.format(" Límite:%s Restantes:%s", lim or "?", rem or "?")
             end
         end
-        return nil, error_msg
+        return nil, msg
         
     else
-        -- Error desconocido
-        local response = table.concat(sink)
-        if #response > 0 then
-            logger.err("Raindrop: Response body (500 chars):", response:sub(1, 500))
-        end
-        
-        logger.err("Raindrop: Status code inesperado:", actual_status)
-        return nil, string.format("Error HTTP %s: %s", actual_status, status_line or "Desconocido")
+        local resp = table.concat(sink)
+        logger.err("Raindrop: HTTP error", actual_status, resp:sub(1,200))
+        return nil, string.format("Error HTTP %s", actual_status)
     end
 end
 

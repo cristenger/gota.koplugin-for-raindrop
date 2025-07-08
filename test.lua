@@ -14,6 +14,8 @@
 
 local http = require("socket.http")
 local https = require("ssl.https")
+https.cert_verify = false    -- DESACTIVA verificación SSL para experimentar
+print("🔒 SSL verification disabled for test script")
 local ltn12 = require("ltn12")
 local json = require("json")
 
@@ -36,9 +38,6 @@ local function makeRequest(endpoint, method, body)
     end
     
     local sink = {}
-    
-    -- Configurar SSL
-    https.cert_verify = false
     
     local request = {
         url = url,
