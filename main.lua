@@ -1,3 +1,4 @@
+
 --[[
     Raindrop.io plugin para KOReader - Versión Simplificada
     Permite leer artículos guardados en Raindrop.io directamente en tu Kindle
@@ -148,7 +149,7 @@ end
 function Raindrop:showTokenDialog()
     self.token_dialog = InputDialog:new{
         title = _("Token de acceso de Raindrop.io"),
-        description = _("Obtén tu token desde:\nhttps://app.raindrop.io/settings/integrations"),
+        description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
         input = self.token,
         input_type = "text",
         buttons = {
@@ -160,20 +161,39 @@ function Raindrop:showTokenDialog()
                     end,
                 },
                 {
+                    text = _("Probar"),
+                    callback = function()
+                        local test_token = self.token_dialog:getInputText()
+                        if test_token and test_token ~= "" then
+                            test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            self:testToken(test_token)
+                        else
+                            self:notify(_("Por favor ingresa un token para probar"))
+                        end
+                    end,
+                },
+                {
                     text = _("Guardar"),
                     is_enter_default = true,
                     callback = function()
                         local new_token = self.token_dialog:getInputText()
                         if new_token and new_token ~= "" then
-                            -- Validación menos estricta: permitir rdp_ y rdl_
-                            if not new_token:match("^rd[pl]_") then
-                                self:notify(_("⚠️ Token no parece válido\nDebe empezar con 'rdp_' o 'rdl_'"))
+                            -- Limpiar espacios en blanco al inicio y final
+                            new_token = new_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            
+                            -- Debug: mostrar el token recibido (sin logging sensible)
+                            logger.dbg("Raindrop: Token recibido, longitud:", #new_token, "primeros 10 chars:", new_token:sub(1, 10))
+                            
+                            -- Validación básica de longitud
+                            if #new_token < 20 then
+                                self:notify(_("⚠️ Token muy corto, verifica que sea correcto"))
                                 return
                             end
+                            
                             self.token = new_token
                             self:saveSettings()
                             UIManager:close(self.token_dialog)
-                            self:notify(_("Token guardado correctamente"), 2)
+                            self:notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
                         else
                             self:notify(_("Por favor ingresa un token válido"), 2)
                         end
@@ -184,6 +204,29 @@ function Raindrop:showTokenDialog()
     }
     UIManager:show(self.token_dialog)
     self.token_dialog:onShowKeyboard()
+end
+
+-- Función para probar el token sin guardarlo
+function Raindrop:testToken(test_token)
+    local old_token = self.token
+    self.token = test_token -- Temporalmente usar el token de prueba
+    
+    local user_data, err = self:makeRequest("/user")
+    
+    self.token = old_token -- Restaurar token original
+    
+    if user_data then
+        local user_name = "Usuario verificado"
+        if user_data.user and user_data.user.fullName then
+            user_name = user_data.user.fullName
+        elseif user_data.user and user_data.user.email then
+            user_name = user_data.user.email
+        end
+        
+        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name)
+    else
+        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 4)
+    end
 end
 
 -- Función simplificada para hacer requests HTTP
