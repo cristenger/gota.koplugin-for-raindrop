@@ -1,4 +1,3 @@
-
 --[[
     Raindrop.io plugin para KOReader - Versión Simplificada
     Permite leer artículos guardados en Raindrop.io directamente en tu Kindle
@@ -37,9 +36,11 @@ local Raindrop = WidgetContainer:extend{
 local function urlEncode(str)
     if not str then return "" end
     str = tostring(str)
-    str = str:gsub("([^%w%-%.%_%~])", function(c)
+    -- Codificación más completa para búsquedas
+    str = str:gsub("([^%w%-%.%_%~ ])", function(c)
         return string.format("%%%02X", string.byte(c))
     end)
+    str = str:gsub(" ", "+") -- Espacios como +
     return str
 end
 
@@ -235,71 +236,7 @@ function Raindrop:showTokenDialog()
     self.token_dialog:onShowKeyboard()
 end
 
--- Función para probar el token sin guardarlo - SIMPLIFICADA
-function Raindrop:testToken(test_token)
-    logger.dbg("Raindrop: Iniciando test de token, longitud:", #test_token)
-    
-    local old_token = self.token
-    self.token = test_token -- Temporalmente usar el token de prueba
-    
-    self:notify(_("Probando token..."), 1)
-    
-    local user_data, err = self:makeRequest("/user")
-    
-    self.token = old_token -- Restaurar token original
-    
-    if user_data then
-        logger.dbg("Raindrop: Test de token exitoso")
-        local user_name = "Usuario verificado"
-        if user_data.user then
-            if user_data.user.fullName then
-                user_name = user_data.user.fullName
-            elseif user_data.user.email then
-                user_name = user_data.user.email
-            end
-        end
-        
-        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name, 4)
-    else
-        logger.err("Raindrop: Test de token falló:", err)
-        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
-    end
-end
-
--- Función de debug para ver el estado de la configuración
-function Raindrop:showDebugInfo()
-    local debug_info = "DEBUG RAINDROP PLUGIN\n"
-    debug_info = debug_info .. "══════════════════════\n\n"
-    debug_info = debug_info .. "Token actual: " .. (self.token ~= "" and ("SET (" .. #self.token .. " chars)") or "NO SET") .. "\n"
-    debug_info = debug_info .. "Archivo config: " .. (self.settings_file or "NO SET") .. "\n\n"
-    
-    -- Verificar si el archivo existe
-    if self.settings_file then
-        local file = io.open(self.settings_file, "r")
-        if file then
-            local content = file:read("*all")
-            file:close()
-            debug_info = debug_info .. "Archivo existe: SÍ\n"
-            debug_info = debug_info .. "Contenido (" .. #content .. " chars):\n"
-            debug_info = debug_info .. content .. "\n"
-        else
-            debug_info = debug_info .. "Archivo existe: NO\n"
-        end
-    end
-    
-    debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
-    
-    local text_viewer = TextViewer:new{
-        title = "Debug Info - Raindrop Plugin",
-        text = debug_info,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.8,
-    }
-    
-    UIManager:show(text_viewer)
-end
-
--- Función MEJORADA para hacer requests HTTP según documentación oficial
+-- Función CORREGIDA para hacer requests HTTP según el script de prueba exitoso
 function Raindrop:makeRequest(endpoint, method)
     local url = self.server_url .. endpoint
     logger.dbg("Raindrop: Iniciando solicitud a", url)
@@ -318,8 +255,6 @@ function Raindrop:makeRequest(endpoint, method)
     UIManager:forceRePaint()
     
     local sink = {}
-    local result_data = nil
-    local error_msg = nil
     
     -- SSL deshabilitado para Kindle
     https.cert_verify = false
@@ -334,99 +269,85 @@ function Raindrop:makeRequest(endpoint, method)
             ["User-Agent"] = "KOReader-Raindrop-Plugin/1.1"
         },
         sink = ltn12.sink.table(sink),
-        timeout = 10,
+        timeout = 15,
     }
     
     logger.dbg("Raindrop: Enviando request con método:", method or "GET")
     
-    -- Realizar request con captura CORRECTA de valores según documentación HTTP
-    local ok, status_code, response_headers, status_line = pcall(function()
-        return https.request(request)
-    end)
+    -- CORRECCIÓN CRÍTICA: usar la lógica que funciona del script de prueba
+    local result, status_code, response_headers, status_line = https.request(request)
     
     -- Cerrar mensaje de carga
     UIManager:close(loading_msg)
     
-    if not ok then
-        error_msg = "Error de conexión: " .. tostring(status_code)
-        logger.err("Raindrop: Error en conexión:", status_code)
-    else
-        logger.dbg("Raindrop: Response status code:", status_code)
-        logger.dbg("Raindrop: Response status line:", status_line)
-        
-        -- Manejo de códigos según documentación oficial Raindrop.io
-        if status_code == 200 then
-            -- 200: The request was processed successfully
-            local response = table.concat(sink)
-            logger.dbg("Raindrop: Respuesta exitosa, longitud:", #response)
-            
-            if #response == 0 then
-                error_msg = "Respuesta vacía del servidor"
-            else
-                local decode_ok, data = pcall(JSON.decode, response)
-                if decode_ok then
-                    result_data = data
-                    logger.dbg("Raindrop: JSON parseado exitosamente")
-                else
-                    error_msg = "Error al procesar respuesta JSON: " .. tostring(data)
-                    logger.err("Raindrop: Error JSON:", data)
-                end
-            end
-            
-        elseif status_code == 204 then
-            -- 204: The request was processed successfully without any data to return
-            logger.dbg("Raindrop: Respuesta exitosa sin contenido (204)")
-            result_data = {} -- Respuesta vacía pero exitosa
-            
-        elseif status_code == 401 then
-            -- 4xx: Client error - token inválido
-            error_msg = "Token de acceso inválido o expirado (401)"
-            logger.err("Raindrop: Error de autenticación")
-            
-        elseif status_code == 403 then
-            -- 4xx: Client error - acceso denegado
-            error_msg = "Acceso denegado - verificar permisos del token (403)"
-            logger.err("Raindrop: Error de permisos")
-            
-        elseif status_code == 429 then
-            -- Rate limiting según documentación
-            error_msg = "Rate limit excedido - intenta más tarde (429)"
-            logger.err("Raindrop: Rate limit alcanzado")
-            
-            -- Leer headers de rate limiting si están disponibles
-            if response_headers then
-                local rate_limit = response_headers["X-RateLimit-Limit"]
-                local rate_remaining = response_headers["X-RateLimit-Remaining"]  
-                local rate_reset = response_headers["X-RateLimit-Reset"]
-                
-                if rate_limit or rate_remaining then
-                    logger.dbg("Raindrop: Rate limit info - Limit:", rate_limit, "Remaining:", rate_remaining, "Reset:", rate_reset)
-                    error_msg = error_msg .. string.format("\nLímite: %s req/min, Restantes: %s", 
-                                                          rate_limit or "?", rate_remaining or "?")
-                end
-            end
-            
-        elseif status_code and status_code >= 400 and status_code < 500 then
-            -- 4xx: Client errors - no reintentar
-            error_msg = string.format("Error del cliente (%d): %s", status_code, status_line or "Error no especificado")
-            logger.err("Raindrop: Error 4xx:", status_code, status_line)
-            
-        elseif status_code and status_code >= 500 then
-            -- 5xx: Server errors - safe to retry later según documentación
-            error_msg = string.format("Error del servidor (%d): %s - Puedes reintentar", status_code, status_line or "Error interno")
-            logger.err("Raindrop: Error 5xx:", status_code, status_line)
-            
-        else
-            -- Otros códigos no esperados
-            error_msg = string.format("Código de respuesta inesperado: %s", tostring(status_code))
-            logger.err("Raindrop: Status code inesperado:", status_code)
-        end
+    -- Debug: mostrar qué devolvió la función (igual que en el script de prueba)
+    logger.dbg("Raindrop: Debug - result:", result)
+    logger.dbg("Raindrop: Debug - status_code:", status_code)
+    logger.dbg("Raindrop: Debug - status_line:", status_line)
+    
+    -- CORRECCIÓN: usar la misma lógica que funcionó en el script de prueba
+    local actual_status = status_code
+    if result ~= 1 then
+        -- Si result no es 1, entonces result contiene el código de error
+        actual_status = result
     end
     
-    if result_data then
-        return result_data
+    logger.dbg("Raindrop: Response status:", actual_status)
+    
+    -- Procesar respuesta según código de estado (usando la lógica exitosa)
+    if actual_status == 200 then
+        local response = table.concat(sink)
+        logger.dbg("Raindrop: Respuesta exitosa, longitud:", #response)
+        
+        if #response > 0 then
+            -- CORRECCIÓN: usar JSON.decode en lugar de JSON:decode para KOReader
+            local decode_ok, data = pcall(JSON.decode, response)
+            if decode_ok then
+                logger.dbg("Raindrop: JSON parseado exitosamente")
+                return data
+            else
+                logger.err("Raindrop: Error JSON:", data)
+                return nil, "Error al decodificar JSON: " .. tostring(data)
+            end
+        else
+            return {}
+        end
+        
+    elseif actual_status == 204 then
+        logger.dbg("Raindrop: Respuesta exitosa sin contenido (204)")
+        return {}
+        
+    elseif actual_status == 401 then
+        logger.err("Raindrop: Error de autenticación")
+        return nil, "Token de acceso inválido o expirado (401)"
+        
+    elseif actual_status == 403 then
+        logger.err("Raindrop: Error de permisos")
+        return nil, "Acceso denegado - verificar permisos del token (403)"
+        
+    elseif actual_status == 429 then
+        logger.err("Raindrop: Rate limit alcanzado")
+        local error_msg = "Rate limit excedido - intenta más tarde (429)"
+        
+        -- Leer headers de rate limiting si están disponibles
+        if response_headers then
+            local rate_limit = response_headers["X-RateLimit-Limit"]
+            local rate_remaining = response_headers["X-RateLimit-Remaining"]
+            if rate_limit or rate_remaining then
+                error_msg = error_msg .. string.format("\nLímite: %s req/min, Restantes: %s", 
+                                                      rate_limit or "?", rate_remaining or "?")
+            end
+        end
+        return nil, error_msg
+        
     else
-        return nil, error_msg or "Error desconocido"
+        -- Mostrar respuesta para debug
+        local response = table.concat(sink)
+        if #response > 0 then
+            logger.err("Raindrop: Response body:", response:sub(1, 500))
+        end
+        logger.err("Raindrop: Status code inesperado:", actual_status)
+        return nil, string.format("Error HTTP %s: %s", actual_status, status_line or "Desconocido")
     end
 end
 
@@ -545,22 +466,50 @@ function Raindrop:showRaindrops(collection_id, collection_name, page)
 end
 
 function Raindrop:showRaindropContent(raindrop)
+    -- Verificar si necesitamos obtener el contenido completo
+    if not raindrop.cache or not raindrop.cache.text then
+        -- Intentar obtener el artículo completo
+        local full_raindrop, err = self:makeRequest("/raindrop/" .. raindrop._id)
+        if full_raindrop and full_raindrop.item then
+            raindrop = full_raindrop.item
+        end
+    end
+    
     local content = ""
     
     -- Información básica
-    content = content .. raindrop.title .. "\n"
+    content = content .. (raindrop.title or _("Sin título")) .. "\n"
     content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if raindrop.link then
         content = content .. _("URL: ") .. raindrop.link .. "\n\n"
     end
     
+    if raindrop.domain then
+        content = content .. _("Dominio: ") .. raindrop.domain .. "\n"
+    end
+    
     if raindrop.created then
-        content = content .. _("Guardado: ") .. raindrop.created .. "\n\n"
+        local date = raindrop.created:sub(1, 10)
+        local time = raindrop.created:sub(12, 19)
+        content = content .. _("Guardado: ") .. date .. " " .. time .. "\n\n"
+    end
+    
+    -- Tipo de contenido
+    if raindrop.type then
+        local type_names = {
+            link = _("Enlace"),
+            article = _("Artículo"),
+            image = _("Imagen"),
+            video = _("Video"),
+            document = _("Documento"),
+            audio = _("Audio")
+        }
+        content = content .. _("Tipo: ") .. (type_names[raindrop.type] or raindrop.type) .. "\n\n"
     end
     
     -- Extracto/descripción
-    if raindrop.excerpt then
+    if raindrop.excerpt and raindrop.excerpt ~= "" then
         content = content .. _("Extracto:") .. "\n"
         content = content .. raindrop.excerpt .. "\n\n"
     end
@@ -576,15 +525,27 @@ function Raindrop:showRaindropContent(raindrop)
         content = content .. _("Etiquetas: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
     end
     
-    -- Contenido completo si está disponible
-    if raindrop.cache and raindrop.cache.text then
-        content = content .. "\n" .. _("Contenido completo:") .. "\n"
-        content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        content = content .. raindrop.cache.text
+    -- Información de caché
+    if raindrop.cache then
+        if raindrop.cache.status == "ready" and raindrop.cache.text then
+            content = content .. "\n" .. _("Contenido completo:") .. "\n"
+            content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            content = content .. raindrop.cache.text
+        elseif raindrop.cache.status then
+            local status_names = {
+                ready = _("Listo"),
+                retry = _("Reintentando"),
+                failed = _("Falló"),
+                ["invalid-origin"] = _("Origen inválido"),
+                ["invalid-timeout"] = _("Tiempo agotado"),
+                ["invalid-size"] = _("Tamaño inválido")
+            }
+            content = content .. _("Estado del caché: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n\n"
+        end
     end
     
     local text_viewer = TextViewer:new{
-        title = raindrop.title,
+        title = raindrop.title or _("Artículo"),
         text = content,
         width = Device.screen:getWidth() * 0.95,
         height = Device.screen:getHeight() * 0.95,
@@ -626,8 +587,87 @@ function Raindrop:showSearchDialog()
     self.search_dialog:onShowKeyboard()
 end
 
-function Raindrop:searchRaindrops(search_term)
-    local endpoint = "/raindrops/0?search=" .. urlEncode(search_term)
+-- CORRECCIÓN: Función de test más robusta
+function Raindrop:testToken(test_token)
+    logger.dbg("Raindrop: Iniciando test de token, longitud:", #test_token)
+    
+    -- Validación básica antes de probar
+    if #test_token < 20 then
+        self:notify(_("⚠️ Token muy corto, verifica que sea correcto"), 3)
+        return
+    end
+    
+    local old_token = self.token
+    self.token = test_token -- Temporalmente usar el token de prueba
+    
+    self:notify(_("Probando token..."), 1)
+    
+    local user_data, err = self:makeRequest("/user")
+    
+    self.token = old_token -- Restaurar token original
+    
+    if user_data and user_data.user then
+        logger.dbg("Raindrop: Test de token exitoso")
+        local user_name = "Usuario verificado"
+        if user_data.user.fullName then
+            user_name = user_data.user.fullName
+        elseif user_data.user.email then
+            user_name = user_data.user.email
+        end
+        
+        local pro_status = user_data.user.pro and _(" (PRO)") or ""
+        
+        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
+    else
+        logger.err("Raindrop: Test de token falló:", err)
+        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
+    end
+end
+
+-- Función de debug para ver el estado de la configuración
+function Raindrop:showDebugInfo()
+    local debug_info = "DEBUG RAINDROP PLUGIN\n"
+    debug_info = debug_info .. "══════════════════════\n\n"
+    debug_info = debug_info .. "Token actual: " .. (self.token ~= "" and ("SET (" .. #self.token .. " chars)") or "NO SET") .. "\n"
+    debug_info = debug_info .. "Archivo config: " .. (self.settings_file or "NO SET") .. "\n\n"
+    
+    -- Verificar si el archivo existe
+    if self.settings_file then
+        local file = io.open(self.settings_file, "r")
+        if file then
+            local content = file:read("*all")
+            file:close()
+            debug_info = debug_info .. "Archivo existe: SÍ\n"
+            debug_info = debug_info .. "Contenido (" .. #content .. " chars):\n"
+            debug_info = debug_info .. content .. "\n"
+        else
+            debug_info = debug_info .. "Archivo existe: NO\n"
+        end
+    end
+    
+    debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
+    
+    local text_viewer = TextViewer:new{
+        title = "Debug Info - Raindrop Plugin",
+        text = debug_info,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(text_viewer)
+end
+
+-- CORRECCIÓN: Función de búsqueda mejorada según lo que funciona en la API
+function Raindrop:searchRaindrops(search_term, page)
+    page = page or 0
+    local perpage = 25
+    
+    -- CORRECCIÓN: usar el endpoint correcto según la documentación
+    local endpoint = string.format("/raindrops/0?search=%s&perpage=%d&page=%d", 
+                                   urlEncode(search_term), perpage, page)
+    
+    logger.dbg("Raindrop: Buscando con endpoint:", endpoint)
+    
     local results, err = self:makeRequest(endpoint)
     
     if not results then
@@ -653,6 +693,39 @@ function Raindrop:searchRaindrops(search_term)
                 end,
             })
         end
+        
+        -- CORRECCIÓN: Agregar navegación de páginas para búsquedas
+        local total_count = results.count or 0
+        if total_count > perpage then
+            local total_pages = math.ceil(total_count / perpage)
+            local current_page = page + 1
+            
+            table.insert(menu_items, {text = "──────────────────", enabled = false})
+            
+            if page > 0 then
+                table.insert(menu_items, {
+                    text = _("← Página anterior"),
+                    callback = function()
+                        self:searchRaindrops(search_term, page - 1)
+                    end,
+                })
+            end
+            
+            table.insert(menu_items, {
+                text = string.format(_("Página %d de %d"), current_page, total_pages),
+                enabled = false,
+            })
+            
+            if current_page < total_pages then
+                table.insert(menu_items, {
+                    text = _("Página siguiente →"),
+                    callback = function()
+                        self:searchRaindrops(search_term, page + 1)
+                    end,
+                })
+            end
+        end
+        
     else
         table.insert(menu_items, {
             text = T(_("No se encontraron resultados para: %1"), search_term),
@@ -661,7 +734,7 @@ function Raindrop:searchRaindrops(search_term)
     end
     
     local search_menu = Menu:new{
-        title = T(_("Resultados de búsqueda (%1)"), results.count or #results.items or 0),
+        title = T(_("Resultados: '%1' (%2)"), search_term, results.count or 0),
         item_table = menu_items,
         width = Device.screen:getWidth() * 0.9,
         height = Device.screen:getHeight() * 0.8,
@@ -670,4 +743,5 @@ function Raindrop:searchRaindrops(search_term)
     UIManager:show(search_menu)
 end
 
+-- Necesario para que KOReader registre el plugin
 return Raindrop
