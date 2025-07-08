@@ -590,55 +590,72 @@ function Raindrop:showRaindropContent(raindrop)
         end
     end
     
-    -- Determinar si hay contenido en caché disponible
+    -- Determinar si hay contenido en caché disponible y registrarlo para diagnóstico
     local has_cache = raindrop.cache and raindrop.cache.status == "ready" and raindrop.cache.text and #raindrop.cache.text > 0
+    logger.dbg("Raindrop: Artículo tiene caché:", has_cache and "SÍ" or "NO", 
+               "cache:", raindrop.cache and "presente" or "nil",
+               "status:", raindrop.cache and raindrop.cache.status or "n/a",
+               "texto:", raindrop.cache and raindrop.cache.text and #raindrop.cache.text or 0)
     
-    -- Crear opciones de visualización basadas en lo que está disponible
+    -- Si hay caché disponible, mostrar directamente el contenido sin menú intermedio
+    if has_cache then
+        self:showRaindropCachedContent(raindrop)
+        return
+    end
+    
+    -- Si no hay caché, mostrar menú de opciones alternativas
     local view_options = {
         {
-            text = _("Ver información"),
+            text = _("Ver información del artículo"),
             callback = function()
                 self:showRaindropInfo(raindrop)
             end
         },
     }
     
-    -- Si hay versión en caché, ofrecer opciones adicionales
-    if has_cache then
-        table.insert(view_options, {
-            text = _("Ver texto completo en caché"),
-            callback = function()
-                self:showRaindropCachedContent(raindrop)
-            end
-        })
-    end
-    
-    -- Si hay enlace, agregar opción para abrir en navegador
+    -- Opción de URL siempre disponible
     if raindrop.link then
         table.insert(view_options, {
-            text = _("Abrir enlace original"),
+            text = _("Copiar URL"),
             callback = function()
-                self:openRaindropInBrowser(raindrop)
+                self:showLinkInfo(raindrop)
             end
         })
     end
     
-    -- Mostrar menú de opciones
-    local cache_status = ""
-    if raindrop.cache then
+    -- Mensaje de estado de la caché
+    local cache_message = ""
+    if not has_cache and raindrop.cache then
         local status_names = {
-            ready = _(" [Caché disponible]"),
-            retry = _(" [Caché pendiente]"),
-            failed = _(" [Caché fallida]"),
-            ["invalid-origin"] = _(" [Origen inválido]"),
-            ["invalid-timeout"] = _(" [Tiempo agotado]"),
-            ["invalid-size"] = _(" [Tamaño excedido]")
+            retry = _("La caché está siendo generada, intenta más tarde"),
+            failed = _("La generación de caché ha fallado"),
+            ["invalid-origin"] = _("No se pudo generar caché por origen inválido"),
+            ["invalid-timeout"] = _("No se pudo generar caché por timeout"),
+            ["invalid-size"] = _("No se pudo generar caché por tamaño excesivo")
         }
-        cache_status = status_names[raindrop.cache.status] or ""
+        cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
+        
+        -- Añadir opción para forzar la recarga
+        table.insert(view_options, {
+            text = _("Intentar recargar artículo completo"),
+            callback = function()
+                self:reloadRaindrop(raindrop._id)
+            end
+        })
+    elseif not has_cache then
+        cache_message = _("Este artículo no tiene contenido en caché disponible")
+    end
+    
+    -- Si hay mensaje de caché, mostrarlo como opción deshabilitada
+    if cache_message ~= "" then
+        table.insert(view_options, 1, {
+            text = cache_message,
+            enabled = false,
+        })
     end
     
     local menu = Menu:new{
-        title = (raindrop.title or _("Artículo")) .. cache_status,
+        title = raindrop.title or _("Artículo"),
         item_table = view_options,
         width = Device.screen:getWidth() * 0.9,
         height = Device.screen:getHeight() * 0.9,
@@ -647,196 +664,493 @@ function Raindrop:showRaindropContent(raindrop)
     UIManager:show(menu)
 end
 
--- Función para mostrar solo la información del artículo (sin contenido)
-function Raindrop:showRaindropInfo(raindrop)
-    local content = ""
+-- Nueva función para recargar un artículo específico
+function Raindrop:reloadRaindrop(raindrop_id)
+    self:showProgress(_("Recargando artículo..."))
+    -- Forzar recarga sin usar caché
+    local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop_id, "GET", nil, false)
+    self:hideProgress()
     
-    -- Información básica
-    content = content .. (raindrop.title or _("Sin título")) .. "\n"
-    content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    if raindrop.link then
-        content = content .. _("URL: ") .. raindrop.link .. "\n\n"
-    end
-    
-    if raindrop.domain then
-        content = content .. _("Dominio: ") .. raindrop.domain .. "\n"
-    end
-    
-    if raindrop.created then
-        local date = raindrop.created:sub(1, 10)
-        local time = raindrop.created:sub(12, 19)
-        content = content .. _("Guardado: ") .. date .. " " .. time .. "\n\n"
-    end
-    
-    -- Tipo de contenido
-    if raindrop.type then
-        local type_names = {
-            link = _("Enlace"),
-            article = _("Artículo"),
-            image = _("Imagen"),
-            video = _("Video"),
-            document = _("Documento"),
-            audio = _("Audio")
-        }
-        content = content .. _("Tipo: ") .. (type_names[raindrop.type] or raindrop.type) .. "\n\n"
-    end
-    
-    -- Extracto/descripción
-    if raindrop.excerpt and raindrop.excerpt ~= "" then
-        content = content .. _("Extracto:") .. "\n"
-        content = content .. raindrop.excerpt .. "\n\n"
-    end
-    
-    -- Notas del usuario
-    if raindrop.note and raindrop.note ~= "" then
-        content = content .. _("Notas:") .. "\n"
-        content = content .. raindrop.note .. "\n\n"
-    end
-    
-    -- Tags
-    if raindrop.tags and #raindrop.tags > 0 then
-        content = content .. _("Etiquetas: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
-    end
-    
-    -- Información de caché
-    if raindrop.cache then
-        if raindrop.cache.status == "ready" then
-            content = content .. _("Caché: ") .. _("Disponible") .. "\n"
-            if raindrop.cache.size then
-                content = content .. _("Tamaño: ") .. math.floor(raindrop.cache.size/1024) .. " KB\n"
-            end
-        elseif raindrop.cache.status then
-            local status_names = {
-                ready = _("Listo"),
-                retry = _("Reintentando"),
-                failed = _("Falló"),
-                ["invalid-origin"] = _("Origen inválido"),
-                ["invalid-timeout"] = _("Tiempo agotado"),
-                ["invalid-size"] = _("Tamaño inválido")
-            }
-            content = content .. _("Estado del caché: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n"
+    if full_raindrop and full_raindrop.item then
+        -- Si el artículo tiene caché ahora, mostrarlo
+        if full_raindrop.item.cache and 
+           full_raindrop.item.cache.status == "ready" and 
+           full_raindrop.item.cache.text then
+            self:showRaindropCachedContent(full_raindrop.item)
+        else
+            -- Si sigue sin caché, mostrar información
+            self:notify(_("El artículo aún no tiene contenido en caché disponible"))
+            self:showRaindropInfo(full_raindrop.item)
         end
-        content = content .. "\n"
-    end
-    
-    local text_viewer = TextViewer:new{
-        title = raindrop.title or _("Información del artículo"),
-        text = content,
-        width = Device.screen:getWidth() * 0.95,
-        height = Device.screen:getHeight() * 0.95,
-    }
-    
-    UIManager:show(text_viewer)
-end
-
--- Función para mostrar solo el contenido en caché
-function Raindrop:showRaindropCachedContent(raindrop)
-    if not raindrop.cache or not raindrop.cache.text then
-        self:notify(_("No hay contenido en caché disponible"))
-        return
-    end
-    
-    local content = raindrop.cache.text
-    
-    -- Intentar mejorar el formato del texto en caché
-    -- Eliminar exceso de espacios en blanco
-    content = content:gsub("\n%s*\n%s*\n", "\n\n")
-    
-    -- Añadir título del artículo al principio
-    local formatted_content = (raindrop.title or _("Sin título")) .. "\n"
-    formatted_content = formatted_content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    formatted_content = formatted_content .. content
-    
-    -- Mostrar en visor de texto
-    local text_viewer = TextViewer:new{
-        title = _("Contenido en caché"),
-        text = formatted_content,
-        width = Device.screen:getWidth() * 0.95,
-        height = Device.screen:getHeight() * 0.95,
-    }
-    
-    UIManager:show(text_viewer)
-end
-
--- Función para abrir el enlace en el navegador (si está disponible)
-function Raindrop:openRaindropInBrowser(raindrop)
-    if not raindrop.link then
-        self:notify(_("No hay enlace disponible para este artículo"))
-        return
-    end
-    
-    -- Verificar si el navegador integrado está disponible
-    if require("ui/network/browsewithlinks") then
-        local BrowseWithLinks = require("ui/network/browsewithlinks")
-        BrowseWithLinks:showPage(raindrop.link)
     else
-        -- Mostrar mensaje con el enlace si no hay navegador
-        self:notify(_("No se puede abrir el navegador.") .. "\n" .. 
-                   _("URL: ") .. raindrop.link, 5)
+        self:notify(_("Error al recargar artículo: ") .. (err or _("Error desconocido")))
     end
 end
 
-function Raindrop:showSearchDialog()
-    self.search_dialog = InputDialog:new{
-        title = _("Buscar en Raindrop"),
-        input_hint = _("Término de búsqueda..."),
+function Raindrop:makeRequest(endpoint, method, body)
+    local url = self.server_url .. endpoint
+    logger.dbg("Raindrop: Iniciando solicitud a", url)
+
+    -- mostrar "Conectando…" mientras dura la petición
+    local loading_msg = InfoMessage:new{ text = _("Conectando…"), timeout = 0 }
+    UIManager:show(loading_msg)
+    UIManager:forceRePaint()
+
+    local sink = {}
+    local request = {
+        url     = url,
+        method  = method or "GET",
+        headers = {
+            ["Authorization"] = "Bearer " .. self.token,
+            ["Content-Type"]  = "application/json",
+            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.3",
+        },
+        sink    = ltn12.sink.table(sink),
+        -- Añadir opciones para mejorar compatibilidad
+        protocol = "any", -- Aceptar cualquier protocolo en lugar de TLS específico
+        options = "all", -- Usar todas las opciones disponibles
+        timeout = 30,    -- Reducir el timeout para evitar esperas largas
+    }
+
+    -- si hay body (POST/PUT), lo serializamos desde el argumento
+    if (method == "POST" or method == "PUT") then
+        local payload = JSON.encode(body or {})
+        request.source         = ltn12.source.string(payload)
+        request.headers["Content-Length"] = #payload
+    end
+
+    -- Establecer timeouts más sofisticados antes de la petición
+    local socketutil = require("socketutil")
+    socketutil:set_timeout(10, 30)  -- Reducido de 45 a 30s total para respuestas más rápidas
+    
+    -- HTTPS
+    local ok, r1, r2, r3, r4 = pcall(https.request, request)
+    
+    -- Si falla HTTPS, intentar con HTTP como fallback
+    if not ok and r1:match("unreachable") then
+        logger.warn("Raindrop: HTTPS falló, intentando con HTTP como fallback")
+        -- Cambiar a HTTP y reintentar
+        request.url = request.url:gsub("^https:", "http:")
+        ok, r1, r2, r3, r4 = pcall(http.request, request)
+    end
+    
+    -- Restaurar timeouts por defecto
+    socketutil:reset_timeout()
+    
+    -- cerramos siempre el loading
+    UIManager:close(loading_msg)
+
+    if not ok then
+        logger.err("Raindrop: request falló:", r1)
+        return nil, _("Error de conexión: ") .. tostring(r1)
+    end
+
+    local result, status_code, response_headers, status_line = r1, r2, r3, r4
+    -- determino el status real
+    local actual_status = (result ~= 1 and type(result)=="number") and result or status_code
+
+    -- Debug para diagnóstico
+    logger.dbg("Raindrop: Debug raw result:", result, "status_code:", status_code)
+    logger.dbg("Raindrop: Status determinado:", actual_status)
+
+    -- Manejo de respuestas con mejor estructura
+    if actual_status == 200 then
+        local resp = table.concat(sink)
+        if #resp > 0 then
+            local dec_ok, data = pcall(function() return JSON.decode(resp) end)
+            if dec_ok then
+                return data
+            else
+                -- Añadir más información de diagnóstico
+                logger.err("Raindrop: JSON.decode error:", data)
+                logger.err("Raindrop: JSON contenido:", resp:sub(1,200))
+                return nil, _("Error decodificando JSON: ") .. tostring(data)
+            end
+        end
+        return {}
+    elseif actual_status == 204 then
+        return {}
+    elseif actual_status == 401 then
+        return nil, _("Token inválido o expirado (401)")
+    elseif actual_status == 403 then
+        return nil, _("Acceso denegado (403)")
+    elseif actual_status == 429 then
+        local msg = _("Rate limit excedido (429)")
+        if response_headers then
+            local L = response_headers["X-RateLimit-Limit"]
+            local R = response_headers["X-RateLimit-Remaining"]
+            if L or R then
+                -- Corregido: Reemplazar format() con concatenación
+                msg = msg .. " Límite:" .. (L or "?") .. " Restantes:" .. (R or "?")
+            end
+        end
+        return nil, msg
+    else
+        local resp = table.concat(sink)
+        logger.err("Raindrop: HTTP error", actual_status, resp:sub(1,200))
+        -- Corregido: Reemplazar format() con concatenación
+        return nil, _("Error HTTP ") .. tostring(actual_status)
+    end
+end
+
+function Raindrop:makeRequestWithRetry(endpoint, method, body, max_retries)
+    max_retries = max_retries or 3
+    local attempts = 0
+    
+    while attempts < max_retries do
+        attempts = attempts + 1
+        
+        if attempts > 1 then
+            -- Corregido: Reemplazar format() con concatenación
+            self:showProgress(_("Reintentando conexión (") .. attempts .. "/" .. max_retries .. ")...")
+            -- Pequeña pausa entre intentos
+            os.execute("sleep 1")
+        end
+        
+        local result, err = self:makeRequest(endpoint, method, body)
+        
+        if result or (err and not err:match("conexión") and not err:match("timeout")) then
+            -- Si tenemos resultado o es un error que no es de conexión
+            return result, err
+        end
+        
+        logger.warn("Raindrop: Reintentando solicitud después de error:", err)
+    end
+    
+    -- Corregido: Reemplazar format() con concatenación
+    return nil, _("Falló después de ") .. max_retries .. _(" intentos")
+end
+
+function Raindrop:showProgress(text)
+    if self.progress_message then
+        UIManager:close(self.progress_message)
+    end
+    self.progress_message = InfoMessage:new{text = text, timeout = 1}
+    UIManager:show(self.progress_message)
+    UIManager:forceRePaint()
+end
+
+function Raindrop:hideProgress()
+    if self.progress_message then 
+        UIManager:close(self.progress_message) 
+    end
+    self.progress_message = nil
+end
+
+function Raindrop:cachedRequest(endpoint, method, body, use_cache)
+    -- Por defecto usamos caché solo para solicitudes GET
+    use_cache = (use_cache == nil) and (method == "GET" or method == nil) or use_cache
+    
+    if use_cache and method == "GET" then
+        local cache_key = endpoint
+        local cached = self.response_cache[cache_key]
+        
+        if cached and os.time() - cached.timestamp < self.cache_ttl then
+            logger.dbg("Raindrop: Usando respuesta en caché para", endpoint)
+            return cached.data, nil
+        end
+    end
+    
+    local result, err = self:makeRequestWithRetry(endpoint, method, body)
+    
+    if result and method == "GET" and use_cache then
+        local cache_key = endpoint
+        self.response_cache[cache_key] = {
+            data = result,
+            timestamp = os.time()
+        }
+    end
+    
+    return result, err
+end
+
+function Raindrop:showCollections()
+    self:showProgress(_("Cargando colecciones..."))
+    local collections, err = self:cachedRequest("/collections")
+    self:hideProgress()
+    
+    if not collections then
+        -- Corregido: Reemplazar T() con concatenación
+        self:notify(_("Error al obtener colecciones:") .. "\n" .. (err or _("Error desconocido")), 4)
+        return
+    end
+    
+    local menu_items = {}
+    
+    if not collections.items or #collections.items == 0 then
+        table.insert(menu_items, {
+            text = _("No tienes colecciones creadas"),
+            enabled = false,
+        })
+    else
+        for _, collection in ipairs(collections.items) do
+            table.insert(menu_items, {
+                text = string.format("%s (%d)", collection.title, collection.count or 0),
+                callback = function()
+                    self:showRaindrops(collection._id, collection.title)
+                end,
+            })
+        end
+    end
+    
+    local collections_menu = Menu:new{
+        title = _("Colecciones de Raindrop"),
+        item_table = menu_items,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(collections_menu)
+end
+
+function Raindrop:showRaindrops(collection_id, collection_name, page)
+    page = page or 0
+    local perpage = 25
+    local endpoint = string.format("/raindrops/%s?perpage=%d&page=%d", collection_id, perpage, page)
+    
+    self:showProgress(_("Cargando artículos..."))
+    local raindrops, err = self:cachedRequest(endpoint)
+    self:hideProgress()
+    
+    if not raindrops then
+        -- Corregido: Reemplazar T() con concatenación
+        self:notify(_("Error al obtener artículos: ") .. (err or _("Error desconocido")), 4)
+        return
+    end
+    
+    local menu_items = {}
+    
+    if raindrops.items then
+        for _, raindrop in ipairs(raindrops.items) do
+            local title = raindrop.title or _("Sin título")
+            local domain = raindrop.domain or ""
+            local date = ""
+            if raindrop.created then
+                date = " • " .. raindrop.created:sub(1, 10)
+            end
+            
+            table.insert(menu_items, {
+                text = title .. "\n" .. domain .. date,
+                callback = function()
+                    self:showRaindropContent(raindrop)
+                end,
+            })
+        end
+    end
+    
+    -- Navegación de páginas con fallback para count
+    local total_count = raindrops.count or (#raindrops.items + page * perpage)
+    if total_count > perpage then
+        local total_pages = math.ceil(total_count / perpage)
+        local current_page = page + 1
+        
+        if #menu_items > 0 then
+            table.insert(menu_items, {text = "──────────────────", enabled = false})
+        end
+        
+        if page > 0 then
+            table.insert(menu_items, {
+                text = _("← Página anterior"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page - 1)
+                end,
+            })
+        end
+        
+        if current_page < total_pages then
+            table.insert(menu_items, {
+                text = _("Página siguiente →"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page + 1)
+                end,
+            })
+        end
+    end
+    
+    if #menu_items == 0 then
+        table.insert(menu_items, {
+            text = _("No hay artículos en esta colección"),
+            enabled = false,
+        })
+    end
+    
+    local raindrops_menu = Menu:new{
+        title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
+        item_table = menu_items,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(raindrops_menu)
+end
+
+function Raindrop:showRaindropContent(raindrop)
+    -- Verificar si necesitamos obtener el contenido completo
+    if not raindrop.cache or not raindrop.cache.text then
+        -- Intentar obtener el artículo completo
+        self:showProgress(_("Cargando contenido completo..."))
+        local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop._id)
+        self:hideProgress()
+        
+        if full_raindrop and full_raindrop.item then
+            raindrop = full_raindrop.item
+        end
+    end
+    
+    -- Determinar si hay contenido en caché disponible y registrarlo para diagnóstico
+    local has_cache = raindrop.cache and raindrop.cache.status == "ready" and raindrop.cache.text and #raindrop.cache.text > 0
+    logger.dbg("Raindrop: Artículo tiene caché:", has_cache and "SÍ" or "NO", 
+               "cache:", raindrop.cache and "presente" or "nil",
+               "status:", raindrop.cache and raindrop.cache.status or "n/a",
+               "texto:", raindrop.cache and raindrop.cache.text and #raindrop.cache.text or 0)
+    
+    -- Si hay caché disponible, mostrar directamente el contenido sin menú intermedio
+    if has_cache then
+        self:showRaindropCachedContent(raindrop)
+        return
+    end
+    
+    -- Si no hay caché, mostrar menú de opciones alternativas
+    local view_options = {
+        {
+            text = _("Ver información del artículo"),
+            callback = function()
+                self:showRaindropInfo(raindrop)
+            end
+        },
+    }
+    
+    -- Opción de URL siempre disponible
+    if raindrop.link then
+        table.insert(view_options, {
+            text = _("Copiar URL"),
+            callback = function()
+                self:showLinkInfo(raindrop)
+            end
+        })
+    end
+    
+    -- Mensaje de estado de la caché
+    local cache_message = ""
+    if not has_cache and raindrop.cache then
+        local status_names = {
+            retry = _("La caché está siendo generada, intenta más tarde"),
+            failed = _("La generación de caché ha fallado"),
+            ["invalid-origin"] = _("No se pudo generar caché por origen inválido"),
+            ["invalid-timeout"] = _("No se pudo generar caché por timeout"),
+            ["invalid-size"] = _("No se pudo generar caché por tamaño excesivo")
+        }
+        cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
+        
+        -- Añadir opción para forzar la recarga
+        table.insert(view_options, {
+            text = _("Intentar recargar artículo completo"),
+            callback = function()
+                self:reloadRaindrop(raindrop._id)
+            end
+        })
+    elseif not has_cache then
+        cache_message = _("Este artículo no tiene contenido en caché disponible")
+    end
+    
+    -- Si hay mensaje de caché, mostrarlo como opción deshabilitada
+    if cache_message ~= "" then
+        table.insert(view_options, 1, {
+            text = cache_message,
+            enabled = false,
+        })
+    end
+    
+    local menu = Menu:new{
+        title = raindrop.title or _("Artículo"),
+        item_table = view_options,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.9,
+    }
+    
+    UIManager:show(menu)
+end
+
+-- Nueva función para recargar un artículo específico
+function Raindrop:reloadRaindrop(raindrop_id)
+    self:showProgress(_("Recargando artículo..."))
+    -- Forzar recarga sin usar caché
+    local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop_id, "GET", nil, false)
+    self:hideProgress()
+    
+    if full_raindrop and full_raindrop.item then
+        -- Si el artículo tiene caché ahora, mostrarlo
+        if full_raindrop.item.cache and 
+           full_raindrop.item.cache.status == "ready" and 
+           full_raindrop.item.cache.text then
+            self:showRaindropCachedContent(full_raindrop.item)
+        else
+            -- Si sigue sin caché, mostrar información
+            self:notify(_("El artículo aún no tiene contenido en caché disponible"))
+            self:showRaindropInfo(full_raindrop.item)
+        end
+    else
+        self:notify(_("Error al recargar artículo: ") .. (err or _("Error desconocido")))
+    end
+end
+
+function Raindrop:showTokenDialog()
+    self.token_dialog = InputDialog:new{
+        title = _("Token de acceso de Raindrop.io"),
+        description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
+        input = self.token,
+        input_type = "text",
         buttons = {
             {
                 {
                     text = _("Cancelar"),
                     callback = function()
-                        UIManager:close(self.search_dialog)
+                        UIManager:close(self.token_dialog)
                     end,
                 },
                 {
-                    text = _("Buscar"),
+                    text = _("Probar"),
+                    callback = function()
+                        local test_token = self.token_dialog:getInputText()
+                        if test_token and test_token ~= "" then
+                            test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            NetworkMgr:runWhenOnline(function()
+                                self:testToken(test_token)
+                            end)
+                        else
+                            self:notify(_("Por favor ingresa un token para probar"))
+                        end
+                    end,
+                },
+                {
+                    text = _("Guardar"),
                     is_enter_default = true,
                     callback = function()
-                        local search_term = self.search_dialog:getInputText()
-                        if search_term and search_term ~= "" then
-                            UIManager:close(self.search_dialog)
-                            NetworkMgr:runWhenOnline(function()
-                                self:searchRaindrops(search_term)
-                            end)
+                        local new_token = self.token_dialog:getInputText()
+                        if new_token and new_token ~= "" then
+                            new_token = new_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            
+                            logger.dbg("Raindrop: Token recibido, longitud:", #new_token)
+                            
+                            if #new_token < 20 then
+                                self:notify(_("⚠️ Token muy corto, verifica que sea correcto"))
+                                return
+                            end
+                            
+                            self.token = new_token
+                            self:saveSettings()
+                            UIManager:close(self.token_dialog)
+                            self:notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
+                        else
+                            self:notify(_("Por favor ingresa un token válido"), 2)
                         end
                     end,
                 }
             }
         },
     }
-    UIManager:show(self.search_dialog)
-    self.search_dialog:onShowKeyboard()
-end
-
-function Raindrop:testToken(test_token)
-    logger.dbg("Raindrop: Iniciando test de token, longitud:", #test_token)
-    
-    if #test_token < 20 then
-        self:notify(_("⚠️ Token muy corto, verifica que sea correcto"), 3)
-        return
-    end
-    
-    local old_token = self.token
-    self.token = test_token
-    
-    self:showProgress(_("Probando token..."))
-    
-    local user_data, err = self:makeRequestWithRetry("/user")
-    
-    self:hideProgress()
-    self.token = old_token
-    
-    if user_data and user_data.user then
-        logger.dbg("Raindrop: Test de token exitoso")
-        local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
-        local pro_status = user_data.user.pro and _(" (PRO)") or ""
-        
-        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
-    else
-        logger.err("Raindrop: Test de token falló:", err)
-        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
-    end
+    UIManager:show(self.token_dialog)
+    self.token_dialog:onShowKeyboard()
 end
 
 function Raindrop:showDebugInfo()
@@ -959,6 +1273,28 @@ function Raindrop:searchRaindrops(search_term, page)
     }
     
     UIManager:show(search_menu)
+end
+
+-- Reemplazar la función de navegador con una para mostrar la URL
+function Raindrop:showLinkInfo(raindrop)
+    if not raindrop.link then
+        self:notify(_("No hay enlace disponible para este artículo"))
+        return
+    end
+    
+    local content = _("URL del artículo:") .. "\n\n"
+    content = content .. raindrop.link .. "\n\n"
+    content = content .. _("No se puede abrir directamente en KOReader.") .. "\n"
+    content = content .. _("Puedes copiar esta URL para abrirla en otro dispositivo.")
+    
+    local text_viewer = TextViewer:new{
+        title = _("Enlace del artículo"),
+        text = content,
+        width = Device.screen:getWidth() * 0.95,
+        height = Device.screen:getHeight() * 0.95,
+    }
+    
+    UIManager:show(text_viewer)
 end
 
 -- Necesario para que KOReader registre el plugin
