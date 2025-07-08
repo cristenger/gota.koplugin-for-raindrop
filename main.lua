@@ -44,6 +44,17 @@ local function urlEncode(str)
     return str
 end
 
+-- Función auxiliar para obtener keys de tabla (reemplazo de vim.tbl_keys)
+local function table_keys(t)
+    local keys = {}
+    if type(t) == "table" then
+        for k, _ in pairs(t) do
+            table.insert(keys, tostring(k))
+        end
+    end
+    return keys
+end
+
 -- Manejo centralizado de notificaciones
 function Raindrop:notify(text, timeout)
     timeout = timeout or 3
@@ -77,8 +88,15 @@ function Raindrop:loadSettings()
             logger.dbg("Raindrop: Contenido leído del archivo:", content and #content or "nil")
             
             if content and content ~= "" then
-                -- Método más seguro de parsing
-                local chunk, err = loadstring(content)
+                -- CORRECCIÓN: usar load en lugar de loadstring para compatibilidad
+                local chunk, err
+                if load then
+                    chunk, err = load(content)
+                else
+                    -- Fallback para versiones antiguas de Lua
+                    chunk, err = loadstring(content)
+                end
+                
                 if chunk then
                     local ok, data = pcall(chunk)
                     if ok and type(data) == "table" then
@@ -196,7 +214,9 @@ function Raindrop:showTokenDialog()
                         local test_token = self.token_dialog:getInputText()
                         if test_token and test_token ~= "" then
                             test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
-                            self:testToken(test_token)
+                            NetworkMgr:runWhenOnline(function()
+                                self:testToken(test_token)
+                            end)
                         else
                             self:notify(_("Por favor ingresa un token para probar"))
                         end
@@ -236,7 +256,7 @@ function Raindrop:showTokenDialog()
     self.token_dialog:onShowKeyboard()
 end
 
--- Función CORREGIDA para hacer requests HTTP según el script de prueba exitoso
+-- Función CORREGIDA para hacer requests HTTP manejando el caso de tabla
 function Raindrop:makeRequest(endpoint, method)
     local url = self.server_url .. endpoint
     logger.dbg("Raindrop: Iniciando solicitud a", url)
@@ -274,42 +294,79 @@ function Raindrop:makeRequest(endpoint, method)
     
     logger.dbg("Raindrop: Enviando request con método:", method or "GET")
     
-    -- CORRECCIÓN CRÍTICA: usar la lógica que funciona del script de prueba
-    local result, status_code, response_headers, status_line = https.request(request)
+    -- CORRECCIÓN CRÍTICA: manejar el caso donde status_code es una tabla
+    local ok, result, status_code, response_headers, status_line = pcall(function()
+        return https.request(request)
+    end)
     
     -- Cerrar mensaje de carga
     UIManager:close(loading_msg)
     
-    -- Debug: mostrar qué devolvió la función (igual que en el script de prueba)
-    logger.dbg("Raindrop: Debug - result:", result)
-    logger.dbg("Raindrop: Debug - status_code:", status_code)
+    -- Manejo de errores de conexión
+    if not ok then
+        logger.err("Raindrop: Error de conexión:", result)
+        return nil, "Error de conexión: " .. tostring(result)
+    end
+    
+    -- Debug: mostrar qué devolvió la función con tipos
+    logger.dbg("Raindrop: Debug - result:", result, "type:", type(result))
+    logger.dbg("Raindrop: Debug - status_code:", status_code, "type:", type(status_code))
     logger.dbg("Raindrop: Debug - status_line:", status_line)
     
-    -- CORRECCIÓN: usar la misma lógica que funcionó en el script de prueba
-    local actual_status = status_code
-    if result ~= 1 then
-        -- Si result no es 1, entonces result contiene el código de error
+    -- CORRECCIÓN CRÍTICA: manejar cuando status_code es una tabla
+    local actual_status
+    
+    if result == 1 then
+        -- Si result = 1 (éxito), el status real podría estar en status_code
+        if type(status_code) == "number" then
+            actual_status = status_code
+        elseif type(status_code) == "table" then
+            -- CASO PROBLEMÁTICO: status_code es una tabla
+            logger.warn("Raindrop: status_code es una tabla, intentando extraer status")
+            
+            -- Intentar extraer el status de la tabla
+            if status_code.status then
+                actual_status = status_code.status
+            elseif status_code.code then
+                actual_status = status_code.code
+            else
+                -- Asumir éxito si result=1 pero no podemos determinar el status
+                logger.warn("Raindrop: No se pudo determinar status, asumiendo 200")
+                actual_status = 200
+            end
+        else
+            -- Otro caso: asumir éxito
+            actual_status = 200
+        end
+    else
+        -- Si result != 1, entonces result contiene el código de error
         actual_status = result
     end
     
-    logger.dbg("Raindrop: Response status:", actual_status)
+    logger.dbg("Raindrop: Response status determinado:", actual_status)
     
-    -- Procesar respuesta según código de estado (usando la lógica exitosa)
+    -- Procesar respuesta según código de estado
     if actual_status == 200 then
         local response = table.concat(sink)
         logger.dbg("Raindrop: Respuesta exitosa, longitud:", #response)
         
         if #response > 0 then
-            -- CORRECCIÓN: usar JSON.decode en lugar de JSON:decode para KOReader
             local decode_ok, data = pcall(JSON.decode, response)
             if decode_ok then
                 logger.dbg("Raindrop: JSON parseado exitosamente")
                 return data
             else
-                logger.err("Raindrop: Error JSON:", data)
-                return nil, "Error al decodificar JSON: " .. tostring(data)
+                logger.err("Raindrop: Error al decodificar JSON:", tostring(data))
+                -- Mostrar el response crudo para debug (solo primeros 200 chars)
+                logger.err("Raindrop: Response crudo (200 chars):", response:sub(1, 200))
+                return nil, "Error al decodificar JSON de la respuesta"
             end
         else
+            -- Si no hay respuesta pero status=200, verificar si hay datos en la tabla
+            if type(status_code) == "table" then
+                logger.dbg("Raindrop: Intentando extraer datos de tabla status_code")
+                return status_code
+            end
             return {}
         end
         
@@ -329,8 +386,8 @@ function Raindrop:makeRequest(endpoint, method)
         logger.err("Raindrop: Rate limit alcanzado")
         local error_msg = "Rate limit excedido - intenta más tarde (429)"
         
-        -- Leer headers de rate limiting si están disponibles
-        if response_headers then
+        -- CORRECCIÓN: validar que response_headers existe
+        if type(response_headers) == "table" then
             local rate_limit = response_headers["X-RateLimit-Limit"]
             local rate_remaining = response_headers["X-RateLimit-Remaining"]
             if rate_limit or rate_remaining then
@@ -344,8 +401,15 @@ function Raindrop:makeRequest(endpoint, method)
         -- Mostrar respuesta para debug
         local response = table.concat(sink)
         if #response > 0 then
-            logger.err("Raindrop: Response body:", response:sub(1, 500))
+            logger.err("Raindrop: Response body (500 chars):", response:sub(1, 500))
         end
+        
+        -- CORRECCIÓN: usar función auxiliar en lugar de vim.tbl_keys
+        if type(status_code) == "table" then
+            local keys = table_keys(status_code)
+            logger.err("Raindrop: status_code tabla keys:", table.concat(keys, ", "))
+        end
+        
         logger.err("Raindrop: Status code inesperado:", actual_status)
         return nil, string.format("Error HTTP %s: %s", actual_status, status_line or "Desconocido")
     end
