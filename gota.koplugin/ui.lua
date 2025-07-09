@@ -2,6 +2,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local UIManager   = require("ui/uimanager")
 local Menu        = require("ui/widget/menu")
 local _           = require("gettext")
+local logger      = require("logger")  -- Add this line
 
 local UI = {}
 
@@ -36,40 +37,35 @@ end
 --------------------------------------------------
 -- menú principal de KOReader
 --------------------------------------------------
-function UI:populateMainMenu(menu_items)
-    local sep = Menu.separator
-    menu_items.gota = {
-        text          = _("Gota (Raindrop.io)"),
-        sorting_hint  = "more_tools",
-        sub_item_table = {
-            {
-                text     = _("Colecciones"),
-                callback = function() self.parent.collections:show() end,
-            },
-            {
-                text     = _("Buscar"),
-                callback = function() self.parent.search:showDialog() end,
-            },
-            sep,
-            {
-                text     = _("Debug"),
-                callback = function() self.parent.debug:show() end,
-            },
-            sep,
-            {
-                text     = _("Configurar token"),
-                callback = function() self.parent.auth:showDialog() end,
-            },
-        },
-    }
+function UI:addToMainMenu(widget)
+    -- Remove the call to registerToMainMenu which doesn't exist
+    -- Instead, just set a flag so we know the menu should be registered
+    self.parent_widget = widget
+    logger.info("UI: addToMainMenu called - parent widget stored")
 end
 
--- registra la entrada de Gota en el menú principal
-function UI:addToMainMenu(widget)
-    -- widget = self.parent normalmente
-    self.menu:registerToMainMenu(widget, function(items)
-        self:populateMainMenu(items)
-    end)
+function UI:populateMainMenu(menu_items)
+    -- This is where you define the actual menu items
+    if not self.parent_widget then return end
+    
+    logger.info("UI: populateMainMenu called")
+    menu_items.gota = {
+        text = _("Gota (Raindrop.io)"),
+        sorting_hint = "more_tools",
+        sub_item_table = {
+            {
+                text = _("Configurar token"),
+                callback = function()
+                    if self.parent_widget.auth then
+                        self.parent_widget.auth:showDialog()
+                    else
+                        self:notify(_("Error: módulo de autenticación no disponible"))
+                    end
+                end,
+            },
+        }
+    }
+    logger.info("UI: Menu items added: " .. tostring(menu_items.gota ~= nil))
 end
 
 return UI

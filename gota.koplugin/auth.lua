@@ -3,7 +3,6 @@ local InputDialog  = require("ui/widget/inputdialog")
 local InfoMessage  = require("ui/widget/infomessage")
 local UIManager    = require("ui/uimanager")
 local logger       = require("logger")
-local util         = require("util")
 local _            = require("gettext")
 
 local Auth = {}
@@ -20,11 +19,12 @@ end
 -- ------------------------------------------------
 function Auth:load()
     local settings = {}
-    local f = io.open(self.settings_file, "r")
-    if f then
-        local content = f:read("*all")
-        f:close()
-        settings = util.parseSettings(content)
+    local chunk, err = loadfile(self.settings_file)
+    if chunk then
+        local ok, result = pcall(chunk)
+        if ok and type(result) == "table" then
+            settings = result
+        end
     end
     self.state.token = settings.token or ""
     logger.dbg("Gota: token cargado, longitud:", #self.state.token)
