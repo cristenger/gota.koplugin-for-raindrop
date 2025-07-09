@@ -1,13 +1,13 @@
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
--- sub-módulos
-local UI          = require("core.ui")
-local Auth        = require("core.auth")
-local Api         = require("core.api")
-local Collections = require("core.collections")
-local Content     = require("core.content")
-local Search      = require("core.search")
-local Debug       = require("core.debug")   -- ← nuevo módulo
+-- Actualizar las rutas de los submódulos (quitar "core.")
+local UI          = require("ui")
+local Auth        = require("auth")
+local Api         = require("api")
+local Collections = require("collections")
+local Content     = require("content")
+local Search      = require("search")
+local Debug       = require("debug_utils")   -- Renombrado para evitar conflicto
 
 local Gota = WidgetContainer:extend{
     name = "gota",

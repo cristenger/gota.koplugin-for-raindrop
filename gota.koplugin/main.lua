@@ -1,26 +1,24 @@
 local DataStorage = require("datastorage")
-local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
-local util = require("util")  -- Carga el util de KOReader, no el de tu plugin
 
--- Obtener la ruta absoluta correcta usando el ID del plugin
-local _, dirname = util.splitFilePathName(debug.getinfo(1, "S").source:sub(2))
-dirname = dirname:match("(.+)/[^/]+$") or dirname
-local plugin_path = DataStorage:getDataDir() .. "/plugins/" .. dirname
+-- Función simple para determinar la ruta del plugin
+local function getPluginDir()
+    local path = debug.getinfo(1, "S").source:sub(2)  -- Quita el @ inicial
+    return path:match("(.+)/[^/]+$")
+end
 
--- Registrar la ruta para depuración
-logger.info("Ruta absoluta del plugin:", plugin_path)
+local plugin_dir = getPluginDir()
+logger.info("Ruta del plugin:", plugin_dir)
 
--- Precargar los módulos core con rutas absolutas
-package.loaded["core.ui"] = dofile(plugin_path .. "/core/ui.lua")
-package.loaded["core.auth"] = dofile(plugin_path .. "/core/auth.lua") 
-package.loaded["core.api"] = dofile(plugin_path .. "/core/api.lua")
-package.loaded["core.collections"] = dofile(plugin_path .. "/core/collections.lua")
-package.loaded["core.content"] = dofile(plugin_path .. "/core/content.lua")
-package.loaded["core.search"] = dofile(plugin_path .. "/core/search.lua")
-package.loaded["core.debug"] = dofile(plugin_path .. "/core/debug.lua")
-package.loaded["util"] = dofile(plugin_path .. "/util.lua")  -- Aquí sobreescribes el módulo util con tu versión
+-- Precargar los módulos (ahora en la raíz)
+package.loaded["ui"] = dofile(plugin_dir .. "/ui.lua")
+package.loaded["auth"] = dofile(plugin_dir .. "/auth.lua") 
+package.loaded["api"] = dofile(plugin_dir .. "/api.lua")
+package.loaded["collections"] = dofile(plugin_dir .. "/collections.lua")
+package.loaded["content"] = dofile(plugin_dir .. "/content.lua")
+package.loaded["search"] = dofile(plugin_dir .. "/search.lua")
+package.loaded["util"] = dofile(plugin_dir .. "/util.lua")
 
 -- Cargar init.lua y crear instancia
-local Gota = dofile(plugin_path .. "/init.lua")
+local Gota = dofile(plugin_dir .. "/init.lua")
 return Gota:new{}
