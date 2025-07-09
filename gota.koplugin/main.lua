@@ -66,9 +66,8 @@ local function parseSettings(content)
         return {}
     end
     
-    -- Método 1: Intentar como función que retorna tabla
-    local wrapped_content = "return " .. content
-    local chunk, err = loadstring(wrapped_content)
+    -- Método 1: Intentar evaluar directamente (como función que retorna tabla)
+    local chunk, err = loadstring(content)
     if chunk then
         local ok, result = pcall(chunk)
         if ok and type(result) == "table" then
@@ -76,7 +75,17 @@ local function parseSettings(content)
         end
     end
     
-    -- Método 2: Intentar evaluar directamente
+    -- Método 2: Intentar envolver en return si no funciona
+    local wrapped_content = "return " .. content
+    chunk, err = loadstring(wrapped_content)
+    if chunk then
+        local ok, result = pcall(chunk)
+        if ok and type(result) == "table" then
+            return result
+        end
+    end
+    
+    -- Método 3: Intentar evaluar en un ambiente separado
     local env = {}
     chunk, err = loadstring(content)
     if chunk then
@@ -133,13 +142,16 @@ function Gota:loadSettings()
             logger.dbg("Gota: Contenido leído del archivo:", content and #content or "nil")
             
             if content and content ~= "" then
-                -- CORRECCIÓN: usar función de parsing robusta
+                -- Usar función de parsing robusta
                 settings = parseSettings(content)
                 if next(settings) then
                     logger.dbg("Gota: Configuración cargada exitosamente")
+                    logger.dbg("Gota: Token cargado con longitud:", settings.token and #settings.token or "nil")
                 else
                     logger.warn("Gota: No se pudo parsear configuración, usando defaults")
                 end
+            else
+                logger.dbg("Gota: Archivo vacío o no legible")
             end
         else
             logger.dbg("Gota: Archivo de configuración no existe, usando defaults")
@@ -149,7 +161,7 @@ function Gota:loadSettings()
     self.token = settings.token or ""
     self.server_url = "https://api.raindrop.io/rest/v1"
     
-    logger.dbg("Gota: Token cargado, longitud:", #self.token)
+    logger.dbg("Gota: Token final cargado, longitud:", #self.token)
 end
 
 function Gota:saveSettings()
@@ -159,16 +171,32 @@ function Gota:saveSettings()
     
     logger.dbg("Gota: Intentando guardar token, longitud:", #self.token)
     
+    -- Crear directorio si no existe
+    local settings_dir = DataStorage:getSettingsDir()
+    local lfs = require("libs/libkoreader-lfs")
+    if not lfs.attributes(settings_dir, "mode") then
+        lfs.mkdir(settings_dir)
+    end
+    
     local file, err = io.open(self.settings_file, "w")
     if file then
-        -- CORRECCIÓN: serialización más robusta con escape completo
+        -- Serialización más robusta con escape completo
         local serialized = string.format("return {\n  token = %q,\n}\n", settings.token)
         file:write(serialized)
         file:close()
+        file:flush() -- Forzar escritura al disco
         logger.dbg("Gota: Configuración guardada exitosamente")
+        
+        -- Verificar que se guardó correctamente
+        local verify_file = io.open(self.settings_file, "r")
+        if verify_file then
+            local saved_content = verify_file:read("*all")
+            verify_file:close()
+            logger.dbg("Gota: Contenido verificado guardado:", saved_content and #saved_content or "nil")
+        end
     else
         logger.err("Gota: No se pudo abrir archivo para escritura:", err)
-        self:notify("Error: No se pudo guardar la configuración")
+        self:notify("Error: No se pudo guardar la configuración - " .. (err or "desconocido"))
     end
 end
 
@@ -192,7 +220,8 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Ver colecciones"),
                 enabled_func = function()
-                    return self.token ~= ""
+                    -- Validación más flexible - solo verificar que no esté vacío
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
@@ -203,7 +232,7 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Buscar artículos"),
                 enabled_func = function()
-                    return self.token ~= ""
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     self:showSearchDialog()
@@ -212,7 +241,7 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Todos los artículos"),
                 enabled_func = function()
-                    return self.token ~= ""
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
@@ -244,9 +273,13 @@ function Gota:showTokenDialog()
                         local test_token = self.token_dialog:getInputText()
                         if test_token and test_token ~= "" then
                             test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
-                            NetworkMgr:runWhenOnline(function()
-                                self:testToken(test_token)
-                            end)
+                            if test_token ~= "" then
+                                NetworkMgr:runWhenOnline(function()
+                                    self:testToken(test_token)
+                                end)
+                            else
+                                self:notify(_("Por favor ingresa un token para probar"))
+                            end
                         else
                             self:notify(_("Por favor ingresa un token para probar"))
                         end
@@ -262,9 +295,15 @@ function Gota:showTokenDialog()
                             
                             logger.dbg("Gota: Token recibido, longitud:", #new_token)
                             
-                            if #new_token < 20 then
-                                self:notify(_("⚠️ Token muy corto, verifica que sea correcto"))
+                            -- Validación más flexible - solo verificar que no esté vacío
+                            if new_token == "" then
+                                self:notify(_("Por favor ingresa un token válido"), 2)
                                 return
+                            end
+                            
+                            -- Opcional: mostrar advertencia para tokens muy cortos, pero no bloquear
+                            if #new_token < 10 then
+                                self:notify(_("⚠️ Token parece muy corto, pero se guardará de todos modos"), 3)
                             end
                             
                             self.token = new_token
@@ -307,7 +346,7 @@ function Gota:makeRequest(endpoint, method, body)
         protocol = "any",
         options = "all",
         timeout = 30,
-    }
+    end
 
     if (method == "POST" or method == "PUT") and body then
         local payload = JSON.encode(body)
@@ -1105,9 +1144,15 @@ end
 function Gota:testToken(test_token)
     logger.dbg("Gota: Iniciando test de token, longitud:", #test_token)
     
-    if #test_token < 20 then
-        self:notify(_("⚠️ Token muy corto, verifica que sea correcto"), 3)
+    -- Validación más flexible - solo verificar que no esté vacío
+    if not test_token or test_token == "" then
+        self:notify(_("⚠️ Token vacío, no se puede probar"), 3)
         return
+    end
+    
+    -- Opcional: mostrar advertencia para tokens muy cortos, pero continuar con la prueba
+    if #test_token < 10 then
+        self:notify(_("⚠️ Token parece muy corto, pero se probará de todos modos"), 2)
     end
     
     local old_token = self.token
