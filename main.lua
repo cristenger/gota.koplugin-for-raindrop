@@ -2,7 +2,7 @@
     Raindrop.io plugin para KOReader - Versión Optimizada
     Permite leer artículos guardados en Raindrop.io directamente en tu Kindle
     
-    Versión: 1.5 (Corregida con soporte Gzip mejorado)
+    Versión: 1.6 (Sin compresión gzip para mejor compatibilidad)
     
     IMPORTANTE: SSL está desactivado para evitar problemas de certificados
     en dispositivos Kindle. Esto es necesario para que funcione correctamente.
@@ -28,47 +28,9 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 local ffi = require("ffi")
 
--- Importar módulo zlib para descompresión
+-- El plugin no necesita zlib ya que pedimos respuestas sin comprimir
 local zlib = nil
 local zlib_loaded = false
-pcall(function() 
-    -- Intentar cargar zlib de diferentes maneras
-    local ok, z = pcall(require, "ffi/zlib")
-    if ok then
-        zlib = z
-        zlib_loaded = true
-    else
-        -- Intentar cargar directamente con ffi
-        ok = pcall(function()
-            ffi.cdef[[
-                unsigned long compressBound(unsigned long sourceLen);
-                int compress2(uint8_t *dest, unsigned long *destLen, const uint8_t *source, unsigned long sourceLen, int level);
-                int uncompress(uint8_t *dest, unsigned long *destLen, const uint8_t *source, unsigned long sourceLen);
-            ]]
-            local libz = ffi.load("z")
-            zlib = {
-                compress = function(data)
-                    local n = libz.compressBound(#data)
-                    local buf = ffi.new("uint8_t[?]", n)
-                    local buflen = ffi.new("unsigned long[1]", n)
-                    local res = libz.compress2(buf, buflen, data, #data, -1)
-                    if res == 0 then
-                        return ffi.string(buf, buflen[0])
-                    end
-                end,
-                uncompress = function(data, size)
-                    local buf = ffi.new("uint8_t[?]", size)
-                    local buflen = ffi.new("unsigned long[1]", size)
-                    local res = libz.uncompress(buf, buflen, data, #data)
-                    if res == 0 then
-                        return ffi.string(buf, buflen[0])
-                    end
-                end
-            }
-            zlib_loaded = true
-        end)
-    end
-end)
 
 local Raindrop = WidgetContainer:extend{
     name = "raindrop",
@@ -140,122 +102,8 @@ end
 
 -- Función mejorada para descomprimir contenido Gzip
 function Raindrop:decompressGzip(compressed_data)
-    if not compressed_data or #compressed_data == 0 then
-        logger.warn("Raindrop: No hay datos para descomprimir")
-        return nil
-    end
-    
-    -- Verificar que los datos parecen ser gzip (magic number)
-    local byte1 = compressed_data:byte(1)
-    local byte2 = compressed_data:byte(2)
-    if byte1 ~= 31 or byte2 ~= 139 then
-        logger.warn("Raindrop: Los datos no parecen estar en formato gzip")
-        return compressed_data -- Devolver datos sin modificar
-    end
-    
-    -- Si no tenemos zlib, intentar método alternativo
-    if not zlib_loaded then
-        logger.warn("Raindrop: Módulo zlib no disponible, intentando método alternativo")
-        
-        -- Método alternativo: usar comando del sistema si está disponible
-        local temp_in = "/tmp/raindrop_gzip_in.gz"
-        local temp_out = "/tmp/raindrop_gzip_out.txt"
-        
-        local file = io.open(temp_in, "wb")
-        if file then
-            file:write(compressed_data)
-            file:close()
-            
-            -- Intentar descomprimir con gunzip del sistema
-            local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
-            
-            if ok == 0 then
-                file = io.open(temp_out, "rb")
-                if file then
-                    local decompressed = file:read("*all")
-                    file:close()
-                    os.remove(temp_in)
-                    os.remove(temp_out)
-                    return decompressed
-                end
-            end
-            
-            os.remove(temp_in)
-            os.remove(temp_out)
-        end
-        
-        logger.err("Raindrop: No se pudo descomprimir usando método alternativo")
-        return nil
-    end
-    
-    -- Intentar descompresión con zlib cargado
-    -- El formato gzip incluye headers y trailers que deben ser manejados
-    -- Saltamos el header gzip (10 bytes mínimo) y el trailer (8 bytes)
-    if #compressed_data < 18 then
-        logger.err("Raindrop: Datos gzip demasiado cortos")
-        return nil
-    end
-    
-    -- Encontrar el final del header gzip
-    local header_end = 10
-    local flags = compressed_data:byte(4)
-    
-    -- Si hay campos extra, saltarlos
-    if bit and bit.band(flags, 4) ~= 0 then -- FEXTRA
-        if #compressed_data > header_end + 2 then
-            local xlen = compressed_data:byte(header_end + 1) + compressed_data:byte(header_end + 2) * 256
-            header_end = header_end + 2 + xlen
-        end
-    end
-    
-    -- Si hay nombre de archivo, saltarlo
-    if bit and bit.band(flags, 8) ~= 0 then -- FNAME
-        while header_end <= #compressed_data and compressed_data:byte(header_end) ~= 0 do
-            header_end = header_end + 1
-        end
-        header_end = header_end + 1
-    end
-    
-    -- Si hay comentario, saltarlo
-    if bit and bit.band(flags, 16) ~= 0 then -- FCOMMENT
-        while header_end <= #compressed_data and compressed_data:byte(header_end) ~= 0 do
-            header_end = header_end + 1
-        end
-        header_end = header_end + 1
-    end
-    
-    -- Si hay CRC16, saltarlo
-    if bit and bit.band(flags, 2) ~= 0 then -- FHCRC
-        header_end = header_end + 2
-    end
-    
-    -- Extraer los datos comprimidos (sin header ni trailer)
-    local compressed_body = compressed_data:sub(header_end, -9)
-    
-    -- Extraer el tamaño descomprimido del trailer
-    local size_bytes = compressed_data:sub(-4)
-    local uncompressed_size = 0
-    for i = 4, 1, -1 do
-        uncompressed_size = uncompressed_size * 256 + size_bytes:byte(i)
-    end
-    
-    -- Si el tamaño es muy grande o cero, usar un tamaño estimado
-    if uncompressed_size <= 0 or uncompressed_size > 50 * 1024 * 1024 then
-        uncompressed_size = #compressed_body * 10 -- Estimación
-    end
-    
-    -- Intentar descomprimir
-    if zlib.uncompress then
-        local ok, decompressed = pcall(zlib.uncompress, compressed_body, uncompressed_size)
-        if ok and decompressed then
-            return decompressed
-        else
-            logger.err("Raindrop: Error al descomprimir con zlib:", decompressed or "unknown error")
-        end
-    end
-    
-    -- Si llegamos aquí, no pudimos descomprimir
-    logger.err("Raindrop: No se pudo descomprimir los datos gzip")
+    -- Esta función ya no se usa, pero la mantenemos por compatibilidad
+    logger.warn("Raindrop: decompressGzip llamada pero no debería usarse")
     return nil
 end
 
@@ -447,6 +295,7 @@ end
 function Raindrop:makeRequest(endpoint, method, body)
     local url = self.server_url .. endpoint
     logger.dbg("Raindrop: Iniciando solicitud a", url)
+    logger.dbg("Raindrop: Solicitando respuesta sin comprimir (Accept-Encoding: identity)")
 
     -- mostrar "Conectando…" mientras dura la petición
     local loading_msg = InfoMessage:new{ text = _("Conectando…"), timeout = 0 }
@@ -460,9 +309,11 @@ function Raindrop:makeRequest(endpoint, method, body)
         headers = {
             ["Authorization"] = "Bearer " .. self.token,
             ["Content-Type"]  = "application/json",
-            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.5",
-            -- Añadir cabecera para indicar que aceptamos gzip
-            ["Accept-Encoding"] = "gzip",
+            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.6",
+            -- IMPORTANTE: Pedimos respuestas sin comprimir para evitar problemas
+            -- La API de Raindrop envía gzip por defecto, pero KOReader tiene problemas
+            -- para descomprimirlo correctamente. "identity" = sin compresión
+            ["Accept-Encoding"] = "identity",
         },
         sink    = ltn12.sink.table(sink),
         -- Opciones para mejorar compatibilidad
@@ -517,10 +368,14 @@ function Raindrop:makeRequest(endpoint, method, body)
         local resp = table.concat(sink)
         
         if #resp > 0 then
-            -- NUEVO: Verificar si la respuesta está comprimida con Gzip
+            -- Verificar si la respuesta está comprimida con Gzip
             local is_gzipped = false
             if response_headers and response_headers["content-encoding"] then
-                is_gzipped = response_headers["content-encoding"]:find("gzip") ~= nil
+                local encoding = response_headers["content-encoding"]:lower()
+                is_gzipped = encoding:find("gzip") ~= nil
+                if is_gzipped then
+                    logger.warn("Raindrop: Servidor envió gzip a pesar de Accept-Encoding: identity")
+                end
             end
             
             -- Características de datos comprimidos (útil para detectar gzip aunque no lo indique)
@@ -529,14 +384,42 @@ function Raindrop:makeRequest(endpoint, method, body)
             -- Descomprimir si es necesario
             if is_gzipped or might_be_gzipped then
                 logger.dbg("Raindrop: Detectada respuesta comprimida con Gzip")
-                local decompressed = self:decompressGzip(resp)
-                if decompressed then
-                    logger.dbg("Raindrop: Descompresión exitosa, longitud:", #decompressed)
-                    resp = decompressed
+                -- Si recibimos gzip a pesar de pedir identity, es un problema
+                logger.err("Raindrop: El servidor envió gzip cuando pedimos sin comprimir")
+                -- Intentar usar comando del sistema como fallback
+                local temp_in = "/tmp/raindrop_gzip_" .. os.time() .. ".gz"
+                local temp_out = "/tmp/raindrop_out_" .. os.time() .. ".txt"
+                
+                local file = io.open(temp_in, "wb")
+                if file then
+                    file:write(resp)
+                    file:close()
+                    
+                    -- Intentar con gunzip o gzip -d
+                    local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                    if ok ~= 0 then
+                        ok = os.execute("gzip -dc " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                    end
+                    
+                    if ok == 0 then
+                        file = io.open(temp_out, "rb")
+                        if file then
+                            resp = file:read("*all")
+                            file:close()
+                            logger.dbg("Raindrop: Descompresión exitosa con comando del sistema")
+                        end
+                    end
+                    
+                    -- Limpiar archivos temporales
+                    os.remove(temp_in)
+                    os.remove(temp_out)
                 else
-                    logger.err("Raindrop: No se pudo descomprimir la respuesta")
-                    -- Si no podemos descomprimir, intentar procesar como está
-                    -- Puede que el servidor envió la respuesta sin comprimir a pesar del header
+                    logger.err("Raindrop: No se pudo crear archivo temporal para descompresión")
+                end
+                
+                -- Si aún tenemos datos comprimidos, no podemos continuar
+                if resp:byte(1) == 31 and resp:byte(2) == 139 then
+                    return nil, _("Error: No se pudo descomprimir la respuesta del servidor")
                 end
             end
             
@@ -553,8 +436,13 @@ function Raindrop:makeRequest(endpoint, method, body)
             else
                 -- Añadir más información de diagnóstico
                 logger.err("Raindrop: JSON.decode error:", data)
-                logger.err("Raindrop: JSON contenido:", resp:sub(1,200))
-                return nil, _("Error decodificando JSON: ") .. tostring(data)
+                logger.err("Raindrop: JSON contenido (primeros 200 chars):", resp:sub(1,200))
+                -- Verificar si los datos siguen comprimidos
+                if resp:byte(1) == 31 and resp:byte(2) == 139 then
+                    return nil, _("Error: La respuesta sigue comprimida, no se pudo procesar")
+                else
+                    return nil, _("Error decodificando JSON: ") .. tostring(data)
+                end
             end
         end
         return {}
@@ -1013,7 +901,7 @@ function Raindrop:showDebugInfo()
     debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
     debug_info = debug_info .. "\nTamaño de caché: " .. (table_keys(self.response_cache) and #table_keys(self.response_cache) or 0) .. " entradas"
     debug_info = debug_info .. "\nTTL de caché: " .. self.cache_ttl .. " segundos"
-    debug_info = debug_info .. "\nSoporte para Gzip: " .. (zlib_loaded and "SÍ" or "NO (usando método alternativo)")
+    debug_info = debug_info .. "\nSoporte para Gzip: Usando descompresión del sistema"
     
     local text_viewer = TextViewer:new{
         title = "Debug Info - Raindrop Plugin",
@@ -1176,7 +1064,8 @@ function Raindrop:downloadRaindropHTML(raindrop)
         method = "GET",
         headers = {
             ["Authorization"] = "Bearer " .. self.token,
-            ["Accept-Encoding"] = "gzip", -- Aceptar gzip también para descargas
+            ["Accept-Encoding"] = "identity", -- No aceptar gzip
+            ["User-Agent"] = "KOReader-Raindrop-Plugin/1.6",
         },
         sink = ltn12.sink.table(sink),
         protocol = "any",
@@ -1216,13 +1105,31 @@ function Raindrop:downloadRaindropHTML(raindrop)
         -- Descomprimir si es necesario
         if is_gzipped or might_be_gzipped then
             logger.dbg("Raindrop: Detectada respuesta comprimida con Gzip al descargar")
-            local decompressed = self:decompressGzip(html_content)
-            if decompressed then
-                logger.dbg("Raindrop: Descompresión exitosa, longitud:", #decompressed)
-                html_content = decompressed
-            else
-                logger.err("Raindrop: No se pudo descomprimir la respuesta al descargar")
-                -- Continuamos con la respuesta original por si acaso
+            -- Usar el mismo método que en makeRequest
+            local temp_in = "/tmp/raindrop_download_" .. os.time() .. ".gz"
+            local temp_out = "/tmp/raindrop_download_out_" .. os.time() .. ".html"
+            
+            local temp_file = io.open(temp_in, "wb")
+            if temp_file then
+                temp_file:write(html_content)
+                temp_file:close()
+                
+                local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                if ok ~= 0 then
+                    ok = os.execute("gzip -dc " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                end
+                
+                if ok == 0 then
+                    temp_file = io.open(temp_out, "rb")
+                    if temp_file then
+                        html_content = temp_file:read("*all")
+                        temp_file:close()
+                        logger.dbg("Raindrop: Descompresión exitosa al descargar")
+                    end
+                end
+                
+                os.remove(temp_in)
+                os.remove(temp_out)
             end
         end
         
