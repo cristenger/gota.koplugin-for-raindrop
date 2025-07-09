@@ -1,0 +1,68 @@
+-- VERSIÓN ULTRA-SIMPLE PARA TESTING
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local logger = require("logger")
+local InfoMessage = require("ui/widget/infomessage")
+local UIManager = require("ui/uimanager")
+local _ = require("gettext")
+
+local Gota = WidgetContainer:extend{
+    name = "gota",
+    is_doc_only = false,
+}
+
+function Gota:notify(text, timeout)
+    timeout = timeout or 3
+    UIManager:show(InfoMessage:new{
+        text = text,
+        timeout = timeout,
+    })
+end
+
+function Gota:new(o)
+    logger.info("Gota: new() called")
+    o = o or {}
+    o = WidgetContainer.new(self, o)
+    return o
+end
+
+function Gota:init()
+    logger.info("Gota: init() called - SIMPLE VERSION")
+    self.token = ""
+end
+
+-- VERSIÓN ULTRA-SIMPLE PARA TESTING
+function Gota:addToMainMenu(menu_items)
+    logger.info("Gota: ========== SIMPLE addToMainMenu() CALLED! ==========")
+    logger.info("Gota: menu_items type:", type(menu_items))
+    
+    if not menu_items then
+        logger.err("Gota: menu_items is nil!")
+        return
+    end
+    
+    -- VERSIÓN MÁS SIMPLE POSIBLE - SIN SUB_ITEM_TABLE
+    menu_items.gota = {
+        text = _("Gota (Simple Test)"),
+        sorting_hint = "search",
+        callback = function()
+            logger.info("Gota: Simple callback executed!")
+            UIManager:show(InfoMessage:new{
+                text = "¡Gota funciona! El menú aparece correctamente.",
+                timeout = 3,
+            })
+        end
+    }
+    
+    logger.info("Gota: Simple menu added successfully")
+    logger.info("Gota: menu_items.gota exists:", menu_items.gota and "YES" or "NO")
+    
+    if menu_items.gota then
+        logger.info("Gota: Final verification - text:", menu_items.gota.text)
+        logger.info("Gota: Final verification - sorting_hint:", menu_items.gota.sorting_hint)
+        logger.info("Gota: Final verification - callback:", menu_items.gota.callback and "EXISTS" or "MISSING")
+    end
+    
+    logger.info("Gota: ========== SIMPLE addToMainMenu() COMPLETED ==========")
+end
+
+return Gota
