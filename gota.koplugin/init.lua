@@ -55,18 +55,17 @@ function Gota:init()
     self.collections:init(self, self.api, self.ui)
     self.search:init(self, self.api, self.ui)
     
-    -- Usar el método de UI para registrar en el menú principal
-    self.ui:addToMainMenu(self)
-    
     -- Cargar token si existe
     self.token = self.token or ""
     logger.info("Gota: Inicializado correctamente")
 end
 
+-- ✅ ESTE ES EL MÉTODO CORRECTO QUE KOREADER LLAMA AUTOMÁTICAMENTE
 function Gota:addToMainMenu(menu_items)
     logger.info("Gota: addToMainMenu called")
     menu_items.gota = {
         text = _("Gota (Raindrop.io)"),
+         sorting_hint = "search",
         sub_item_table = {
             {
                 text = _("Configurar token"),
@@ -78,9 +77,35 @@ function Gota:addToMainMenu(menu_items)
                     end
                 end,
             },
+            {
+                text = _("Ver colecciones"),
+                enabled_func = function()
+                    return self.token and self.token ~= ""
+                end,
+                callback = function()
+                    if self.collections then
+                        self.collections:show()
+                    else
+                        self:notify(_("Error: módulo de colecciones no disponible"))
+                    end
+                end,
+            },
+            {
+                text = _("Buscar artículos"),
+                enabled_func = function()
+                    return self.token and self.token ~= ""
+                end,
+                callback = function()
+                    if self.search then
+                        self.search:showDialog()
+                    else
+                        self:notify(_("Error: módulo de búsqueda no disponible"))
+                    end
+                end,
+            },
         }
     }
-    logger.info("Gota: Menu items added: " .. tostring(menu_items.gota ~= nil))
+    logger.info("Gota: Menu items added successfully")
 end
 
 return Gota
