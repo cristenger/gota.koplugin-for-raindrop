@@ -28,9 +28,6 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 local ffi = require("ffi")
 
--- NUEVO: Importar el módulo de settings
-local Settings = require("settings")
-
 -- El plugin no necesita zlib ya que pedimos respuestas sin comprimir
 local zlib = nil
 local zlib_loaded = false
@@ -62,6 +59,47 @@ local function table_keys(t)
     return keys
 end
 
+-- Función auxiliar para parsear contenido de configuración
+local function parseSettings(content)
+    -- Método más robusto para parsear configuración Lua
+    if not content or content == "" then
+        return {}
+    end
+    
+    -- Método 1: Intentar evaluar directamente (como función que retorna tabla)
+    local chunk, err = loadstring(content)
+    if chunk then
+        local ok, result = pcall(chunk)
+        if ok and type(result) == "table" then
+            return result
+        end
+    end
+    
+    -- Método 2: Intentar envolver en return si no funciona
+    local wrapped_content = "return " .. content
+    chunk, err = loadstring(wrapped_content)
+    if chunk then
+        local ok, result = pcall(chunk)
+        if ok and type(result) == "table" then
+            return result
+        end
+    end
+    
+    -- Método 3: Intentar evaluar en un ambiente separado
+    local env = {}
+    chunk, err = loadstring(content)
+    if chunk then
+        setfenv(chunk, env)
+        local ok = pcall(chunk)
+        if ok and next(env) then
+            return env
+        end
+    end
+    
+    logger.warn("Gota: No se pudo parsear configuración:", err)
+    return {}
+end
+
 -- Función mejorada para descomprimir contenido Gzip
 function Gota:decompressGzip(compressed_data)
     -- Esta función ya no se usa, pero la mantenemos por compatibilidad
@@ -78,11 +116,8 @@ function Gota:notify(text, timeout)
 end
 
 function Gota:init()
-    -- CAMBIO: Inicializar el módulo de settings
-    self.settings = Settings:new()
-    self.settings:load()
-    
-    self.server_url = "https://api.raindrop.io/rest/v1"
+    self.settings_file = DataStorage:getSettingsDir() .. "/gota.lua"
+    self:loadSettings()
     
     -- CORRECCIÓN: configurar SSL una sola vez al inicio
     https.cert_verify = false
@@ -95,7 +130,74 @@ function Gota:init()
     self.ui.menu:registerToMainMenu(self)
 end
 
--- ELIMINADAS: parseSettings, loadSettings, saveSettings (ahora están en settings.lua)
+function Gota:loadSettings()
+    local settings = {}
+    
+    if self.settings_file then
+        local file = io.open(self.settings_file, "r")
+        if file then
+            local content = file:read("*all")
+            file:close()
+            
+            logger.dbg("Gota: Contenido leído del archivo:", content and #content or "nil")
+            
+            if content and content ~= "" then
+                -- Usar función de parsing robusta
+                settings = parseSettings(content)
+                if next(settings) then
+                    logger.dbg("Gota: Configuración cargada exitosamente")
+                    logger.dbg("Gota: Token cargado con longitud:", settings.token and #settings.token or "nil")
+                else
+                    logger.warn("Gota: No se pudo parsear configuración, usando defaults")
+                end
+            else
+                logger.dbg("Gota: Archivo vacío o no legible")
+            end
+        else
+            logger.dbg("Gota: Archivo de configuración no existe, usando defaults")
+        end
+    end
+    
+    self.token = settings.token or ""
+    self.server_url = "https://api.raindrop.io/rest/v1"
+    
+    logger.dbg("Gota: Token final cargado, longitud:", #self.token)
+end
+
+function Gota:saveSettings()
+    local settings = {
+        token = self.token,
+    }
+    
+    logger.dbg("Gota: Intentando guardar token, longitud:", #self.token)
+    
+    -- Crear directorio si no existe
+    local settings_dir = DataStorage:getSettingsDir()
+    local lfs = require("libs/libkoreader-lfs")
+    if not lfs.attributes(settings_dir, "mode") then
+        lfs.mkdir(settings_dir)
+    end
+    
+    local file, err = io.open(self.settings_file, "w")
+    if file then
+        -- Serialización más robusta con escape completo
+        local serialized = string.format("return {\n  token = %q,\n}\n", settings.token)
+        file:write(serialized)
+        file:close()
+        logger.dbg("Gota: Configuración guardada exitosamente")
+        
+        -- Verificar que se guardó correctamente
+        local verify_file = io.open(self.settings_file, "r")
+        if verify_file then
+            local saved_content = verify_file:read("*all")
+            verify_file:close()
+            logger.dbg("Gota: Contenido verificado guardado:", saved_content and #saved_content or "nil")
+        end
+    else
+        logger.err("Gota: No se pudo abrir archivo para escritura:", err)
+        self:notify("Error: No se pudo guardar la configuración - " .. (err or "desconocido"))
+    end
+end
 
 function Gota:addToMainMenu(menu_items)
     menu_items.gota = {
@@ -117,8 +219,8 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Ver colecciones"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
-                    return self.settings:isTokenValid()
+                    -- Validación más flexible - solo verificar que no esté vacío
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
@@ -129,8 +231,7 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Buscar artículos"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
-                    return self.settings:isTokenValid()
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     self:showSearchDialog()
@@ -139,8 +240,7 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Todos los artículos"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
-                    return self.settings:isTokenValid()
+                    return self.token and self.token ~= ""
                 end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
@@ -156,7 +256,7 @@ function Gota:showTokenDialog()
     self.token_dialog = InputDialog:new{
         title = _("Token de acceso de Raindrop.io"),
         description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
-        input = self.settings:getToken(), -- CAMBIO: Usar el módulo de settings
+        input = self.token,
         input_type = "text",
         buttons = {
             {
@@ -205,16 +305,10 @@ function Gota:showTokenDialog()
                                 self:notify(_("⚠️ Token parece muy corto, pero se guardará de todos modos"), 3)
                             end
                             
-                            -- CAMBIO: Usar el módulo de settings
-                            self.settings:setToken(new_token)
-                            local success, err = self.settings:save()
+                            self.token = new_token
+                            self:saveSettings()
                             UIManager:close(self.token_dialog)
-                            
-                            if success then
-                                self:notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
-                            else
-                                self:notify("Error: No se pudo guardar la configuración - " .. (err or "desconocido"))
-                            end
+                            self:notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
                         else
                             self:notify(_("Por favor ingresa un token válido"), 2)
                         end
@@ -227,6 +321,7 @@ function Gota:showTokenDialog()
     self.token_dialog:onShowKeyboard()
 end
 
+-- Después de la función showTokenDialog, debe continuar con makeRequest
 function Gota:makeRequest(endpoint, method, body)
     local url = self.server_url .. endpoint
     logger.dbg("Gota: Iniciando solicitud a", url)
@@ -242,50 +337,130 @@ function Gota:makeRequest(endpoint, method, body)
         url     = url,
         method  = method or "GET",
         headers = {
-            ["Authorization"] = "Bearer " .. self.settings:getToken(), -- CAMBIO: Usar el módulo de settings
+            ["Authorization"] = "Bearer " .. self.token,
             ["Content-Type"]  = "application/json",
             ["User-Agent"]    = "KOReader-Gota-Plugin/1.6",
             ["Accept-Encoding"] = "identity",
         },
         sink    = ltn12.sink.table(sink),
         protocol = "any",
+        options = "all",
         timeout = 30,
     }
 
-    if body then
-        request.headers["Content-Length"] = tostring(#body)
-        request.source = ltn12.source.string(body)
+    if (method == "POST" or method == "PUT") and body then
+        local payload = JSON.encode(body)
+        request.source = ltn12.source.string(payload)
+        request.headers["Content-Length"] = #payload
     end
 
-    local protocol = url:match("^https://") and https or http
-    local ok, actual_status, headers = protocol.request(request)
-
+    local socketutil = require("socketutil")
+    socketutil:set_timeout(10, 30)
+    
+    local ok, r1, r2, r3 = pcall(https.request, request)
+    
+    -- Si falla HTTPS, intentar con HTTP como fallback
+    if not ok and r1:match("unreachable") then
+        logger.warn("Gota: HTTPS falló, intentando con HTTP como fallback")
+        request.url = request.url:gsub("^https:", "http:")
+        ok, r1, r2, r3 = pcall(http.request, request)
+    end
+    
+    socketutil:reset_timeout()
     UIManager:close(loading_msg)
 
-    if ok and actual_status == 200 then
-        local resp = table.concat(sink)
-        logger.dbg("Gota: Respuesta exitosa, tamaño:", #resp)
-        
-        if #resp == 0 then
-            logger.warn("Gota: Respuesta vacía del servidor")
-            return nil, _("Respuesta vacía del servidor")
-        end
+    if not ok then
+        logger.err("Gota: request falló:", r1)
+        return nil, _("Error de conexión: ") .. tostring(r1)
+    end
 
-        local data, parse_err = JSON.decode(resp)
-        if data then
-            logger.dbg("Gota: JSON parseado exitosamente")
-            return data, nil
-        else
-            logger.err("Gota: Error al parsear JSON:", parse_err)
-            logger.dbg("Gota: Respuesta raw:", resp:sub(1, 200))
-            return nil, _("Error al procesar respuesta del servidor")
+    local result, status_code, response_headers = r1, r2, r3
+    local actual_status = (result ~= 1 and type(result)=="number") and result or status_code
+
+    logger.dbg("Gota: Status determinado:", actual_status)
+
+    if actual_status == 200 then
+        local resp = table.concat(sink)
+        if #resp > 0 then
+            -- Verificar si la respuesta está comprimida con Gzip
+            local is_gzipped = false
+            if response_headers and response_headers["content-encoding"] then
+                local encoding = response_headers["content-encoding"]:lower()
+                is_gzipped = encoding:find("gzip") ~= nil
+                if is_gzipped then
+                    logger.warn("Gota: Servidor envió gzip a pesar de Accept-Encoding: identity")
+                end
+            end
+            
+            local might_be_gzipped = resp:byte(1) == 31 and resp:byte(2) == 139
+            
+            if is_gzipped or might_be_gzipped then
+                logger.dbg("Gota: Detectada respuesta comprimida con Gzip")
+                local temp_in = "/tmp/gota_gzip_" .. os.time() .. ".gz"
+                local temp_out = "/tmp/gota_out_" .. os.time() .. ".txt"
+                
+                local file = io.open(temp_in, "wb")
+                if file then
+                    file:write(resp)
+                    file:close()
+                    
+                    local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                    if ok ~= 0 then
+                        ok = os.execute("gzip -dc " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                    end
+                    
+                    if ok == 0 then
+                        file = io.open(temp_out, "rb")
+                        if file then
+                            resp = file:read("*all")
+                            file:close()
+                            logger.dbg("Gota: Descompresión exitosa con comando del sistema")
+                        end
+                    end
+                    
+                    os.remove(temp_in)
+                    os.remove(temp_out)
+                else
+                    logger.err("Gota: No se pudo crear archivo temporal para descompresión")
+                end
+                
+                if resp:byte(1) == 31 and resp:byte(2) == 139 then
+                    return nil, _("Error: No se pudo descomprimir la respuesta del servidor")
+                end
+            end
+            
+            -- Verificar si es HTML directo (endpoint /cache)
+            if endpoint:match("/cache$") then
+                logger.dbg("Gota: Respuesta de caché detectada como HTML directo")
+                return resp  -- Devolver HTML sin procesar como JSON
+            end
+            
+            local dec_ok, data = pcall(function() return JSON.decode(resp) end)
+            if dec_ok then
+                return data
+            else
+                logger.err("Gota: JSON.decode error:", data, resp:sub(1,200))
+                if resp:byte(1) == 31 and resp:byte(2) == 139 then
+                    return nil, _("Error: La respuesta sigue comprimida, no se pudo procesar")
+                else
+                    return nil, _("Error decodificando JSON: ") .. tostring(data)
+                end
+            end
         end
-    elseif ok and actual_status ~= 200 then
-        local msg = _("Error del servidor: ") .. tostring(actual_status)
-        if headers then
-            local R = headers["x-ratelimit-remaining"]
-            if R and tonumber(R) and tonumber(R) < 5 then
-                msg = msg .. " Restantes:" .. (R or "?")
+        return {}
+    elseif actual_status == 204 then
+        return {}
+    elseif actual_status == 401 then
+        return nil, _("Token inválido o expirado (401)")
+    elseif actual_status == 403 then
+        return nil, _("Acceso denegado (403)")
+    elseif actual_status == 429 then
+        local msg = _("Rate limit excedido (429)")
+        if response_headers then
+            local L = response_headers["X-RateLimit-Limit"]
+            local R = response_headers["X-RateLimit-Remaining"]
+            if L or R then
+                msg = msg .. " Límite:" .. (L or "?") .. " Restantes:" .. (R or "?")
             end
         end
         return nil, msg
@@ -418,61 +593,59 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     
     local menu_items = {}
     
-    if raindrops.items and #raindrops.items > 0 then
+    if raindrops.items then
         for _, raindrop in ipairs(raindrops.items) do
             local title = raindrop.title or _("Sin título")
             local domain = raindrop.domain or ""
-            local excerpt = ""
-            if raindrop.excerpt then
-                excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
+            local date = ""
+            if raindrop.created then
+                date = " • " .. raindrop.created:sub(1, 10)
             end
             
             table.insert(menu_items, {
-                text = title .. "\n" .. domain .. excerpt,
+                text = title .. "\n" .. domain .. date,
                 callback = function()
                     self:showRaindropContent(raindrop)
                 end,
             })
         end
+    end
+    
+    local total_count = raindrops.count or (#raindrops.items + page * perpage)
+    if total_count > perpage then
+        local total_pages = math.ceil(total_count / perpage)
+        local current_page = page + 1
         
-        local total_count = raindrops.count or 0
-        if total_count > perpage then
-            local total_pages = math.ceil(total_count / perpage)
-            local current_page = page + 1
-            
+        if #menu_items > 0 then
             table.insert(menu_items, {text = "──────────────────", enabled = false})
-            
-            if page > 0 then
-                table.insert(menu_items, {
-                    text = _("← Página anterior"),
-                    callback = function()
-                        self:showRaindrops(collection_id, collection_name, page - 1)
-                    end,
-                })
-            end
-            
-            table.insert(menu_items, {
-                text = string.format(_("Página %d de %d"), current_page, total_pages),
-                enabled = false,
-            })
-            
-            if current_page < total_pages then
-                table.insert(menu_items, {
-                    text = _("Página siguiente →"),
-                    callback = function()
-                        self:showRaindrops(collection_id, collection_name, page + 1)
-                    end,
-                })
-            end
         end
-    else
+        
+        if page > 0 then
+            table.insert(menu_items, {
+                text = _("← Página anterior"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page - 1)
+                end,
+            })
+        end
+        
+        if current_page < total_pages then
+            table.insert(menu_items, {
+                text = _("Página siguiente →"),
+                callback = function()
+                    self:showRaindrops(collection_id, collection_name, page + 1)
+                end,
+            })
+        end
+    end
+    
+    if #menu_items == 0 then
         table.insert(menu_items, {
             text = _("No hay artículos en esta colección"),
             enabled = false,
         })
     end
     
-    local total_count = raindrops.count or 0
     local raindrops_menu = Menu:new{
         title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
         item_table = menu_items,
@@ -556,12 +729,14 @@ function Gota:showRaindropContent(raindrop)
         }
         cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
         
+        -- **INICIO DEL CAMBIO**
         table.insert(view_options, {
             text = _("Intentar recargar artículo completo"),
             callback = function()
                 self:reloadRaindrop(raindrop._id)
             end
         })
+        -- **FIN DEL CAMBIO**
     elseif not has_cache then
         cache_message = _("Este artículo no tiene contenido en caché disponible")
     end
@@ -679,20 +854,22 @@ function Gota:showRaindropInfo(raindrop)
 end
 
 function Gota:showDebugInfo()
-    -- CAMBIO: Usar el módulo de settings
-    local debug_info_table = self.settings:getDebugInfo()
-    
     local debug_info = "DEBUG GOTA PLUGIN\n"
     debug_info = debug_info .. "══════════════════════\n\n"
-    debug_info = debug_info .. "Token actual: " .. debug_info_table.token_status .. "\n"
-    debug_info = debug_info .. "Archivo config: " .. debug_info_table.settings_file .. "\n\n"
+    debug_info = debug_info .. "Token actual: " .. (self.token ~= "" and ("SET (" .. #self.token .. " chars)") or "NO SET") .. "\n"
+    debug_info = debug_info .. "Archivo config: " .. (self.settings_file or "NO SET") .. "\n\n"
     
-    if debug_info_table.file_exists then
-        debug_info = debug_info .. "Archivo existe: SÍ\n"
-        debug_info = debug_info .. "Tamaño archivo: " .. debug_info_table.file_size .. " bytes\n"
-        debug_info = debug_info .. "Contenido (primeros 200 chars):\n" .. debug_info_table.file_content .. "\n\n"
-    else
-        debug_info = debug_info .. "Archivo existe: NO\n\n"
+    if self.settings_file then
+        local file = io.open(self.settings_file, "r")
+        if file then
+            local content = file:read("*all")
+            file:close()
+            debug_info = debug_info .. "Archivo existe: SÍ\n"
+            debug_info = debug_info .. "Contenido (" .. #content .. " chars):\n"
+            debug_info = debug_info .. content .. "\n"
+        else
+            debug_info = debug_info .. "Archivo existe: NO\n"
+        end
     end
     
     debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
@@ -978,15 +1155,15 @@ function Gota:testToken(test_token)
         self:notify(_("⚠️ Token parece muy corto, pero se probará de todos modos"), 2)
     end
     
-    local old_token = self.settings:getToken() -- CAMBIO: Usar el módulo de settings
-    self.settings:setToken(test_token) -- CAMBIO: Usar el módulo de settings
+    local old_token = self.token
+    self.token = test_token
     
     self:showProgress(_("Probando token..."))
     
     local user_data, err = self:makeRequestWithRetry("/user")
     
     self:hideProgress()
-    self.settings:setToken(old_token) -- CAMBIO: Usar el módulo de settings
+    self.token = old_token
     
     if user_data and user_data.user then
         logger.dbg("Gota: Test de token exitoso")
