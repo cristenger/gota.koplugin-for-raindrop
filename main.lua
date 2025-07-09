@@ -2,7 +2,7 @@
     Raindrop.io plugin para KOReader - Versión Optimizada
     Permite leer artículos guardados en Raindrop.io directamente en tu Kindle
     
-    Versión: 1.3 (Optimizada)
+    Versión: 1.5 (Corregida con soporte Gzip mejorado)
     
     IMPORTANTE: SSL está desactivado para evitar problemas de certificados
     en dispositivos Kindle. Esto es necesario para que funcione correctamente.
@@ -26,6 +26,49 @@ local logger = require("logger")
 local util = require("util")
 local _ = require("gettext")
 local T = require("ffi/util").template
+local ffi = require("ffi")
+
+-- Importar módulo zlib para descompresión
+local zlib = nil
+local zlib_loaded = false
+pcall(function() 
+    -- Intentar cargar zlib de diferentes maneras
+    local ok, z = pcall(require, "ffi/zlib")
+    if ok then
+        zlib = z
+        zlib_loaded = true
+    else
+        -- Intentar cargar directamente con ffi
+        ok = pcall(function()
+            ffi.cdef[[
+                unsigned long compressBound(unsigned long sourceLen);
+                int compress2(uint8_t *dest, unsigned long *destLen, const uint8_t *source, unsigned long sourceLen, int level);
+                int uncompress(uint8_t *dest, unsigned long *destLen, const uint8_t *source, unsigned long sourceLen);
+            ]]
+            local libz = ffi.load("z")
+            zlib = {
+                compress = function(data)
+                    local n = libz.compressBound(#data)
+                    local buf = ffi.new("uint8_t[?]", n)
+                    local buflen = ffi.new("unsigned long[1]", n)
+                    local res = libz.compress2(buf, buflen, data, #data, -1)
+                    if res == 0 then
+                        return ffi.string(buf, buflen[0])
+                    end
+                end,
+                uncompress = function(data, size)
+                    local buf = ffi.new("uint8_t[?]", size)
+                    local buflen = ffi.new("unsigned long[1]", size)
+                    local res = libz.uncompress(buf, buflen, data, #data)
+                    if res == 0 then
+                        return ffi.string(buf, buflen[0])
+                    end
+                end
+            }
+            zlib_loaded = true
+        end)
+    end
+end)
 
 local Raindrop = WidgetContainer:extend{
     name = "raindrop",
@@ -93,6 +136,127 @@ local function parseSettings(content)
     
     logger.warn("Raindrop: No se pudo parsear configuración:", err)
     return {}
+end
+
+-- Función mejorada para descomprimir contenido Gzip
+function Raindrop:decompressGzip(compressed_data)
+    if not compressed_data or #compressed_data == 0 then
+        logger.warn("Raindrop: No hay datos para descomprimir")
+        return nil
+    end
+    
+    -- Verificar que los datos parecen ser gzip (magic number)
+    local byte1 = compressed_data:byte(1)
+    local byte2 = compressed_data:byte(2)
+    if byte1 ~= 31 or byte2 ~= 139 then
+        logger.warn("Raindrop: Los datos no parecen estar en formato gzip")
+        return compressed_data -- Devolver datos sin modificar
+    end
+    
+    -- Si no tenemos zlib, intentar método alternativo
+    if not zlib_loaded then
+        logger.warn("Raindrop: Módulo zlib no disponible, intentando método alternativo")
+        
+        -- Método alternativo: usar comando del sistema si está disponible
+        local temp_in = "/tmp/raindrop_gzip_in.gz"
+        local temp_out = "/tmp/raindrop_gzip_out.txt"
+        
+        local file = io.open(temp_in, "wb")
+        if file then
+            file:write(compressed_data)
+            file:close()
+            
+            -- Intentar descomprimir con gunzip del sistema
+            local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+            
+            if ok == 0 then
+                file = io.open(temp_out, "rb")
+                if file then
+                    local decompressed = file:read("*all")
+                    file:close()
+                    os.remove(temp_in)
+                    os.remove(temp_out)
+                    return decompressed
+                end
+            end
+            
+            os.remove(temp_in)
+            os.remove(temp_out)
+        end
+        
+        logger.err("Raindrop: No se pudo descomprimir usando método alternativo")
+        return nil
+    end
+    
+    -- Intentar descompresión con zlib cargado
+    -- El formato gzip incluye headers y trailers que deben ser manejados
+    -- Saltamos el header gzip (10 bytes mínimo) y el trailer (8 bytes)
+    if #compressed_data < 18 then
+        logger.err("Raindrop: Datos gzip demasiado cortos")
+        return nil
+    end
+    
+    -- Encontrar el final del header gzip
+    local header_end = 10
+    local flags = compressed_data:byte(4)
+    
+    -- Si hay campos extra, saltarlos
+    if bit and bit.band(flags, 4) ~= 0 then -- FEXTRA
+        if #compressed_data > header_end + 2 then
+            local xlen = compressed_data:byte(header_end + 1) + compressed_data:byte(header_end + 2) * 256
+            header_end = header_end + 2 + xlen
+        end
+    end
+    
+    -- Si hay nombre de archivo, saltarlo
+    if bit and bit.band(flags, 8) ~= 0 then -- FNAME
+        while header_end <= #compressed_data and compressed_data:byte(header_end) ~= 0 do
+            header_end = header_end + 1
+        end
+        header_end = header_end + 1
+    end
+    
+    -- Si hay comentario, saltarlo
+    if bit and bit.band(flags, 16) ~= 0 then -- FCOMMENT
+        while header_end <= #compressed_data and compressed_data:byte(header_end) ~= 0 do
+            header_end = header_end + 1
+        end
+        header_end = header_end + 1
+    end
+    
+    -- Si hay CRC16, saltarlo
+    if bit and bit.band(flags, 2) ~= 0 then -- FHCRC
+        header_end = header_end + 2
+    end
+    
+    -- Extraer los datos comprimidos (sin header ni trailer)
+    local compressed_body = compressed_data:sub(header_end, -9)
+    
+    -- Extraer el tamaño descomprimido del trailer
+    local size_bytes = compressed_data:sub(-4)
+    local uncompressed_size = 0
+    for i = 4, 1, -1 do
+        uncompressed_size = uncompressed_size * 256 + size_bytes:byte(i)
+    end
+    
+    -- Si el tamaño es muy grande o cero, usar un tamaño estimado
+    if uncompressed_size <= 0 or uncompressed_size > 50 * 1024 * 1024 then
+        uncompressed_size = #compressed_body * 10 -- Estimación
+    end
+    
+    -- Intentar descomprimir
+    if zlib.uncompress then
+        local ok, decompressed = pcall(zlib.uncompress, compressed_body, uncompressed_size)
+        if ok and decompressed then
+            return decompressed
+        else
+            logger.err("Raindrop: Error al descomprimir con zlib:", decompressed or "unknown error")
+        end
+    end
+    
+    -- Si llegamos aquí, no pudimos descomprimir
+    logger.err("Raindrop: No se pudo descomprimir los datos gzip")
+    return nil
 end
 
 function Raindrop:notify(text, timeout)
@@ -296,10 +460,12 @@ function Raindrop:makeRequest(endpoint, method, body)
         headers = {
             ["Authorization"] = "Bearer " .. self.token,
             ["Content-Type"]  = "application/json",
-            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.3",
+            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.5",
+            -- Añadir cabecera para indicar que aceptamos gzip
+            ["Accept-Encoding"] = "gzip",
         },
         sink    = ltn12.sink.table(sink),
-        -- Añadir opciones para mejorar compatibilidad
+        -- Opciones para mejorar compatibilidad
         protocol = "any", -- Aceptar cualquier protocolo en lugar de TLS específico
         options = "all", -- Usar todas las opciones disponibles
         timeout = 30,    -- Reducir el timeout para evitar esperas largas
@@ -349,7 +515,38 @@ function Raindrop:makeRequest(endpoint, method, body)
     -- Manejo de respuestas con mejor estructura
     if actual_status == 200 then
         local resp = table.concat(sink)
+        
         if #resp > 0 then
+            -- NUEVO: Verificar si la respuesta está comprimida con Gzip
+            local is_gzipped = false
+            if response_headers and response_headers["content-encoding"] then
+                is_gzipped = response_headers["content-encoding"]:find("gzip") ~= nil
+            end
+            
+            -- Características de datos comprimidos (útil para detectar gzip aunque no lo indique)
+            local might_be_gzipped = resp:byte(1) == 31 and resp:byte(2) == 139
+            
+            -- Descomprimir si es necesario
+            if is_gzipped or might_be_gzipped then
+                logger.dbg("Raindrop: Detectada respuesta comprimida con Gzip")
+                local decompressed = self:decompressGzip(resp)
+                if decompressed then
+                    logger.dbg("Raindrop: Descompresión exitosa, longitud:", #decompressed)
+                    resp = decompressed
+                else
+                    logger.err("Raindrop: No se pudo descomprimir la respuesta")
+                    -- Si no podemos descomprimir, intentar procesar como está
+                    -- Puede que el servidor envió la respuesta sin comprimir a pesar del header
+                end
+            end
+            
+            -- Verificar si es HTML directo (endpoint /cache)
+            if endpoint:match("/cache$") then
+                logger.dbg("Raindrop: Respuesta de caché detectada como HTML directo")
+                return resp  -- Devolver HTML sin procesar como JSON
+            end
+            
+            -- Intentar decodificar como JSON
             local dec_ok, data = pcall(function() return JSON.decode(resp) end)
             if dec_ok then
                 return data
@@ -373,7 +570,6 @@ function Raindrop:makeRequest(endpoint, method, body)
             local L = response_headers["X-RateLimit-Limit"]
             local R = response_headers["X-RateLimit-Remaining"]
             if L or R then
-                -- Corregido: Reemplazar format() con concatenación
                 msg = msg .. " Límite:" .. (L or "?") .. " Restantes:" .. (R or "?")
             end
         end
@@ -381,7 +577,6 @@ function Raindrop:makeRequest(endpoint, method, body)
     else
         local resp = table.concat(sink)
         logger.err("Raindrop: HTTP error", actual_status, resp:sub(1,200))
-        -- Corregido: Reemplazar format() con concatenación
         return nil, _("Error HTTP ") .. tostring(actual_status)
     end
 end
@@ -394,7 +589,6 @@ function Raindrop:makeRequestWithRetry(endpoint, method, body, max_retries)
         attempts = attempts + 1
         
         if attempts > 1 then
-            -- Corregido: Reemplazar format() con concatenación
             self:showProgress(_("Reintentando conexión (") .. attempts .. "/" .. max_retries .. ")...")
             -- Pequeña pausa entre intentos
             os.execute("sleep 1")
@@ -410,7 +604,6 @@ function Raindrop:makeRequestWithRetry(endpoint, method, body, max_retries)
         logger.warn("Raindrop: Reintentando solicitud después de error:", err)
     end
     
-    -- Corregido: Reemplazar format() con concatenación
     return nil, _("Falló después de ") .. max_retries .. _(" intentos")
 end
 
@@ -463,7 +656,6 @@ function Raindrop:showCollections()
     self:hideProgress()
     
     if not collections then
-        -- Corregido: Reemplazar T() con concatenación
         self:notify(_("Error al obtener colecciones:") .. "\n" .. (err or _("Error desconocido")), 4)
         return
     end
@@ -506,7 +698,6 @@ function Raindrop:showRaindrops(collection_id, collection_name, page)
     self:hideProgress()
     
     if not raindrops then
-        -- Corregido: Reemplazar T() con concatenación
         self:notify(_("Error al obtener artículos: ") .. (err or _("Error desconocido")), 4)
         return
     end
@@ -579,7 +770,7 @@ end
 
 function Raindrop:showRaindropContent(raindrop)
     -- Verificar si necesitamos obtener el contenido completo
-    if not raindrop.cache or not raindrop.cache.text then
+    if not raindrop.cache then
         -- Intentar obtener el artículo completo
         self:showProgress(_("Cargando contenido completo..."))
         local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop._id)
@@ -590,14 +781,45 @@ function Raindrop:showRaindropContent(raindrop)
         end
     end
     
-    -- Determinar si hay contenido en caché disponible y registrarlo para diagnóstico
-    local has_cache = raindrop.cache and raindrop.cache.status == "ready" and raindrop.cache.text and #raindrop.cache.text > 0
-    logger.dbg("Raindrop: Artículo tiene caché:", has_cache and "SÍ" or "NO", 
+    -- Registro de diagnóstico completo para ver la estructura del objeto
+    logger.dbg("Raindrop: Datos completos del caché:", 
                "cache:", raindrop.cache and "presente" or "nil",
                "status:", raindrop.cache and raindrop.cache.status or "n/a",
-               "texto:", raindrop.cache and raindrop.cache.text and #raindrop.cache.text or 0)
+               "size:", raindrop.cache and raindrop.cache.size or 0,
+               "texto presente:", raindrop.cache and raindrop.cache.text and "SÍ" or "NO",
+               "texto longitud:", raindrop.cache and raindrop.cache.text and #raindrop.cache.text or 0)
     
-    -- Si hay caché disponible, mostrar directamente el contenido sin menú intermedio
+    -- SOLUCIÓN: Mejorar la detección de caché disponible
+    -- Un artículo tiene caché si: tiene estado "ready" Y (tiene texto O tiene tamaño > 0)
+    local has_cache = raindrop.cache and 
+                     raindrop.cache.status == "ready" and 
+                     (raindrop.cache.text or (raindrop.cache.size and raindrop.cache.size > 0))
+    
+    -- Si detectamos que hay caché pero falta el texto, intentar cargarlo
+    if has_cache and not raindrop.cache.text then
+        self:showProgress(_("Cargando contenido en caché..."))
+        -- Intentar obtener el texto del caché
+        local cache_content, err = self:makeRequestWithRetry("/raindrop/" .. raindrop._id .. "/cache")
+        self:hideProgress()
+        
+        -- SOLUCIÓN: Manejar correctamente las respuestas HTML directas
+        if cache_content and type(cache_content) == "string" and #cache_content > 0 then
+            -- Si recibimos HTML directamente, guardarlo en la estructura
+            raindrop.cache.text = cache_content
+            logger.dbg("Raindrop: Contenido HTML recibido correctamente, longitud:", #cache_content)
+        elseif not raindrop.cache.text then
+            -- Si aún no tenemos texto, crear un texto mínimo
+            raindrop.cache.text = _("Contenido disponible para descarga. Usa el botón 'Descargar HTML'.")
+        end
+    end
+    
+    -- Verificar nuevamente si realmente tenemos texto útil
+    if has_cache and (not raindrop.cache.text or #raindrop.cache.text < 50) then
+        -- Si el texto es muy corto o inexistente, no considerarlo como caché válida
+        has_cache = false
+    end
+    
+    -- Si hay caché disponible, mostrar directamente el contenido
     if has_cache then
         self:showRaindropCachedContent(raindrop)
         return
@@ -687,470 +909,86 @@ function Raindrop:reloadRaindrop(raindrop_id)
     end
 end
 
-function Raindrop:makeRequest(endpoint, method, body)
-    local url = self.server_url .. endpoint
-    logger.dbg("Raindrop: Iniciando solicitud a", url)
-
-    -- mostrar "Conectando…" mientras dura la petición
-    local loading_msg = InfoMessage:new{ text = _("Conectando…"), timeout = 0 }
-    UIManager:show(loading_msg)
-    UIManager:forceRePaint()
-
-    local sink = {}
-    local request = {
-        url     = url,
-        method  = method or "GET",
-        headers = {
-            ["Authorization"] = "Bearer " .. self.token,
-            ["Content-Type"]  = "application/json",
-            ["User-Agent"]    = "KOReader-Raindrop-Plugin/1.3",
-        },
-        sink    = ltn12.sink.table(sink),
-        -- Añadir opciones para mejorar compatibilidad
-        protocol = "any", -- Aceptar cualquier protocolo en lugar de TLS específico
-        options = "all", -- Usar todas las opciones disponibles
-        timeout = 30,    -- Reducir el timeout para evitar esperas largas
-    }
-
-    -- si hay body (POST/PUT), lo serializamos desde el argumento
-    if (method == "POST" or method == "PUT") then
-        local payload = JSON.encode(body or {})
-        request.source         = ltn12.source.string(payload)
-        request.headers["Content-Length"] = #payload
-    end
-
-    -- Establecer timeouts más sofisticados antes de la petición
-    local socketutil = require("socketutil")
-    socketutil:set_timeout(10, 30)  -- Reducido de 45 a 30s total para respuestas más rápidas
+function Raindrop:showRaindropInfo(raindrop)
+    local content = ""
     
-    -- HTTPS
-    local ok, r1, r2, r3, r4 = pcall(https.request, request)
+    -- Información básica
+    content = content .. (raindrop.title or _("Sin título")) .. "\n"
+    content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    -- Si falla HTTPS, intentar con HTTP como fallback
-    if not ok and r1:match("unreachable") then
-        logger.warn("Raindrop: HTTPS falló, intentando con HTTP como fallback")
-        -- Cambiar a HTTP y reintentar
-        request.url = request.url:gsub("^https:", "http:")
-        ok, r1, r2, r3, r4 = pcall(http.request, request)
-    end
-    
-    -- Restaurar timeouts por defecto
-    socketutil:reset_timeout()
-    
-    -- cerramos siempre el loading
-    UIManager:close(loading_msg)
-
-    if not ok then
-        logger.err("Raindrop: request falló:", r1)
-        return nil, _("Error de conexión: ") .. tostring(r1)
-    end
-
-    local result, status_code, response_headers, status_line = r1, r2, r3, r4
-    -- determino el status real
-    local actual_status = (result ~= 1 and type(result)=="number") and result or status_code
-
-    -- Debug para diagnóstico
-    logger.dbg("Raindrop: Debug raw result:", result, "status_code:", status_code)
-    logger.dbg("Raindrop: Status determinado:", actual_status)
-
-    -- Manejo de respuestas con mejor estructura
-    if actual_status == 200 then
-        local resp = table.concat(sink)
-        if #resp > 0 then
-            local dec_ok, data = pcall(function() return JSON.decode(resp) end)
-            if dec_ok then
-                return data
-            else
-                -- Añadir más información de diagnóstico
-                logger.err("Raindrop: JSON.decode error:", data)
-                logger.err("Raindrop: JSON contenido:", resp:sub(1,200))
-                return nil, _("Error decodificando JSON: ") .. tostring(data)
-            end
-        end
-        return {}
-    elseif actual_status == 204 then
-        return {}
-    elseif actual_status == 401 then
-        return nil, _("Token inválido o expirado (401)")
-    elseif actual_status == 403 then
-        return nil, _("Acceso denegado (403)")
-    elseif actual_status == 429 then
-        local msg = _("Rate limit excedido (429)")
-        if response_headers then
-            local L = response_headers["X-RateLimit-Limit"]
-            local R = response_headers["X-RateLimit-Remaining"]
-            if L or R then
-                -- Corregido: Reemplazar format() con concatenación
-                msg = msg .. " Límite:" .. (L or "?") .. " Restantes:" .. (R or "?")
-            end
-        end
-        return nil, msg
-    else
-        local resp = table.concat(sink)
-        logger.err("Raindrop: HTTP error", actual_status, resp:sub(1,200))
-        -- Corregido: Reemplazar format() con concatenación
-        return nil, _("Error HTTP ") .. tostring(actual_status)
-    end
-end
-
-function Raindrop:makeRequestWithRetry(endpoint, method, body, max_retries)
-    max_retries = max_retries or 3
-    local attempts = 0
-    
-    while attempts < max_retries do
-        attempts = attempts + 1
-        
-        if attempts > 1 then
-            -- Corregido: Reemplazar format() con concatenación
-            self:showProgress(_("Reintentando conexión (") .. attempts .. "/" .. max_retries .. ")...")
-            -- Pequeña pausa entre intentos
-            os.execute("sleep 1")
-        end
-        
-        local result, err = self:makeRequest(endpoint, method, body)
-        
-        if result or (err and not err:match("conexión") and not err:match("timeout")) then
-            -- Si tenemos resultado o es un error que no es de conexión
-            return result, err
-        end
-        
-        logger.warn("Raindrop: Reintentando solicitud después de error:", err)
-    end
-    
-    -- Corregido: Reemplazar format() con concatenación
-    return nil, _("Falló después de ") .. max_retries .. _(" intentos")
-end
-
-function Raindrop:showProgress(text)
-    if self.progress_message then
-        UIManager:close(self.progress_message)
-    end
-    self.progress_message = InfoMessage:new{text = text, timeout = 1}
-    UIManager:show(self.progress_message)
-    UIManager:forceRePaint()
-end
-
-function Raindrop:hideProgress()
-    if self.progress_message then 
-        UIManager:close(self.progress_message) 
-    end
-    self.progress_message = nil
-end
-
-function Raindrop:cachedRequest(endpoint, method, body, use_cache)
-    -- Por defecto usamos caché solo para solicitudes GET
-    use_cache = (use_cache == nil) and (method == "GET" or method == nil) or use_cache
-    
-    if use_cache and method == "GET" then
-        local cache_key = endpoint
-        local cached = self.response_cache[cache_key]
-        
-        if cached and os.time() - cached.timestamp < self.cache_ttl then
-            logger.dbg("Raindrop: Usando respuesta en caché para", endpoint)
-            return cached.data, nil
-        end
-    end
-    
-    local result, err = self:makeRequestWithRetry(endpoint, method, body)
-    
-    if result and method == "GET" and use_cache then
-        local cache_key = endpoint
-        self.response_cache[cache_key] = {
-            data = result,
-            timestamp = os.time()
-        }
-    end
-    
-    return result, err
-end
-
-function Raindrop:showCollections()
-    self:showProgress(_("Cargando colecciones..."))
-    local collections, err = self:cachedRequest("/collections")
-    self:hideProgress()
-    
-    if not collections then
-        -- Corregido: Reemplazar T() con concatenación
-        self:notify(_("Error al obtener colecciones:") .. "\n" .. (err or _("Error desconocido")), 4)
-        return
-    end
-    
-    local menu_items = {}
-    
-    if not collections.items or #collections.items == 0 then
-        table.insert(menu_items, {
-            text = _("No tienes colecciones creadas"),
-            enabled = false,
-        })
-    else
-        for _, collection in ipairs(collections.items) do
-            table.insert(menu_items, {
-                text = string.format("%s (%d)", collection.title, collection.count or 0),
-                callback = function()
-                    self:showRaindrops(collection._id, collection.title)
-                end,
-            })
-        end
-    end
-    
-    local collections_menu = Menu:new{
-        title = _("Colecciones de Raindrop"),
-        item_table = menu_items,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.8,
-    }
-    
-    UIManager:show(collections_menu)
-end
-
-function Raindrop:showRaindrops(collection_id, collection_name, page)
-    page = page or 0
-    local perpage = 25
-    local endpoint = string.format("/raindrops/%s?perpage=%d&page=%d", collection_id, perpage, page)
-    
-    self:showProgress(_("Cargando artículos..."))
-    local raindrops, err = self:cachedRequest(endpoint)
-    self:hideProgress()
-    
-    if not raindrops then
-        -- Corregido: Reemplazar T() con concatenación
-        self:notify(_("Error al obtener artículos: ") .. (err or _("Error desconocido")), 4)
-        return
-    end
-    
-    local menu_items = {}
-    
-    if raindrops.items then
-        for _, raindrop in ipairs(raindrops.items) do
-            local title = raindrop.title or _("Sin título")
-            local domain = raindrop.domain or ""
-            local date = ""
-            if raindrop.created then
-                date = " • " .. raindrop.created:sub(1, 10)
-            end
-            
-            table.insert(menu_items, {
-                text = title .. "\n" .. domain .. date,
-                callback = function()
-                    self:showRaindropContent(raindrop)
-                end,
-            })
-        end
-    end
-    
-    -- Navegación de páginas con fallback para count
-    local total_count = raindrops.count or (#raindrops.items + page * perpage)
-    if total_count > perpage then
-        local total_pages = math.ceil(total_count / perpage)
-        local current_page = page + 1
-        
-        if #menu_items > 0 then
-            table.insert(menu_items, {text = "──────────────────", enabled = false})
-        end
-        
-        if page > 0 then
-            table.insert(menu_items, {
-                text = _("← Página anterior"),
-                callback = function()
-                    self:showRaindrops(collection_id, collection_name, page - 1)
-                end,
-            })
-        end
-        
-        if current_page < total_pages then
-            table.insert(menu_items, {
-                text = _("Página siguiente →"),
-                callback = function()
-                    self:showRaindrops(collection_id, collection_name, page + 1)
-                end,
-            })
-        end
-    end
-    
-    if #menu_items == 0 then
-        table.insert(menu_items, {
-            text = _("No hay artículos en esta colección"),
-            enabled = false,
-        })
-    end
-    
-    local raindrops_menu = Menu:new{
-        title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
-        item_table = menu_items,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.8,
-    }
-    
-    UIManager:show(raindrops_menu)
-end
-
-function Raindrop:showRaindropContent(raindrop)
-    -- Verificar si necesitamos obtener el contenido completo
-    if not raindrop.cache or not raindrop.cache.text then
-        -- Intentar obtener el artículo completo
-        self:showProgress(_("Cargando contenido completo..."))
-        local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop._id)
-        self:hideProgress()
-        
-        if full_raindrop and full_raindrop.item then
-            raindrop = full_raindrop.item
-        end
-    end
-    
-    -- Determinar si hay contenido en caché disponible y registrarlo para diagnóstico
-    local has_cache = raindrop.cache and raindrop.cache.status == "ready" and raindrop.cache.text and #raindrop.cache.text > 0
-    logger.dbg("Raindrop: Artículo tiene caché:", has_cache and "SÍ" or "NO", 
-               "cache:", raindrop.cache and "presente" or "nil",
-               "status:", raindrop.cache and raindrop.cache.status or "n/a",
-               "texto:", raindrop.cache and raindrop.cache.text and #raindrop.cache.text or 0)
-    
-    -- Si hay caché disponible, mostrar directamente el contenido sin menú intermedio
-    if has_cache then
-        self:showRaindropCachedContent(raindrop)
-        return
-    end
-    
-    -- Si no hay caché, mostrar menú de opciones alternativas
-    local view_options = {
-        {
-            text = _("Ver información del artículo"),
-            callback = function()
-                self:showRaindropInfo(raindrop)
-            end
-        },
-    }
-    
-    -- Opción de URL siempre disponible
     if raindrop.link then
-        table.insert(view_options, {
-            text = _("Copiar URL"),
-            callback = function()
-                self:showLinkInfo(raindrop)
-            end
-        })
+        content = content .. _("URL: ") .. raindrop.link .. "\n\n"
     end
     
-    -- Mensaje de estado de la caché
-    local cache_message = ""
-    if not has_cache and raindrop.cache then
-        local status_names = {
-            retry = _("La caché está siendo generada, intenta más tarde"),
-            failed = _("La generación de caché ha fallado"),
-            ["invalid-origin"] = _("No se pudo generar caché por origen inválido"),
-            ["invalid-timeout"] = _("No se pudo generar caché por timeout"),
-            ["invalid-size"] = _("No se pudo generar caché por tamaño excesivo")
+    if raindrop.domain then
+        content = content .. _("Dominio: ") .. raindrop.domain .. "\n"
+    end
+    
+    if raindrop.created then
+        local date = raindrop.created:sub(1, 10)
+        local time = raindrop.created:sub(12, 19)
+        content = content .. _("Guardado: ") .. date .. " " .. time .. "\n\n"
+    end
+    
+    -- Tipo de contenido
+    if raindrop.type then
+        local type_names = {
+            link = _("Enlace"),
+            article = _("Artículo"),
+            image = _("Imagen"),
+            video = _("Video"),
+            document = _("Documento"),
+            audio = _("Audio")
         }
-        cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
-        
-        -- Añadir opción para forzar la recarga
-        table.insert(view_options, {
-            text = _("Intentar recargar artículo completo"),
-            callback = function()
-                self:reloadRaindrop(raindrop._id)
+        content = content .. _("Tipo: ") .. (type_names[raindrop.type] or raindrop.type) .. "\n\n"
+    end
+    
+    -- Extracto/descripción
+    if raindrop.excerpt and raindrop.excerpt ~= "" then
+        content = content .. _("Extracto:") .. "\n"
+        content = content .. raindrop.excerpt .. "\n\n"
+    end
+    
+    -- Notas del usuario
+    if raindrop.note and raindrop.note ~= "" then
+        content = content .. _("Notas:") .. "\n"
+        content = content .. raindrop.note .. "\n\n"
+    end
+    
+    -- Tags
+    if raindrop.tags and #raindrop.tags > 0 then
+        content = content .. _("Etiquetas: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
+    end
+    
+    -- Información de caché
+    if raindrop.cache then
+        if raindrop.cache.status == "ready" then
+            content = content .. _("Caché: ") .. _("Disponible") .. "\n"
+            if raindrop.cache.size then
+                content = content .. _("Tamaño: ") .. math.floor(raindrop.cache.size/1024) .. " KB\n"
             end
-        })
-    elseif not has_cache then
-        cache_message = _("Este artículo no tiene contenido en caché disponible")
-    end
-    
-    -- Si hay mensaje de caché, mostrarlo como opción deshabilitada
-    if cache_message ~= "" then
-        table.insert(view_options, 1, {
-            text = cache_message,
-            enabled = false,
-        })
-    end
-    
-    local menu = Menu:new{
-        title = raindrop.title or _("Artículo"),
-        item_table = view_options,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.9,
-    }
-    
-    UIManager:show(menu)
-end
-
--- Nueva función para recargar un artículo específico
-function Raindrop:reloadRaindrop(raindrop_id)
-    self:showProgress(_("Recargando artículo..."))
-    -- Forzar recarga sin usar caché
-    local full_raindrop, err = self:cachedRequest("/raindrop/" .. raindrop_id, "GET", nil, false)
-    self:hideProgress()
-    
-    if full_raindrop and full_raindrop.item then
-        -- Si el artículo tiene caché ahora, mostrarlo
-        if full_raindrop.item.cache and 
-           full_raindrop.item.cache.status == "ready" and 
-           full_raindrop.item.cache.text then
-            self:showRaindropCachedContent(full_raindrop.item)
-        else
-            -- Si sigue sin caché, mostrar información
-            self:notify(_("El artículo aún no tiene contenido en caché disponible"))
-            self:showRaindropInfo(full_raindrop.item)
-        end
-    else
-        self:notify(_("Error al recargar artículo: ") .. (err or _("Error desconocido")))
-    end
-end
-
-function Raindrop:showTokenDialog()
-    self.token_dialog = InputDialog:new{
-        title = _("Token de acceso de Raindrop.io"),
-        description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
-        input = self.token,
-        input_type = "text",
-        buttons = {
-            {
-                {
-                    text = _("Cancelar"),
-                    callback = function()
-                        UIManager:close(self.token_dialog)
-                    end,
-                },
-                {
-                    text = _("Probar"),
-                    callback = function()
-                        local test_token = self.token_dialog:getInputText()
-                        if test_token and test_token ~= "" then
-                            test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
-                            NetworkMgr:runWhenOnline(function()
-                                self:testToken(test_token)
-                            end)
-                        else
-                            self:notify(_("Por favor ingresa un token para probar"))
-                        end
-                    end,
-                },
-                {
-                    text = _("Guardar"),
-                    is_enter_default = true,
-                    callback = function()
-                        local new_token = self.token_dialog:getInputText()
-                        if new_token and new_token ~= "" then
-                            new_token = new_token:gsub("^%s+", ""):gsub("%s+$", "")
-                            
-                            logger.dbg("Raindrop: Token recibido, longitud:", #new_token)
-                            
-                            if #new_token < 20 then
-                                self:notify(_("⚠️ Token muy corto, verifica que sea correcto"))
-                                return
-                            end
-                            
-                            self.token = new_token
-                            self:saveSettings()
-                            UIManager:close(self.token_dialog)
-                            self:notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
-                        else
-                            self:notify(_("Por favor ingresa un token válido"), 2)
-                        end
-                    end,
-                }
+        elseif raindrop.cache.status then
+            local status_names = {
+                ready = _("Listo"),
+                retry = _("Reintentando"),
+                failed = _("Falló"),
+                ["invalid-origin"] = _("Origen inválido"),
+                ["invalid-timeout"] = _("Tiempo agotado"),
+                ["invalid-size"] = _("Tamaño inválido")
             }
-        },
+            content = content .. _("Estado del caché: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n"
+        end
+        content = content .. "\n"
+    end
+    
+    local text_viewer = TextViewer:new{
+        title = raindrop.title or _("Información del artículo"),
+        text = content,
+        width = Device.screen:getWidth() * 0.95,
+        height = Device.screen:getHeight() * 0.95,
     }
-    UIManager:show(self.token_dialog)
-    self.token_dialog:onShowKeyboard()
+    
+    UIManager:show(text_viewer)
 end
 
 function Raindrop:showDebugInfo()
@@ -1175,6 +1013,7 @@ function Raindrop:showDebugInfo()
     debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
     debug_info = debug_info .. "\nTamaño de caché: " .. (table_keys(self.response_cache) and #table_keys(self.response_cache) or 0) .. " entradas"
     debug_info = debug_info .. "\nTTL de caché: " .. self.cache_ttl .. " segundos"
+    debug_info = debug_info .. "\nSoporte para Gzip: " .. (zlib_loaded and "SÍ" or "NO (usando método alternativo)")
     
     local text_viewer = TextViewer:new{
         title = "Debug Info - Raindrop Plugin",
@@ -1200,7 +1039,6 @@ function Raindrop:searchRaindrops(search_term, page)
     self:hideProgress()
     
     if not results then
-        -- Corregido: Reemplazar T() con concatenación
         self:notify(_("Error en la búsqueda: ") .. (err or _("Error desconocido")), 4)
         return
     end
@@ -1258,14 +1096,12 @@ function Raindrop:searchRaindrops(search_term, page)
         
     else
         table.insert(menu_items, {
-            -- Corregido: Reemplazar T() con concatenación
             text = _("No se encontraron resultados para: ") .. search_term,
             enabled = false,
         })
     end
     
     local search_menu = Menu:new{
-        -- Corregido: Reemplazar T() con concatenación
         title = _("Resultados: '") .. search_term .. "' (" .. (results.count or 0) .. ")",
         item_table = menu_items,
         width = Device.screen:getWidth() * 0.9,
@@ -1295,6 +1131,308 @@ function Raindrop:showLinkInfo(raindrop)
     }
     
     UIManager:show(text_viewer)
+end
+
+-- Función para descargar el HTML en caché
+function Raindrop:downloadRaindropHTML(raindrop)
+    -- Verificar que el raindrop tiene una ID válida
+    if not raindrop._id then
+        self:notify(_("No se puede descargar: ID no encontrado"))
+        return
+    end
+    
+    -- Verificar que el usuario tiene una suscripción PRO (necesaria para esta función)
+    if not raindrop.cache or raindrop.cache.status ~= "ready" then
+        self:notify(_("No hay contenido en caché disponible para descargar"))
+        return
+    end
+    
+    -- Crear directorio para archivos HTML si no existe
+    local html_dir = DataStorage:getDataDir() .. "/raindrop_articles/"
+    local util = require("util")
+    local success = util.makePath(html_dir)
+    if not success then
+        self:notify(_("Error al crear directorio para guardar HTML"))
+        return
+    end
+    
+    -- Generar un nombre de archivo basado en el ID y título
+    local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 30)
+    local filename = html_dir .. raindrop._id .. "_" .. safe_title .. ".html"
+    
+    -- Mostrar mensaje de progreso
+    self:showProgress(_("Descargando HTML..."))
+    
+    -- Preparar la solicitud al endpoint de caché
+    local endpoint = "/raindrop/" .. raindrop._id .. "/cache"
+    local url = self.server_url .. endpoint
+    
+    logger.dbg("Raindrop: Descargando HTML desde", url)
+    
+    -- Configurar la solicitud para recibir el HTML directamente
+    local sink = {}
+    local request = {
+        url = url,
+        method = "GET",
+        headers = {
+            ["Authorization"] = "Bearer " .. self.token,
+            ["Accept-Encoding"] = "gzip", -- Aceptar gzip también para descargas
+        },
+        sink = ltn12.sink.table(sink),
+        protocol = "any",
+        timeout = 30,
+    }
+    
+    -- Realizar la solicitud
+    local socketutil = require("socketutil")
+    socketutil:set_timeout(15, 60)  -- Tiempo más largo para descargas
+    local ok, r1, r2, r3, r4 = pcall(https.request, request)
+    socketutil:reset_timeout()
+    
+    self:hideProgress()
+    
+    -- Verificar si la solicitud fue exitosa
+    if not ok then
+        self:notify(_("Error al descargar HTML: ") .. tostring(r1))
+        return
+    end
+    
+    local status_code = r2
+    local response_headers = r3
+    
+    -- Si recibimos un código 200, guardamos el archivo
+    if status_code == 200 then
+        local html_content = table.concat(sink)
+        
+        -- Verificar si la respuesta está comprimida con Gzip
+        local is_gzipped = false
+        if response_headers and response_headers["content-encoding"] then
+            is_gzipped = response_headers["content-encoding"]:find("gzip") ~= nil
+        end
+        
+        -- Características de datos comprimidos (útil para detectar gzip aunque no lo indique)
+        local might_be_gzipped = html_content:byte(1) == 31 and html_content:byte(2) == 139
+        
+        -- Descomprimir si es necesario
+        if is_gzipped or might_be_gzipped then
+            logger.dbg("Raindrop: Detectada respuesta comprimida con Gzip al descargar")
+            local decompressed = self:decompressGzip(html_content)
+            if decompressed then
+                logger.dbg("Raindrop: Descompresión exitosa, longitud:", #decompressed)
+                html_content = decompressed
+            else
+                logger.err("Raindrop: No se pudo descomprimir la respuesta al descargar")
+                -- Continuamos con la respuesta original por si acaso
+            end
+        end
+        
+        -- Verificar que hay contenido
+        if #html_content < 100 then
+            self:notify(_("El contenido descargado parece incompleto"))
+            return
+        end
+        
+        -- Guardar el archivo HTML
+        local file, err = io.open(filename, "wb")
+        if not file then
+            self:notify(_("Error al crear archivo: ") .. tostring(err))
+            return
+        end
+        
+        file:write(html_content)
+        file:close()
+        
+        -- Mostrar opciones para el archivo descargado
+        self:showDownloadOptions(filename, raindrop.title or _("Artículo"))
+    elseif status_code == 307 or status_code == 302 or status_code == 301 then
+        -- Redireccionamiento - común para archivos grandes
+        -- Intentar seguir la redirección manualmente
+        local redirect_url = response_headers and response_headers.location
+        if redirect_url then
+            self:notify(_("Redirección a: ") .. redirect_url .. "\n" .. _("Esta funcionalidad requiere plan PRO de Raindrop.io"), 5)
+        else
+            self:notify(_("Redirección sin URL. Código: ") .. status_code)
+        end
+    else
+        self:notify(_("Error al descargar. Código: ") .. status_code)
+    end
+end
+
+-- Función para mostrar opciones después de la descarga
+function Raindrop:showDownloadOptions(filename, title)
+    -- Preparar menú de opciones
+    local options = {
+        {
+            text = _("Abrir HTML descargado"),
+            callback = function()
+                self:openHTMLFile(filename)
+            end
+        },
+        {
+            text = _("Volver"),
+            callback = function() end  -- No hace nada, simplemente cierra este menú
+        }
+    }
+    
+    -- Mostrar mensaje con opciones
+    local menu = Menu:new{
+        title = _("HTML descargado"),
+        item_table = options,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.7,
+    }
+    
+    UIManager:show(menu)
+end
+
+-- Función para abrir el archivo HTML con KOReader
+function Raindrop:openHTMLFile(filename)
+    -- Intentar abrir el archivo HTML con el lector de documentos de KOReader
+    local ReaderUI = require("apps/reader/readerui")
+    local DocumentRegistry = require("document/documentregistry")
+    
+    -- Verificar si el archivo existe
+    local lfs = require("libs/libkoreader-lfs")
+    if lfs.attributes(filename, "mode") ~= "file" then
+        self:notify(_("No se encontró el archivo HTML"))
+        return
+    end
+    
+    -- Crear un nuevo ReaderUI para abrir el archivo
+    local document = DocumentRegistry:openDocument(filename)
+    if document then
+        local reader = ReaderUI:new{
+            document = document,
+            dithered = true,
+        }
+        UIManager:show(reader)
+    else
+        self:notify(_("No se pudo abrir el archivo HTML"))
+    end
+end
+
+-- Función para mostrar el contenido en caché con botón de descarga
+function Raindrop:showRaindropCachedContent(raindrop)
+    if not raindrop.cache or not raindrop.cache.text then
+        self:notify(_("No hay contenido en caché disponible"))
+        return
+    end
+    
+    -- SOLUCIÓN: Estructura correcta para botones en TextViewer
+    local buttons_table = {
+        {
+            {
+                text = _("Descargar HTML"),
+                callback = function()
+                    self:downloadRaindropHTML(raindrop)
+                end
+            }
+        }
+    }
+    
+    local content = raindrop.cache.text
+    
+    -- Mejorar el formato del texto en caché
+    content = content:gsub("\n%s*\n%s*\n", "\n\n")
+    content = content:gsub("<br[^>]*>", "\n")
+    content = content:gsub("<p[^>]*>", "\n")
+    content = content:gsub("</p>", "\n")
+    content = content:gsub("<div[^>]*>", "\n")
+    content = content:gsub("</div>", "\n")
+    content = content:gsub("<[^>]+>", "")
+    content = content:gsub("&nbsp;", " ")
+    content = content:gsub("&lt;", "<")
+    content = content:gsub("&gt;", ">")
+    content = content:gsub("&quot;", "\"")
+    content = content:gsub("&apos;", "'")
+    content = content:gsub("&amp;", "&")
+    content = content:gsub("\n\n+", "\n\n")
+    
+    -- Añadir título del artículo al principio
+    local formatted_content = (raindrop.title or _("Sin título")) .. "\n"
+    formatted_content = formatted_content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    -- Añadir el dominio como información de fuente
+    if raindrop.domain then
+        formatted_content = formatted_content .. _("Fuente: ") .. raindrop.domain .. "\n\n"
+    end
+    
+    formatted_content = formatted_content .. content
+    
+    -- Mostrar en visor de texto con botón de descarga
+    local text_viewer = TextViewer:new{
+        title = _("Contenido en caché"),
+        text = formatted_content,
+        width = Device.screen:getWidth() * 0.95,
+        height = Device.screen:getHeight() * 0.95,
+        buttons = buttons_table,  -- Estructura de botones corregida
+    }
+    
+    UIManager:show(text_viewer)
+end
+
+function Raindrop:testToken(test_token)
+    logger.dbg("Raindrop: Iniciando test de token, longitud:", #test_token)
+    
+    if #test_token < 20 then
+        self:notify(_("⚠️ Token muy corto, verifica que sea correcto"), 3)
+        return
+    end
+    
+    local old_token = self.token
+    self.token = test_token
+    
+    self:showProgress(_("Probando token..."))
+    
+    local user_data, err = self:makeRequestWithRetry("/user")
+    
+    self:hideProgress()
+    self.token = old_token
+    
+    if user_data and user_data.user then
+        logger.dbg("Raindrop: Test de token exitoso")
+        local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
+        local pro_status = user_data.user.pro and _(" (PRO)") or ""
+        
+        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
+    else
+        logger.err("Raindrop: Test de token falló:", err)
+        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
+    end
+end
+
+function Raindrop:showSearchDialog()
+    self.search_dialog = InputDialog:new{
+        title = _("Buscar artículos"),
+        input = "",
+        buttons = {
+            {
+                {
+                    text = _("Cancelar"),
+                    callback = function()
+                        UIManager:close(self.search_dialog)
+                    end,
+                },
+                {
+                    text = _("Buscar"),
+                    is_enter_default = true,
+                    callback = function()
+                        local search_term = self.search_dialog:getInputText()
+                        if search_term and search_term ~= "" then
+                            UIManager:close(self.search_dialog)
+                            NetworkMgr:runWhenOnline(function()
+                                self:searchRaindrops(search_term)
+                            end)
+                        else
+                            self:notify(_("Por favor ingresa un término de búsqueda"))
+                        end
+                    end,
+                }
+            }
+        },
+    }
+    UIManager:show(self.search_dialog)
+    self.search_dialog:onShowKeyboard()
 end
 
 -- Necesario para que KOReader registre el plugin
