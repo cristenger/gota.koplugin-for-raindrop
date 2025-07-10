@@ -1014,7 +1014,21 @@ function Gota:openHTMLFile(filename)
     end
     
     -- Close all current menus and dialogs before opening a new document
-    UIManager:closeAllWindows()
+    -- UIManager:closeAllWindows()
+    
+    -- Cerrar widgets específicos que puedan estar abiertos
+    if self.progress_message then
+        UIManager:close(self.progress_message)
+        self.progress_message = nil
+    end
+    
+    -- Cerrar otros posibles widgets
+    local widgets_to_close = {self.menu, self.dialog, self.text_viewer}
+    for _, widget in ipairs(widgets_to_close) do
+        if widget then
+            UIManager:close(widget)
+        end
+    end
     
     -- Then open the document
     local document = DocumentRegistry:openDocument(filename)
