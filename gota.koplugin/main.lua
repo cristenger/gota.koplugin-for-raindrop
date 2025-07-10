@@ -8,7 +8,6 @@
     en dispositivos Kindle. Esto es necesario para que funcione correctamente.
 ]]
 
-local BD = require("ui/bidi")
 local DataStorage = require("datastorage")
 local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
@@ -25,8 +24,6 @@ local JSON = require("json")
 local logger = require("logger")
 local util = require("util")
 local _ = require("gettext")
-local T = require("ffi/util").template
-local ffi = require("ffi")
 
 -- MÓDULO DE SETTINGS
 local Settings = require("settings")
