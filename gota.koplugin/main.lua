@@ -646,10 +646,10 @@ function Gota:showRaindropContent(raindrop)
         has_cache = false
     end
     
-    if has_cache then
+   --[[  if has_cache then
         self:showRaindropCachedContent(raindrop)
         return
-    end
+    end ]]
     
     local view_options = {
         {
