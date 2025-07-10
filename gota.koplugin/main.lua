@@ -422,14 +422,19 @@ function Gota:showCollections()
         end
     end
     
-    local collections_menu = Menu:new{
+    if self.collections_menu then
+        UIManager:close(self.collections_menu)
+        self.collections_menu = nil
+    end
+    
+    self.collections_menu = Menu:new{
         title = _("Colecciones de Raindrop"),
         item_table = menu_items,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
     }
     
-    UIManager:show(collections_menu)
+    UIManager:show(self.collections_menu)
 end
 
 function Gota:showRaindrops(collection_id, collection_name, page)
@@ -589,14 +594,20 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     end
     
     local total_count = raindrops.count or 0
-    local raindrops_menu = Menu:new{
+    
+    if self.raindrops_menu then
+        UIManager:close(self.raindrops_menu)
+        self.raindrops_menu = nil
+    end
+    
+    self.raindrops_menu = Menu:new{
         title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
         item_table = menu_items,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
     }
     
-    UIManager:show(raindrops_menu)
+    UIManager:show(self.raindrops_menu)
 end
 
 function Gota:showRaindropContent(raindrop)
@@ -689,14 +700,19 @@ function Gota:showRaindropContent(raindrop)
         })
     end
     
-    local menu = Menu:new{
+    if self.article_menu then
+        UIManager:close(self.article_menu)
+        self.article_menu = nil
+    end
+    
+    self.article_menu = Menu:new{
         title = raindrop.title or _("Artículo"),
         item_table = view_options,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
     }
     
-    UIManager:show(menu)
+    UIManager:show(self.article_menu)
 end
 
 function Gota:reloadRaindrop(raindrop_id)
@@ -825,7 +841,7 @@ function Gota:showDebugInfo()
     UIManager:show(text_viewer)
 end
 
-function Gota:searchRaindrops(search_term, page)
+function Gota:searchRaindrops(search_term, page)  -- ✅ CORREGIDO: Agregada la "f"
     page = page or 0
     local perpage = 25
     
@@ -900,14 +916,20 @@ function Gota:searchRaindrops(search_term, page)
         })
     end
     
-    local search_menu = Menu:new{
+    -- ✅ MEJORADO: Limpiar menú anterior si existe
+    if self.search_menu then
+        UIManager:close(self.search_menu)
+        self.search_menu = nil
+    end
+    
+    self.search_menu = Menu:new{  -- ✅ MEJORADO: Guardar referencia
         title = _("Resultados: '") .. search_term .. "' (" .. (results.count or 0) .. ")",
         item_table = menu_items,
         width = Device.screen:getWidth() * 0.9,
         height = Device.screen:getHeight() * 0.8,
     }
     
-    UIManager:show(search_menu)
+    UIManager:show(self.search_menu)
 end
 
 function Gota:showLinkInfo(raindrop)
@@ -921,14 +943,20 @@ function Gota:showLinkInfo(raindrop)
     content = content .. _("No se puede abrir directamente en KOReader.") .. "\n"
     content = content .. _("Puedes copiar esta URL para abrirla en otro dispositivo.")
     
-    local text_viewer = TextViewer:new{
+    -- ✅ MEJORADO: Cerrar text_viewer anterior si existe
+    if self.text_viewer then
+        UIManager:close(self.text_viewer)
+        self.text_viewer = nil
+    end
+    
+    self.text_viewer = TextViewer:new{  -- ✅ MEJORADO: Guardar referencia
         title = _("Enlace del artículo"),
         text = content,
         width = Device.screen:getWidth() * 0.95,
         height = Device.screen:getHeight() * 0.95,
     }
     
-    UIManager:show(text_viewer)
+    UIManager:show(self.text_viewer)
 end
 
 function Gota:downloadRaindropHTML(raindrop)
@@ -981,14 +1009,19 @@ function Gota:downloadRaindropHTML(raindrop)
 end
 
 function Gota:showDownloadOptions(filename, title)
-    local menu = Menu:new{
+    -- ✅ MEJORADO: Cerrar menú anterior si existe
+    if self.download_menu then
+        UIManager:close(self.download_menu)
+        self.download_menu = nil
+    end
+    
+    self.download_menu = Menu:new{  -- ✅ MEJORADO: Guardar referencia
         title = _("HTML descargado"),
         item_table = {
             {
                 text = _("Ir a carpeta de descarga"),
                 callback = function()
                     UIManager:nextTick(function()
-                        UIManager:close(menu)
                         self:openDownloadFolder(filename)
                     end)
                 end
@@ -997,7 +1030,8 @@ function Gota:showDownloadOptions(filename, title)
                 text = _("Volver"),
                 callback = function()
                     UIManager:nextTick(function()
-                        UIManager:close(menu)
+                        UIManager:close(self.download_menu)
+                        self.download_menu = nil  -- ✅ MEJORADO: Limpiar referencia
                     end)
                 end
             }
@@ -1006,10 +1040,12 @@ function Gota:showDownloadOptions(filename, title)
         height = Device.screen:getHeight(),
     }
     
-    UIManager:show(menu)
+    UIManager:show(self.download_menu)
 end
 
 function Gota:openDownloadFolder(filename)
+    self:closeAllWidgets()
+    
     local FileManager = require("apps/filemanager/filemanager")
     local folder_path = filename:match("(.+)/[^/]+$")
     
@@ -1030,8 +1066,24 @@ function Gota:openHTMLFile(filename)
         return
     end
     
-    -- Close all current menus and dialogs before opening a new document
-    -- UIManager:closeAllWindows()
+    -- Función auxiliar para cerrar widgets de manera segura
+    local function safeCloseWidget(widget)
+        if widget and type(widget) == "table" and widget.onClose then
+            -- Verificar si el widget tiene el método onClose (indicador de widget válido)
+            UIManager:close(widget)
+            return true
+        elseif widget and type(widget) == "table" then
+            -- Intentar cerrar, pero con manejo de errores
+            local success, err = pcall(function()
+                UIManager:close(widget)
+            end)
+            if not success then
+                logger.dbg("Gota: No se pudo cerrar widget:", err)
+            end
+            return success
+        end
+        return false
+    end
     
     -- Cerrar widgets específicos que puedan estar abiertos
     if self.progress_message then
@@ -1039,11 +1091,41 @@ function Gota:openHTMLFile(filename)
         self.progress_message = nil
     end
     
-    -- Cerrar otros posibles widgets
-    local widgets_to_close = {self.menu, self.dialog, self.text_viewer}
-    for _, widget in ipairs(widgets_to_close) do
-        if widget then
-            UIManager:close(widget)
+    -- Cerrar otros widgets de manera robusta
+    if self.menu then
+        if safeCloseWidget(self.menu) then
+            self.menu = nil
+        end
+    end
+    
+    if self.dialog then
+        if safeCloseWidget(self.dialog) then
+            self.dialog = nil
+        end
+    end
+    
+    if self.text_viewer then
+        if safeCloseWidget(self.text_viewer) then
+            self.text_viewer = nil
+        end
+    end
+    
+    if self.search_dialog then
+        if safeCloseWidget(self.search_dialog) then
+            self.search_dialog = nil
+        end
+    end
+    
+    -- ✅ MEJORADO: Cerrar widgets adicionales
+    if self.search_menu then
+        if safeCloseWidget(self.search_menu) then
+            self.search_menu = nil
+        end
+    end
+    
+    if self.download_menu then
+        if safeCloseWidget(self.download_menu) then
+            self.download_menu = nil
         end
     end
     
@@ -1058,6 +1140,40 @@ function Gota:openHTMLFile(filename)
     else
         self:notify(_("No se pudo abrir el archivo HTML"))
     end
+end
+
+function Gota:closeAllWidgets()
+    local widgets = {
+        {ref = "progress_message", widget = self.progress_message},
+        {ref = "token_dialog", widget = self.token_dialog},
+        {ref = "collections_menu", widget = self.collections_menu},
+        {ref = "raindrops_menu", widget = self.raindrops_menu},
+        {ref = "article_menu", widget = self.article_menu},
+        {ref = "search_dialog", widget = self.search_dialog},
+        {ref = "search_menu", widget = self.search_menu},
+        {ref = "download_menu", widget = self.download_menu},
+        {ref = "text_viewer", widget = self.text_viewer},
+        -- Generic fallbacks, less used now but safe to keep
+        {ref = "menu", widget = self.menu},
+        {ref = "dialog", widget = self.dialog}
+    }
+    
+    for _, w in ipairs(widgets) do
+        if w.widget then
+            local success, err = pcall(function()
+                UIManager:close(w.widget)
+            end)
+            if success then
+                self[w.ref] = nil
+                logger.dbg("Gota: Widget cerrado exitosamente:", w.ref)
+            else
+                logger.dbg("Gota: Error cerrando widget", w.ref, ":", err)
+                -- Force cleanup of reference even if close fails
+                self[w.ref] = nil
+            end
+        end
+    end
+    logger.dbg("Gota: Todas las ventanas cerradas")
 end
 
 function Gota:showRaindropCachedContent(raindrop)
