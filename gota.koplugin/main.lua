@@ -429,8 +429,8 @@ function Gota:showCollections()
     local collections_menu = Menu:new{
         title = _("Colecciones de Raindrop"),
         item_table = menu_items,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.8,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
     }
     
     UIManager:show(collections_menu)
@@ -510,8 +510,8 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     local raindrops_menu = Menu:new{
         title = string.format("%s (%d)", collection_name or _("Artículos"), total_count),
         item_table = menu_items,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.8,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
     }
     
     UIManager:show(raindrops_menu)
@@ -610,8 +610,8 @@ function Gota:showRaindropContent(raindrop)
     local menu = Menu:new{
         title = raindrop.title or _("Artículo"),
         item_table = view_options,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.9,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
     }
     
     UIManager:show(menu)
@@ -705,8 +705,8 @@ function Gota:showRaindropInfo(raindrop)
     local text_viewer = TextViewer:new{
         title = raindrop.title or _("Información del artículo"),
         text = content,
-        width = Device.screen:getWidth() * 0.95,
-        height = Device.screen:getHeight() * 0.95,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
     }
     
     UIManager:show(text_viewer)
@@ -914,8 +914,8 @@ function Gota:showDownloadOptions(filename, title)
     local menu = Menu:new{
         title = _("HTML descargado"),
         item_table = options,
-        width = Device.screen:getWidth() * 0.9,
-        height = Device.screen:getHeight() * 0.7,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
     }
     
     UIManager:show(menu)
@@ -961,11 +961,79 @@ function Gota:showRaindropCachedContent(raindrop)
     }
     
     local content = raindrop.cache.text
+    local original_length = #content
+    logger.dbg("Gota: Procesando contenido HTML, longitud original:", original_length)
     
+    -- First remove only the most obvious non-content elements
+    content = content:gsub("<nav[^>]*>.-</nav>", "")
+    content = content:gsub("<header[^>]*>.-</header>", "")
+    content = content:gsub("<footer[^>]*>.-</footer>", "")
+    
+    -- More conservative removal of non-content patterns
+    local non_content_patterns = {
+        -- Only exact navigation matches
+        "<div[^>]*class=['\"]nav['\"].->.-(</div>)",
+        "<div[^>]*class=['\"]navbar['\"].->.-(</div>)",
+        "<div[^>]*class=['\"]navigation['\"].->.-(</div>)",
+        "<div[^>]*id=['\"]nav['\"].->.-(</div>)",
+        "<div[^>]*id=['\"]navbar['\"].->.-(</div>)",
+        "<div[^>]*id=['\"]navigation['\"].->.-(</div>)",
+        
+        -- Common advertisement elements
+        "<div[^>]*class=['\"]ad['\"].->.-(</div>)",
+        "<div[^>]*class=['\"]ads['\"].->.-(</div>)",
+        "<div[^>]*class=['\"]advertisement['\"].->.-(</div>)",
+        "<div[^>]*id=['\"]ad['\"].->.-(</div>)",
+        "<div[^>]*id=['\"]ads['\"].->.-(</div>)",
+    }
+    
+    -- Apply non-content pattern removals more carefully
+    for _, pattern in ipairs(non_content_patterns) do
+        local success, result = pcall(function() 
+            return content:gsub(pattern, "") 
+        end)
+        if success then
+            content = result
+        end
+    end
+    
+    -- Try to identify main content with high confidence
+    local main_content = nil
+    local main_content_length = 0
+    
+    -- Look for article tag first (most reliable)
+    local article_match = content:match("<article[^>]*>(.-)</article>")
+    if article_match and #article_match > original_length * 0.4 then  -- Must be substantial
+        main_content = article_match
+        main_content_length = #main_content
+        logger.dbg("Gota: Encontrada etiqueta <article> con contenido significativo")
+    end
+    
+    -- If no article tag, try main tag
+    if not main_content then
+        local main_match = content:match("<main[^>]*>(.-)</main>")
+        if main_match and #main_match > original_length * 0.4 then
+            main_content = main_match
+            main_content_length = #main_content
+            logger.dbg("Gota: Encontrada etiqueta <main> con contenido significativo")
+        end
+    end
+    
+    -- Only use extracted content if we're confident it has most of the article
+    if main_content and main_content_length > 1000 and main_content_length > original_length * 0.4 then
+        logger.dbg("Gota: Usando contenido principal extraído, longitud:", main_content_length)
+        content = main_content
+    else
+        logger.dbg("Gota: No se identificó un área de contenido principal clara, usando contenido completo limpio")
+    end
+    
+    -- Continue with HTML-to-text conversion
     content = content:gsub("\n%s*\n%s*\n", "\n\n")
     content = content:gsub("<br[^>]*>", "\n")
     content = content:gsub("<p[^>]*>", "\n")
     content = content:gsub("</p>", "\n")
+    content = content:gsub("<h%d[^>]*>", "\n\n")
+    content = content:gsub("</h%d>", "\n")
     content = content:gsub("<div[^>]*>", "\n")
     content = content:gsub("</div>", "\n")
     content = content:gsub("<[^>]+>", "")
@@ -977,22 +1045,60 @@ function Gota:showRaindropCachedContent(raindrop)
     content = content:gsub("&amp;", "&")
     content = content:gsub("\n\n+", "\n\n")
     
-    local formatted_content = (raindrop.title or _("Sin título")) .. "\n"
-    formatted_content = formatted_content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    -- Remove excessive whitespace
+    content = content:gsub("^%s+", "")
+    content = content:gsub("%s+$", "")
     
-    if raindrop.domain then
-        formatted_content = formatted_content .. _("Fuente: ") .. raindrop.domain .. "\n\n"
+    -- Safety check - if we lost too much content, use a simpler conversion of the original
+    if #content < original_length * 0.3 then
+        logger.dbg("Gota: La limpieza eliminó demasiado contenido, usando conversión más simple")
+        content = raindrop.cache.text
+        content = content:gsub("<script[^>]*>.-</script>", "")
+        content = content:gsub("<style[^>]*>.-</style>", "")
+        content = content:gsub("<br[^>]*>", "\n")
+        content = content:gsub("<p[^>]*>", "\n")
+        content = content:gsub("</p>", "\n")
+        content = content:gsub("<div[^>]*>", "\n")
+        content = content:gsub("</div>", "\n")
+        content = content:gsub("<[^>]+>", "")
+        content = content:gsub("&nbsp;", " ")
+        content = content:gsub("&lt;", "<")
+        content = content:gsub("&gt;", ">")
+        content = content:gsub("&quot;", "\"")
+        content = content:gsub("&apos;", "'")
+        content = content:gsub("&amp;", "&")
+        content = content:gsub("\n\n+", "\n\n")
+        content = content:gsub("^%s+", "")
+        content = content:gsub("%s+$", "")
     end
     
+    logger.dbg("Gota: Contenido final procesado, longitud:", #content, 
+               "Proporción retenida:", math.floor(#content/original_length*100), "%")
+    
+    -- Create more compact header with fewer newlines
+    local formatted_content = (raindrop.title or _("Sin título")) .. "\n"
+    formatted_content = formatted_content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    
+    if raindrop.domain then
+        formatted_content = formatted_content .. _("Fuente: ") .. raindrop.domain .. "\n"
+    end
+    
+    -- Remove any leading whitespace from the content before appending
+    content = content:gsub("^%s+", "")
     formatted_content = formatted_content .. content
     
     local text_viewer = TextViewer:new{
-        title = _("Contenido en caché"),
+        title = _("Contenido en caché") .. " [↓]",  -- Add download indicator to title
         text = formatted_content,
-        width = Device.screen:getWidth() * 0.95,
-        height = Device.screen:getHeight() * 0.95,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
         buttons = buttons_table,
     }
+    
+    -- Add a tap handler for the title region to download HTML
+    text_viewer.onTapHeader = function()
+        self:downloadRaindropHTML(raindrop)
+    end
     
     UIManager:show(text_viewer)
 end

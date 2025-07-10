@@ -8,14 +8,30 @@ local function parseSettings(content)
     local env = {}
     local chunk, err = loadstring(content)
     if chunk then
-        setfenv(chunk, env)
-        local ok = pcall(chunk)
-        if ok and next(env) then
-            return env
+        -- Usar pcall con manejo de errores más detallado
+        local ok, result = pcall(function()
+            setfenv(chunk, env)
+            return chunk()
+        end)
+        
+        if ok then
+            -- Verificar específicamente si token existe en env
+            if env and env.token then
+                logger.dbg("Gota: Token encontrado en configuración")
+                return env
+            elseif result and type(result) == "table" and result.token then
+                logger.dbg("Gota: Token encontrado en resultado de chunk")
+                return result
+            else
+                logger.warn("Gota: Configuración cargada pero no contiene token")
+            end
+        else
+            logger.warn("Gota: Error ejecutando chunk:", result)
         end
+    else
+        logger.warn("Gota: No se pudo parsear configuración:", err)
     end
     
-    logger.warn("Gota: No se pudo parsear configuración:", err)
     return {}
 end
 
