@@ -31,6 +31,8 @@ function Settings:new()
 end
 
 function Settings:load()
+    logger.dbg("Gota DEBUG: Intentando cargar configuración desde: " .. self.settings_file)
+    
     local settings = {}
     
     if self.settings_file then

@@ -2,7 +2,7 @@
     Gota: Lector para Raindrop.io en KOReader
     Permite leer artículos guardados en Raindrop.io directamente en tu dispositivo.
     
-    Versión: 1.6 (Sin compresión gzip para mejor compatibilidad)
+    Versión: 1.6 (Modularizado con settings.lua)
     
     IMPORTANTE: SSL está desactivado para evitar problemas de certificados
     en dispositivos Kindle. Esto es necesario para que funcione correctamente.
@@ -28,12 +28,8 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 local ffi = require("ffi")
 
--- NUEVO: Importar el módulo de settings
+-- MÓDULO DE SETTINGS
 local Settings = require("settings")
-
--- El plugin no necesita zlib ya que pedimos respuestas sin comprimir
-local zlib = nil
-local zlib_loaded = false
 
 local Gota = WidgetContainer:extend{
     name = "gota",
@@ -62,13 +58,6 @@ local function table_keys(t)
     return keys
 end
 
--- Función mejorada para descomprimir contenido Gzip
-function Gota:decompressGzip(compressed_data)
-    -- Esta función ya no se usa, pero la mantenemos por compatibilidad
-    logger.warn("Gota: decompressGzip llamada pero no debería usarse")
-    return nil
-end
-
 function Gota:notify(text, timeout)
     timeout = timeout or 3
     UIManager:show(InfoMessage:new{
@@ -78,13 +67,13 @@ function Gota:notify(text, timeout)
 end
 
 function Gota:init()
-    -- CAMBIO: Inicializar el módulo de settings
+    -- SISTEMA MODULARIZADO: Inicializar el módulo de settings
     self.settings = Settings:new()
     self.settings:load()
     
     self.server_url = "https://api.raindrop.io/rest/v1"
     
-    -- CORRECCIÓN: configurar SSL una sola vez al inicio
+    -- Configurar SSL una sola vez al inicio
     https.cert_verify = false
     logger.dbg("Gota: SSL verificación desactivada para compatibilidad")
     
@@ -95,12 +84,10 @@ function Gota:init()
     self.ui.menu:registerToMainMenu(self)
 end
 
--- ELIMINADAS: parseSettings, loadSettings, saveSettings (ahora están en settings.lua)
-
 function Gota:addToMainMenu(menu_items)
     menu_items.gota = {
         text = _("Gota (Raindrop.io)"),
-        sorting_hint = "more_tools",
+        sorting_hint = "search",
         sub_item_table = {
             {
                 text = _("Configurar token de acceso"),
@@ -117,7 +104,6 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Ver colecciones"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
                     return self.settings:isTokenValid()
                 end,
                 callback = function()
@@ -129,7 +115,6 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Buscar artículos"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
                     return self.settings:isTokenValid()
                 end,
                 callback = function()
@@ -139,7 +124,6 @@ function Gota:addToMainMenu(menu_items)
             {
                 text = _("Todos los artículos"),
                 enabled_func = function()
-                    -- CAMBIO: Usar el módulo de settings
                     return self.settings:isTokenValid()
                 end,
                 callback = function()
@@ -156,7 +140,7 @@ function Gota:showTokenDialog()
     self.token_dialog = InputDialog:new{
         title = _("Token de acceso de Raindrop.io"),
         description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
-        input = self.settings:getToken(), -- CAMBIO: Usar el módulo de settings
+        input = self.settings:getToken(),
         input_type = "text",
         buttons = {
             {
@@ -194,18 +178,15 @@ function Gota:showTokenDialog()
                             
                             logger.dbg("Gota: Token recibido, longitud:", #new_token)
                             
-                            -- Validación más flexible - solo verificar que no esté vacío
                             if new_token == "" then
                                 self:notify(_("Por favor ingresa un token válido"), 2)
                                 return
                             end
                             
-                            -- Opcional: mostrar advertencia para tokens muy cortos, pero no bloquear
                             if #new_token < 10 then
                                 self:notify(_("⚠️ Token parece muy corto, pero se guardará de todos modos"), 3)
                             end
                             
-                            -- CAMBIO: Usar el módulo de settings
                             self.settings:setToken(new_token)
                             local success, err = self.settings:save()
                             UIManager:close(self.token_dialog)
@@ -232,7 +213,6 @@ function Gota:makeRequest(endpoint, method, body)
     logger.dbg("Gota: Iniciando solicitud a", url)
     logger.dbg("Gota: Solicitando respuesta sin comprimir (Accept-Encoding: identity)")
 
-    -- mostrar "Conectando…" mientras dura la petición
     local loading_msg = InfoMessage:new{ text = _("Conectando…"), timeout = 0 }
     UIManager:show(loading_msg)
     UIManager:forceRePaint()
@@ -242,7 +222,7 @@ function Gota:makeRequest(endpoint, method, body)
         url     = url,
         method  = method or "GET",
         headers = {
-            ["Authorization"] = "Bearer " .. self.settings:getToken(), -- CAMBIO: Usar el módulo de settings
+            ["Authorization"] = "Bearer " .. self.settings:getToken(),
             ["Content-Type"]  = "application/json",
             ["User-Agent"]    = "KOReader-Gota-Plugin/1.6",
             ["Accept-Encoding"] = "identity",
@@ -270,6 +250,60 @@ function Gota:makeRequest(endpoint, method, body)
             logger.warn("Gota: Respuesta vacía del servidor")
             return nil, _("Respuesta vacía del servidor")
         end
+
+        -- INICIO: Añadir código para manejo de Gzip y HTML
+        local is_gzipped = false
+        if headers and headers["content-encoding"] then
+            local encoding = headers["content-encoding"]:lower()
+            is_gzipped = encoding:find("gzip") ~= nil
+            if is_gzipped then
+                logger.warn("Gota: Servidor envió gzip a pesar de Accept-Encoding: identity")
+            end
+        end
+        
+        local might_be_gzipped = resp:byte(1) == 31 and resp:byte(2) == 139
+        
+        if is_gzipped or might_be_gzipped then
+            logger.dbg("Gota: Detectada respuesta comprimida con Gzip")
+            local temp_in = "/tmp/gota_gzip_" .. os.time() .. ".gz"
+            local temp_out = "/tmp/gota_out_" .. os.time() .. ".txt"
+            
+            local file = io.open(temp_in, "wb")
+            if file then
+                file:write(resp)
+                file:close()
+                
+                local ok = os.execute("gunzip -c " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                if ok ~= 0 then
+                    ok = os.execute("gzip -dc " .. temp_in .. " > " .. temp_out .. " 2>/dev/null")
+                end
+                
+                if ok == 0 then
+                    file = io.open(temp_out, "rb")
+                    if file then
+                        resp = file:read("*all")
+                        file:close()
+                        logger.dbg("Gota: Descompresión exitosa con comando del sistema")
+                    end
+                end
+                
+                os.remove(temp_in)
+                os.remove(temp_out)
+            else
+                logger.err("Gota: No se pudo crear archivo temporal para descompresión")
+            end
+            
+            if resp:byte(1) == 31 and resp:byte(2) == 139 then
+                return nil, _("Error: No se pudo descomprimir la respuesta del servidor")
+            end
+        end
+        
+        -- Verificar si es HTML directo (endpoint /cache)
+        if endpoint:match("/cache$") then
+            logger.dbg("Gota: Respuesta de caché detectada como HTML directo")
+            return resp  -- Devolver HTML sin procesar como JSON
+        end
+        -- FIN: Código añadido para Gzip y HTML
 
         local data, parse_err = JSON.decode(resp)
         if data then
@@ -679,7 +713,6 @@ function Gota:showRaindropInfo(raindrop)
 end
 
 function Gota:showDebugInfo()
-    -- CAMBIO: Usar el módulo de settings
     local debug_info_table = self.settings:getDebugInfo()
     
     local debug_info = "DEBUG GOTA PLUGIN\n"
@@ -698,7 +731,7 @@ function Gota:showDebugInfo()
     debug_info = debug_info .. "\nServer URL: " .. (self.server_url or "NO SET")
     debug_info = debug_info .. "\nTamaño de caché: " .. (table_keys(self.response_cache) and #table_keys(self.response_cache) or 0) .. " entradas"
     debug_info = debug_info .. "\nTTL de caché: " .. self.cache_ttl .. " segundos"
-    debug_info = debug_info .. "\nSoporte para Gzip: Usando descompresión del sistema"
+    debug_info = debug_info .. "\nSistema: MODULARIZADO"
     
     local text_viewer = TextViewer:new{
         title = "Debug Info - Gota Plugin",
@@ -967,26 +1000,24 @@ end
 function Gota:testToken(test_token)
     logger.dbg("Gota: Iniciando test de token, longitud:", #test_token)
     
-    -- Validación más flexible - solo verificar que no esté vacío
     if not test_token or test_token == "" then
         self:notify(_("⚠️ Token vacío, no se puede probar"), 3)
         return
     end
     
-    -- Opcional: mostrar advertencia para tokens muy cortos, pero continuar con la prueba
     if #test_token < 10 then
         self:notify(_("⚠️ Token parece muy corto, pero se probará de todos modos"), 2)
     end
     
-    local old_token = self.settings:getToken() -- CAMBIO: Usar el módulo de settings
-    self.settings:setToken(test_token) -- CAMBIO: Usar el módulo de settings
+    local old_token = self.settings:getToken()
+    self.settings:setToken(test_token)
     
     self:showProgress(_("Probando token..."))
     
     local user_data, err = self:makeRequestWithRetry("/user")
     
     self:hideProgress()
-    self.settings:setToken(old_token) -- CAMBIO: Usar el módulo de settings
+    self.settings:setToken(old_token)
     
     if user_data and user_data.user then
         logger.dbg("Gota: Test de token exitoso")
