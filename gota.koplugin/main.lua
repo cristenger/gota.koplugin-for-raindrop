@@ -976,31 +976,48 @@ function Gota:downloadRaindropHTML(raindrop)
     file:write(html_content)
     file:close()
     
+    self:notify(string.format(_("HTML guardado en: %s"), filename), 5)
     self:showDownloadOptions(filename, raindrop.title or _("Artículo"))
 end
 
 function Gota:showDownloadOptions(filename, title)
-    local options = {
-        {
-            text = _("Abrir HTML descargado"),
-            callback = function()
-                self:openHTMLFile(filename)
-            end
-        },
-        {
-            text = _("Volver"),
-            callback = function() end
-        }
-    }
-    
     local menu = Menu:new{
         title = _("HTML descargado"),
-        item_table = options,
+        item_table = {
+            {
+                text = _("Ir a carpeta de descarga"),
+                callback = function()
+                    UIManager:nextTick(function()
+                        UIManager:close(menu)
+                        self:openDownloadFolder(filename)
+                    end)
+                end
+            },
+            {
+                text = _("Volver"),
+                callback = function()
+                    UIManager:nextTick(function()
+                        UIManager:close(menu)
+                    end)
+                end
+            }
+        },
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
     }
     
     UIManager:show(menu)
+end
+
+function Gota:openDownloadFolder(filename)
+    local FileManager = require("apps/filemanager/filemanager")
+    local folder_path = filename:match("(.+)/[^/]+$")
+    
+    if FileManager.instance then
+        FileManager.instance:reinit(folder_path)
+    else
+        FileManager:showFiles(folder_path)
+    end
 end
 
 function Gota:openHTMLFile(filename)
