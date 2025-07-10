@@ -211,7 +211,6 @@ end
 function Gota:makeRequest(endpoint, method, body)
     local url = self.server_url .. endpoint
     logger.dbg("Gota: Iniciando solicitud a", url)
-    logger.dbg("Gota: Solicitando respuesta sin comprimir (Accept-Encoding: identity)")
 
     local loading_msg = InfoMessage:new{ text = _("Conectando…"), timeout = 0 }
     UIManager:show(loading_msg)
@@ -225,7 +224,7 @@ function Gota:makeRequest(endpoint, method, body)
             ["Authorization"] = "Bearer " .. self.settings:getToken(),
             ["Content-Type"]  = "application/json",
             ["User-Agent"]    = "KOReader-Gota-Plugin/1.6",
-            ["Accept-Encoding"] = "identity",
+            ["Accept-Encoding"] = "gzip, identity",
         },
         sink    = ltn12.sink.table(sink),
         protocol = "any",
@@ -256,9 +255,6 @@ function Gota:makeRequest(endpoint, method, body)
         if headers and headers["content-encoding"] then
             local encoding = headers["content-encoding"]:lower()
             is_gzipped = encoding:find("gzip") ~= nil
-            if is_gzipped then
-                logger.warn("Gota: Servidor envió gzip a pesar de Accept-Encoding: identity")
-            end
         end
         
         local might_be_gzipped = resp:byte(1) == 31 and resp:byte(2) == 139
@@ -453,19 +449,34 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     local menu_items = {}
     
     if raindrops.items and #raindrops.items > 0 then
+        -- Store translation function before loop to prevent shadowing
+        local translation_func = _
         for _, raindrop in ipairs(raindrops.items) do
-            local title = raindrop.title or _("Sin título")
+            local title = raindrop.title or translation_func("Sin título")
             local domain = raindrop.domain or ""
             local excerpt = ""
             if raindrop.excerpt then
                 excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
             end
             
+            -- Add a submenu with options for each article
             table.insert(menu_items, {
                 text = title .. "\n" .. domain .. excerpt,
-                callback = function()
-                    self:showRaindropContent(raindrop)
-                end,
+                sub_item_table = {
+                    {
+                        text = translation_func("Ver contenido"),
+                        callback = function()
+                            self:showRaindropContent(raindrop)
+                        end,
+                    },
+                    {
+                        text = translation_func("Descargar HTML"),
+                        enabled = raindrop.cache and raindrop.cache.status == "ready",
+                        callback = function()
+                            self:downloadRaindropHTML(raindrop)
+                        end,
+                    }
+                }
             })
         end
         
@@ -476,6 +487,29 @@ function Gota:showRaindrops(collection_id, collection_name, page)
             
             table.insert(menu_items, {text = "──────────────────", enabled = false})
             
+            -- Paginación mejorada
+            -- Añadir navegación a primera página si no estamos cerca
+            if current_page > 3 then
+                table.insert(menu_items, {
+                    text = _("« Primera página"),
+                    callback = function()
+                        self:showRaindrops(collection_id, collection_name, 0)
+                    end,
+                })
+            end
+            
+            -- Salto hacia atrás (5 páginas)
+            if current_page > 6 then
+                local translation_func = _  -- Store reference to translation function
+                table.insert(menu_items, {
+                    text = string.format(translation_func("« -%d páginas"), 5),
+                    callback = function()
+                        self:showRaindrops(collection_id, collection_name, page - 5)
+                    end,
+                })
+            end
+            
+            -- Página anterior
             if page > 0 then
                 table.insert(menu_items, {
                     text = _("← Página anterior"),
@@ -485,11 +519,28 @@ function Gota:showRaindrops(collection_id, collection_name, page)
                 })
             end
             
-            table.insert(menu_items, {
-                text = string.format(_("Página %d de %d"), current_page, total_pages),
-                enabled = false,
-            })
+            -- Mostrar números de páginas cercanas
+            local start_page = math.max(0, current_page - 2)
+            local end_page = math.min(total_pages, current_page + 2)
+            local translation_func = _  -- Store reference to avoid shadowing
             
+            for i = start_page, end_page do
+                if i == 0 then
+                    -- Ignorar página 0 (usamos índice 1-based para mostrar)
+                else
+                    table.insert(menu_items, {
+                        text = i == current_page 
+                              and string.format(translation_func("[Página %d]"), i) 
+                              or string.format(translation_func("Página %d"), i),
+                        enabled = i ~= current_page,
+                        callback = function()
+                            self:showRaindrops(collection_id, collection_name, i - 1)
+                        end,
+                    })
+                end
+            end
+            
+            -- Página siguiente
             if current_page < total_pages then
                 table.insert(menu_items, {
                     text = _("Página siguiente →"),
@@ -498,6 +549,37 @@ function Gota:showRaindrops(collection_id, collection_name, page)
                     end,
                 })
             end
+            
+            -- Salto hacia adelante (5 páginas)
+            if current_page < total_pages - 5 then
+                local translation_func = _  -- Store reference to translation function
+                table.insert(menu_items, {
+                    text = string.format(translation_func("» +%d páginas"), 5),
+                    callback = function()
+                        self:showRaindrops(collection_id, collection_name, page + 5)
+                    end,
+                })
+            end
+            
+            -- Última página
+            if current_page < total_pages - 2 then
+                table.insert(menu_items, {
+                    text = _("» Última página"),
+                    callback = function()
+                        self:showRaindrops(collection_id, collection_name, total_pages - 1)
+                    end,
+                })
+            end
+            
+            -- Información sobre la paginación
+            local translation_func = _  -- Store reference to translation function
+            table.insert(menu_items, {
+                text = string.format(translation_func("Mostrando %d-%d de %d artículos"), 
+                    page * perpage + 1,
+                    math.min((page + 1) * perpage, total_count),
+                    total_count),
+                enabled = false,
+            })
         end
     else
         table.insert(menu_items, {
@@ -931,6 +1013,10 @@ function Gota:openHTMLFile(filename)
         return
     end
     
+    -- Close all current menus and dialogs before opening a new document
+    UIManager:closeAllWindows()
+    
+    -- Then open the document
     local document = DocumentRegistry:openDocument(filename)
     if document then
         local reader = ReaderUI:new{
@@ -1088,7 +1174,7 @@ function Gota:showRaindropCachedContent(raindrop)
     formatted_content = formatted_content .. content
     
     local text_viewer = TextViewer:new{
-        title = _("Contenido en caché") .. " [↓]",  -- Add download indicator to title
+        title = _("Contenido en caché") .. " [↓]",
         text = formatted_content,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
