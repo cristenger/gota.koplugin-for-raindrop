@@ -653,6 +653,17 @@ function Gota:showRaindropContent(raindrop)
     
     local view_options = {
         {
+            text = _("📖 Abrir en lector completo"),
+            enabled = has_cache,
+            callback = function()
+                if has_cache then
+                    self:openInReader(raindrop)
+                else
+                    self:notify(_("El contenido no está disponible aún"))
+                end
+            end
+        },
+        {
             text = _("Ver información del artículo"),
             callback = function()
                 self:showRaindropInfo(raindrop)
@@ -1182,12 +1193,35 @@ function Gota:showRaindropCachedContent(raindrop)
     local buttons_table = {
         {
             {
-                text = _("Descargar HTML"),
+                text = _("Cerrar"),
                 callback = function()
+                    UIManager:close(text_viewer)
+                end,
+            },
+            {
+                text = _("📖 Abrir en lector"),  -- NUEVO BOTÓN
+                callback = function()
+                    UIManager:close(text_viewer)
+                    self:openInReader(raindrop)
+                end,
+            },
+        },
+        {
+            {
+                text = _("Compartir enlace"),
+                callback = function()
+                    UIManager:close(text_viewer)
+                    self:showLinkInfo(raindrop)
+                end,
+            },
+            {
+                text = _("Guardar HTML"),
+                callback = function()
+                    UIManager:close(text_viewer)
                     self:downloadRaindropHTML(raindrop)
-                end
-            }
-        }
+                end,
+            },
+        },
     }
     
     local content = raindrop.cache.text
@@ -1399,6 +1433,114 @@ function Gota:showSearchDialog()
     }
     UIManager:show(self.search_dialog)
     self.search_dialog:onShowKeyboard()
+end
+
+-- Función principal para abrir en ReaderUI
+function Gota:openInReader(raindrop)
+    if not raindrop or not raindrop.cache or not raindrop.cache.text then
+        self:notify(_("No hay contenido disponible"))
+        return
+    end
+    
+    -- Crear directorio temporal
+    local temp_dir = DataStorage:getDataDir() .. "/cache/gota/"
+    local lfs = require("libs/libkoreader-lfs")
+    if not lfs.attributes(temp_dir, "mode") then
+        util.makePath(temp_dir)
+    end
+    
+    -- Crear archivo HTML
+    local filename = temp_dir .. raindrop._id .. "_" .. os.time() .. ".html"
+    local html = self:createReaderHTML(raindrop)
+    
+    local file = io.open(filename, "w")
+    if file then
+        file:write(html)
+        file:close()
+        
+        -- Cerrar menús
+        if self.article_menu then UIManager:close(self.article_menu) end
+        if self.raindrops_menu then UIManager:close(self.raindrops_menu) end
+        
+        -- Abrir en lector
+        local ReaderUI = require("apps/reader/readerui")
+        local DocumentRegistry = require("document/documentregistry")
+        
+        -- Then open the document
+        local document = DocumentRegistry:openDocument(filename)
+        if document then
+            local reader = ReaderUI:new{
+                document = document,
+                dithered = true,
+                delete_on_close = true,  -- Para borrar el archivo temporal cuando se cierra
+            }
+            UIManager:show(reader)
+        else
+            self:notify(_("No se pudo abrir el archivo HTML"))
+        end
+    else
+        self:notify(_("Error al crear archivo temporal"))
+    end
+end
+
+-- Crear HTML para el lector
+function Gota:createReaderHTML(raindrop)
+    local content = raindrop.cache.text or ""
+    
+    -- Extraer body si existe
+    local body = content:match("<body[^>]*>(.-)</body>") or content
+    
+    return string.format([[
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>%s</title>
+    <style>
+        body { 
+            font-family: Georgia, serif; 
+            line-height: 1.6; 
+            margin: 20px;
+            max-width: 45em;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { font-size: 1.8em; margin-bottom: 0.5em; }
+        .meta { 
+            color: #666; 
+            font-size: 0.9em; 
+            margin-bottom: 2em; 
+            padding-bottom: 1em;
+            border-bottom: 1px solid #ddd;
+        }
+        img { max-width: 100%%; height: auto; }
+        blockquote { 
+            margin: 1em 0; 
+            padding-left: 1em; 
+            border-left: 3px solid #ccc; 
+        }
+        pre { 
+            background: #f4f4f4; 
+            padding: 1em; 
+            overflow-x: auto; 
+        }
+    </style>
+</head>
+<body>
+    <h1>%s</h1>
+    <div class="meta">
+        <div>%s</div>
+        <div>%s</div>
+    </div>
+    %s
+</body>
+</html>
+]], 
+    util.htmlEscape(raindrop.title or ""),
+    util.htmlEscape(raindrop.title or ""),
+    util.htmlEscape(raindrop.domain or ""),
+    raindrop.created and raindrop.created:sub(1,10) or "",
+    body)
 end
 
 return Gota
