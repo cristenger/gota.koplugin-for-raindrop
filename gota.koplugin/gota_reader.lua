@@ -94,7 +94,7 @@ function GotaReader:addGotaMenu(reader_instance)
         text = _("Gota"),
         sub_item_table = {
             {
-                text = _("⬅️ Volver a Gota"),
+                text = _("< Volver a Gota"),
                 callback = function()
                     self:onReturn()
                 end,
@@ -106,7 +106,7 @@ function GotaReader:addGotaMenu(reader_instance)
     if self.original_raindrop then
         if self.original_raindrop.link then
             table.insert(gota_menu.sub_item_table, {
-                text = _("📋 Copiar URL del artículo"),
+                text = _("Copiar URL del artículo"),
                 callback = function()
                     -- Aquí podrías implementar la copia al portapapeles
                     -- o mostrar la URL en un diálogo

@@ -186,7 +186,7 @@ function Gota:showTokenDialog()
                             end
                             
                             if #new_token < 10 then
-                                self:notify(_("⚠️ Token parece muy corto, pero se guardará de todos modos"), 3)
+                                self:notify(_("Aviso: Token parece muy corto, pero se guardará de todos modos"), 3)
                             end
                             
                             self.settings:setToken(new_token)
@@ -641,7 +641,7 @@ function Gota:showRaindropContent(raindrop)
     
     local view_options = {
         {
-            text = _("📖 Abrir en lector completo"),
+            text = _("Abrir en lector completo"),
             enabled = has_cache,
             callback = function()
                 if has_cache then
@@ -652,7 +652,7 @@ function Gota:showRaindropContent(raindrop)
             end
         },
         {
-            text = _("📄 Ver contenido en texto simple"),
+            text = _("Ver contenido en texto simple"),
             enabled = has_cache,
             callback = function()
                 if has_cache then
@@ -663,7 +663,7 @@ function Gota:showRaindropContent(raindrop)
             end
         },
         {
-            text = _("💾 Descargar HTML"),  -- NUEVO: Añadir opción de descarga aquí
+            text = _("Descargar HTML"),  -- NUEVO: Añadir opción de descarga aquí
             enabled = has_cache,
             callback = function()
                 if has_cache then
@@ -674,7 +674,7 @@ function Gota:showRaindropContent(raindrop)
             end
         },
         {
-            text = _("ℹ️ Ver información del artículo"),
+            text = _("Ver información del artículo"),
             callback = function()
                 self:showRaindropInfo(raindrop)
             end
@@ -683,7 +683,7 @@ function Gota:showRaindropContent(raindrop)
     
     if raindrop.link then
         table.insert(view_options, {
-            text = _("🔗 Copiar URL"),
+            text = _("Copiar URL"),
             callback = function()
                 self:showLinkInfo(raindrop)
             end
@@ -702,7 +702,7 @@ function Gota:showRaindropContent(raindrop)
         cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
         
         table.insert(view_options, {
-            text = _("🔄 Intentar recargar artículo completo"),
+            text = _("Intentar recargar artículo completo"),
             callback = function()
                 self:reloadRaindrop(raindrop._id)
             end
@@ -1025,6 +1025,21 @@ function Gota:downloadRaindropHTML(raindrop)
     
     self:notify(string.format(_("HTML guardado en: %s"), filename), 5)
     self:showDownloadOptions(filename, raindrop.title or _("Artículo"))
+    
+    -- Añadir después de crear el archivo HTML
+    logger.dbg("Gota: Archivo HTML creado:", filename)
+    logger.dbg("Gota: Tamaño del archivo:", lfs.attributes(filename, "size"))
+
+    -- Verificar proveedores disponibles
+    local DocumentRegistry = require("document/documentregistry")
+    local provider = DocumentRegistry:getProvider(filename)
+    logger.dbg("Gota: Proveedor para HTML:", provider and provider.provider_name or "ninguno")
+
+    -- Listar todos los proveedores
+    logger.dbg("Gota: Proveedores disponibles:")
+    for ext, prov in pairs(DocumentRegistry.registry) do
+        logger.dbg("  ", ext, "->", prov.provider_name)
+    end
 end
 
 function Gota:showDownloadOptions(filename, title)
@@ -1212,7 +1227,7 @@ function Gota:showRaindropCachedContent(raindrop)
                 end,
             },
             {
-                text = _("📖 Abrir en lector"),  -- NUEVO BOTÓN
+                text = _("Abrir en lector"),  -- NUEVO BOTÓN
                 callback = function()
                     UIManager:close(text_viewer)
                     self:openInReader(raindrop)
@@ -1384,12 +1399,12 @@ function Gota:testToken(test_token)
     logger.dbg("Gota: Iniciando test de token, longitud:", #test_token)
     
     if not test_token or test_token == "" then
-        self:notify(_("⚠️ Token vacío, no se puede probar"), 3)
+        self:notify(_("Aviso: Token vacío, no se puede probar"), 3)
         return
     end
     
     if #test_token < 10 then
-        self:notify(_("⚠️ Token parece muy corto, pero se probará de todos modos"), 2)
+        self:notify(_("Aviso: Token parece muy corto, pero se probará de todos modos"), 2)
     end
     
     local old_token = self.settings:getToken()
@@ -1407,10 +1422,10 @@ function Gota:testToken(test_token)
         local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
         local pro_status = user_data.user.pro and _(" (PRO)") or ""
         
-        self:notify(_("✓ Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
+        self:notify(_("Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
     else
         logger.err("Gota: Test de token falló:", err)
-        self:notify(_("✗ Error con el token:\n") .. (err or "Token inválido"), 5)
+        self:notify(_("Error con el token:\n") .. (err or "Token inválido"), 5)
     end
 end
 
