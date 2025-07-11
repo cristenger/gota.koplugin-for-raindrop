@@ -27,6 +27,8 @@ local _ = require("gettext")
 
 -- MÓDULO DE SETTINGS
 local Settings = require("settings")
+-- NUEVO: Módulo para manejar el Reader
+local GotaReader = require("gota_reader")
 
 local Gota = WidgetContainer:extend{
     name = "gota",
@@ -77,6 +79,9 @@ function Gota:init()
     -- Inicializar caché para respuestas
     self.response_cache = {}
     self.cache_ttl = 300  -- 5 minutos de vida para el caché
+    
+    -- ELIMINADO: El registro de eventos no es necesario aquí
+    -- La integración con ReaderUI se hace de manera diferente
     
     self.ui.menu:registerToMainMenu(self)
 end
@@ -461,24 +466,12 @@ function Gota:showRaindrops(collection_id, collection_name, page)
                 excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
             end
             
-            -- Add a submenu with options for each article
+            -- CAMBIO: Eliminar el sub_item_table aquí también
             table.insert(menu_items, {
                 text = title .. "\n" .. domain .. excerpt,
-                sub_item_table = {
-                    {
-                        text = translation_func("Ver contenido"),
-                        callback = function()
-                            self:showRaindropContent(raindrop)
-                        end,
-                    },
-                    {
-                        text = translation_func("Descargar HTML"),
-                        enabled = raindrop.cache and raindrop.cache.status == "ready",
-                        callback = function()
-                            self:downloadRaindropHTML(raindrop)
-                        end,
-                    }
-                }
+                callback = function()
+                    self:showRaindropContent(raindrop)
+                end,
             })
         end
         
@@ -646,11 +639,6 @@ function Gota:showRaindropContent(raindrop)
         has_cache = false
     end
     
-   --[[  if has_cache then
-        self:showRaindropCachedContent(raindrop)
-        return
-    end ]]
-    
     local view_options = {
         {
             text = _("📖 Abrir en lector completo"),
@@ -664,7 +652,29 @@ function Gota:showRaindropContent(raindrop)
             end
         },
         {
-            text = _("Ver información del artículo"),
+            text = _("📄 Ver contenido en texto simple"),
+            enabled = has_cache,
+            callback = function()
+                if has_cache then
+                    self:showRaindropCachedContent(raindrop)
+                else
+                    self:notify(_("El contenido no está disponible aún"))
+                end
+            end
+        },
+        {
+            text = _("💾 Descargar HTML"),  -- NUEVO: Añadir opción de descarga aquí
+            enabled = has_cache,
+            callback = function()
+                if has_cache then
+                    self:downloadRaindropHTML(raindrop)
+                else
+                    self:notify(_("No hay contenido en caché disponible para descargar"))
+                end
+            end
+        },
+        {
+            text = _("ℹ️ Ver información del artículo"),
             callback = function()
                 self:showRaindropInfo(raindrop)
             end
@@ -673,7 +683,7 @@ function Gota:showRaindropContent(raindrop)
     
     if raindrop.link then
         table.insert(view_options, {
-            text = _("Copiar URL"),
+            text = _("🔗 Copiar URL"),
             callback = function()
                 self:showLinkInfo(raindrop)
             end
@@ -692,7 +702,7 @@ function Gota:showRaindropContent(raindrop)
         cache_message = status_names[raindrop.cache.status] or _("La caché no está disponible")
         
         table.insert(view_options, {
-            text = _("Intentar recargar artículo completo"),
+            text = _("🔄 Intentar recargar artículo completo"),
             callback = function()
                 self:reloadRaindrop(raindrop._id)
             end
@@ -878,6 +888,7 @@ function Gota:searchRaindrops(search_term, page)  -- ✅ CORREGIDO: Agregada la 
                 excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
             end
             
+            -- CAMBIO: Eliminar el sub_item_table aquí también
             table.insert(menu_items, {
                 text = title .. "\n" .. domain .. excerpt,
                 callback = function()
@@ -1143,8 +1154,10 @@ function Gota:openHTMLFile(filename)
         local reader = ReaderUI:new{
             document = document,
             dithered = true,
+            delete_on_close = true,  -- Para borrar el archivo temporal cuando se cierra
         }
-        UIManager:show(reader)
+        -- Reemplazar UIManager:show() por UIManager:setWidget()
+        UIManager:setWidget(reader)
     else
         self:notify(_("No se pudo abrir el archivo HTML"))
     end
@@ -1352,11 +1365,11 @@ function Gota:showRaindropCachedContent(raindrop)
     formatted_content = formatted_content .. content
     
     local text_viewer = TextViewer:new{
-        title = _("Contenido en caché") .. " [↓]",
-        text = formatted_content,
-        width = Device.screen:getWidth(),
-        height = Device.screen:getHeight(),
-        buttons = buttons_table,
+    title = _("Contenido en caché"),
+    text = formatted_content,
+    width = Device.screen:getWidth(),
+    height = Device.screen:getHeight(),
+    buttons = buttons_table,
     }
     
     -- Add a tap handler for the title region to download HTML
@@ -1437,6 +1450,10 @@ end
 
 -- Función principal para abrir en ReaderUI
 function Gota:openInReader(raindrop)
+    -- CERRAR TODO antes de abrir el lector
+    self:closeAllWidgets()
+    
+    -- Verificar que tenemos contenido
     if not raindrop or not raindrop.cache or not raindrop.cache.text then
         self:notify(_("No hay contenido disponible"))
         return
@@ -1458,26 +1475,20 @@ function Gota:openInReader(raindrop)
         file:write(html)
         file:close()
         
-        -- Cerrar menús
-        if self.article_menu then UIManager:close(self.article_menu) end
-        if self.raindrops_menu then UIManager:close(self.raindrops_menu) end
-        
-        -- Abrir en lector
-        local ReaderUI = require("apps/reader/readerui")
-        local DocumentRegistry = require("document/documentregistry")
-        
-        -- Then open the document
-        local document = DocumentRegistry:openDocument(filename)
-        if document then
-            local reader = ReaderUI:new{
-                document = document,
-                dithered = true,
-                delete_on_close = true,  -- Para borrar el archivo temporal cuando se cierra
-            }
-            UIManager:show(reader)
-        else
-            self:notify(_("No se pudo abrir el archivo HTML"))
-        end
+        -- Usar el nuevo módulo GotaReader para abrir el documento
+        GotaReader:show({
+            path = filename,
+            raindrop = raindrop,  -- Pasar el raindrop completo para referencia
+            on_return_callback = function()
+                -- Este callback se ejecuta cuando el usuario vuelve de leer
+                logger.dbg("Gota: Usuario volvió del lector")
+                
+                -- Opcionalmente, mostrar de nuevo el menú del artículo
+                UIManager:scheduleIn(0.2, function()
+                    self:showRaindropContent(raindrop)
+                end)
+            end,
+        })
     else
         self:notify(_("Error al crear archivo temporal"))
     end
