@@ -74,6 +74,10 @@ Once configured, you can:
 
 ## 📖 Usage Guide
 
+<p align="center">
+  <img src="gota.koplugin/gota-m.jpeg" alt="Gota Plugin Menu" width="600">
+</p>
+
 ### Browse Your Collections
 
 ```
