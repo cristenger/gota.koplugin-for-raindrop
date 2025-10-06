@@ -16,7 +16,7 @@ local DataStorage = require("datastorage")
 local logger = require("logger")
 local _ = require("gettext")
 
--- MÓDULOS DEL PLUGIN
+-- MÓDULOS DEL PLUGIN - KOReader maneja automáticamente el path del plugin
 local Settings = require("settings")
 local API = require("api")
 local ContentProcessor = require("content_processor")
@@ -33,11 +33,15 @@ local Gota = WidgetContainer:extend{
 -- ========== INICIALIZACIÓN ==========
 
 function Gota:init()
-    -- Inicializar módulos core
-    self.settings = Settings:new()
-    self.settings:load()
+    logger.dbg("Gota: init() started")
     
+    -- Inicializar configuración
+    self.settings = Settings:new()
+    
+    -- Inicializar API (pasando settings)
     self.api = API:new(self.settings)
+    
+    -- Inicializar procesador de contenido
     self.content_processor = ContentProcessor:new()
     
     -- Inicializar módulos UI
@@ -61,6 +65,7 @@ function Gota:init()
     self.widgets = {}
     
     self.ui.menu:registerToMainMenu(self)
+    logger.dbg("Gota: init() completed")
 end
 
 -- ========== UTILIDADES BÁSICAS ==========
@@ -116,61 +121,67 @@ end
 
 -- ========== MENÚ PRINCIPAL ==========
 
-function Gota:addToMainMenu(menu_items)
-    menu_items.gota = {
-        text = _("Gota (Raindrop.io)"),
-        sorting_hint = "search",
-        sub_item_table = {
-            {
-                text = _("All articles"),
-                enabled_func = function() return self.settings:isTokenValid() end,
-                callback = function()
-                    NetworkMgr:runWhenOnline(function()
-                        self:showRaindrops(0, _("All articles"))
-                    end)
-                end,
-            },
-            {
-                text = _("View collections"),
-                enabled_func = function() return self.settings:isTokenValid() end,
-                callback = function()
-                    NetworkMgr:runWhenOnline(function()
-                        self:showCollections()
-                    end)
-                end,
-            },
-            {
-                text = _("Search articles"),
-                enabled_func = function() return self.settings:isTokenValid() end,
-                callback = function() self:showSearchDialog() end,
-            },
-            {
-                text = _("Advanced search"),
-                enabled_func = function() return self.settings:isTokenValid() end,
-                callback = function()
-                    NetworkMgr:runWhenOnline(function()
-                        self:showAdvancedSearchDialog()
-                    end)
-                end,
-            },
-            {
-                text = _("Configuration"),
-                sub_item_table = {
-                    {
-                        text = _("Configure access token"),
-                        callback = function() self:showTokenDialog() end,
-                    },
-                    {
-                        text = _("Configure download folder"),
-                        callback = function() self:showDownloadPathDialog() end,
-                    },
-                    {
-                        text = _("Debug Raindrop API connection"),
-                        callback = function() self:showDebugInfo() end,
-                    },
+-- Construye el submenú dinámicamente (patrón Hardcover)
+function Gota:getSubMenuItems()
+    return {
+        {
+            text = _("All articles"),
+            enabled_func = function() return self.settings:isTokenValid() end,
+            callback = function()
+                NetworkMgr:runWhenOnline(function()
+                    self:showRaindrops(0, _("All articles"))
+                end)
+            end,
+        },
+        {
+            text = _("View collections"),
+            enabled_func = function() return self.settings:isTokenValid() end,
+            callback = function()
+                NetworkMgr:runWhenOnline(function()
+                    self:showCollections()
+                end)
+            end,
+        },
+        {
+            text = _("Search articles"),
+            enabled_func = function() return self.settings:isTokenValid() end,
+            callback = function() self:showSearchDialog() end,
+        },
+        {
+            text = _("Advanced search"),
+            enabled_func = function() return self.settings:isTokenValid() end,
+            callback = function()
+                NetworkMgr:runWhenOnline(function()
+                    self:showAdvancedSearchDialog()
+                end)
+            end,
+        },
+        {
+            text = _("Configuration"),
+            sub_item_table = {
+                {
+                    text = _("Configure access token"),
+                    callback = function() self:showTokenDialog() end,
+                },
+                {
+                    text = _("Configure download folder"),
+                    callback = function() self:showDownloadPathDialog() end,
+                },
+                {
+                    text = _("Debug Raindrop API connection"),
+                    callback = function() self:showDebugInfo() end,
                 },
             },
-        }
+        },
+    }
+end
+
+function Gota:addToMainMenu(menu_items)
+    menu_items.gota = {
+        text = _("Gota"),
+        sub_item_table_func = function()
+            return self:getSubMenuItems()
+        end,
     }
 end
 

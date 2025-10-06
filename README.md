@@ -58,12 +58,24 @@ The plugin uses Raindrop.io **Test Tokens**, which are perfect for personal use 
 ### 2. Configure the Plugin
 
 1. Open KOReader
-2. Go to: **☰ Menu → Search → Gota (Raindrop.io) → Configuration**
+2. Go to: **☰ Menu → Gota → Configuration**
+   - *Note: On first use, the menu will show "NEW: Gota" until you open it once*
+   - *On some Kindle devices, look for "Gota" in the main menu list*
 3. Select **Configure access token**
 4. Paste your token
-5. Tap **Save** or **Test** to verify
+5. Tap **Save** (or **Test** to verify first)
+6. The token will be automatically loaded when you restart KOReader
 
-### 3. Start Reading!
+### 3. Find Gota in the Menu
+
+Gota appears in the **main menu** of KOReader:
+
+📍 **Location**: Tap the ☰ (menu icon) → Look for **"Gota"** in the list
+<p align="center">
+  <img src="gota.koplugin/gota-m.jpeg" alt="Gota Plugin Menu" width="600">
+</p>
+
+### 4. Start Reading!
 
 Once configured, you can:
 
@@ -74,14 +86,11 @@ Once configured, you can:
 
 ## 📖 Usage Guide
 
-<p align="center">
-  <img src="gota.koplugin/gota-m.jpeg" alt="Gota Plugin Menu" width="600">
-</p>
 
 ### Browse Your Collections
 
 ```
-Menu → Search → Gota → View collections
+Menu → Gota → View collections
 ```
 
 - Shows all your Raindrop collections with article counts
@@ -92,14 +101,14 @@ Menu → Search → Gota → View collections
 
 **Simple Search:**
 ```
-Menu → Search → Gota → Search articles
+Menu → Gota → Search articles
 ```
 - Enter any search term
 - Results show matching articles across all collections
 
 **Advanced Search:**
 ```
-Menu → Search → Gota → Advanced search
+Menu → Gota → Advanced search
 ```
 - Filter by **tags** (e.g., `#programming`, `#design`)
 - Filter by **type** (article, image, document)
@@ -118,7 +127,7 @@ When viewing article results, tap any article to see options:
 ### Configure Download Folder
 
 ```
-Menu → Search → Gota → Configuration → Configure download folder
+Menu → Gota → Configuration → Configure download folder
 ```
 
 **Option 1: Browse folders (Recommended)**
@@ -171,32 +180,11 @@ See [l10n/README.md](l10n/README.md) for detailed translation guide.
 - **Shows**: Token status, API URL, saved settings
 - **Use**: Troubleshoot connection issues
 
-## 🔧 Troubleshooting
-
-### "Error with token" message
-
-1. Verify your token is correct
-2. Check internet connection
-3. Go to Configuration → Debug Raindrop API connection
-4. Try generating a new test token
-
-### "No cached content available"
-
-Some articles don't have cached content in Raindrop:
-- **Try**: Tap "Try reloading full article"
-- **Alternative**: Use "Copy URL" and open in browser
-
 ### Articles not showing
 
 1. Check you have articles in Raindrop.io
-2. Verify token has correct permissions
+2. Verify token 
 3. Try "All articles" to see everything
-
-### Search returns no results
-
-- Check spelling
-- Try simpler search terms
-- Advanced search: verify tag exists in your Raindrop
 
 ### SSL Certificate Issues
 
@@ -224,16 +212,6 @@ gota.koplugin/
 └── _meta.lua                 # Plugin metadata
 ```
 
-## 🤝 Contributing
-
-Contributions are welcome! Areas where you can help:
-
-- 🌍 **Translations**: Add support for more languages
-- 🐛 **Bug Reports**: Found an issue? Open an issue
-- ✨ **Features**: Suggest improvements via issues
-- 📝 **Documentation**: Improve README or add tutorials
-- 🧪 **Testing**: Test on different devices and report results
-
 ### Development Setup
 
 ```bash
@@ -252,19 +230,6 @@ python3 extract_strings.py
 cp -r ../gota.koplugin /path/to/koreader/plugins/
 ```
 
-## 📋 Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
-
-### Latest - v2.0.0 (October 5, 2025)
-
-- ✨ Full internationalization support (English/Spanish)
-- 🔍 Advanced search with tag and type filters
-- 🎨 Reorganized menu with improved UX
-- 📁 Visual folder picker for download configuration
-- 🐛 Fixed tag filtering (now case-insensitive)
-- 🖥️ Full-screen search results
-- 🗑️ Removed redundant "Download HTML" option
 
 ## 📄 License
 
