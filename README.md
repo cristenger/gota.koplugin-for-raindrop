@@ -37,16 +37,6 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 
 ## 🚀 Quick Start
 
-### 1. Get Your Raindrop.io Access Token
-
-**Option 1: Test Token (Recommended for beginners)**
-
-1. Go to [Raindrop.io Integrations](https://app.raindrop.io/settings/integrations)
-2. Click "Create new app"
-3. Copy the **Test token** (it looks like: `abc123def456...`)
-
-**Option 2: Personal Access Token (For advanced users)**
-
 1. Use your existing personal access token from Raindrop.io
 
 ### 2. Configure the Plugin
@@ -214,8 +204,6 @@ gota.koplugin/
 └── _meta.lua                 # Plugin metadata
 ```
 
-**Total**: ~2,000 lines of modular Lua code
-
 ## 📊 Statistics
 
 - **Translations**: 133 unique strings, 157 total
@@ -274,11 +262,6 @@ MIT License - see [LICENSE](LICENSE) file for details
 - [KOReader](https://github.com/koreader/koreader) - The amazing e-reader software
 - [Raindrop.io](https://raindrop.io) - Excellent bookmark management service
 - All contributors and testers
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/cristenger/gota.koplugin-for-raindrop/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/cristenger/gota.koplugin-for-raindrop/discussions)
 
 ---
 
