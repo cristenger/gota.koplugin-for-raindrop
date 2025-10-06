@@ -1,32 +1,29 @@
-# 📋 Changelog - Gota Plugin para KOReader
+# 📋 Changelog - Gota Plugin for KOReader
 
-## v2.0.0 - Full Internationalization (5 de octubre de 2025)
+## v2.0.0 - Full Internationalization (October 5, 2025)
 
-### 🌍 Internacionalización Completa
 
-**BREAKING CHANGE**: El idioma fuente del plugin cambió de español a inglés.
+#### i18n System with gettext
 
-#### Sistema de i18n con gettext
+The plugin now implements KOReader's standard internationalization system using `.po`/`.mo` files:
 
-El plugin ahora implementa el sistema estándar de internacionalización de KOReader usando archivos `.po`/`.mo`:
-
-**Estructura**:
+**Structure**:
 ```
 l10n/
 ├── templates/
-│   └── gota.pot          # Template de traducción (126 strings únicos)
+│   └── gota.pot          # Translation template (126 unique strings)
 └── es/
-    ├── gota.po           # Traducción al español
-    └── gota.mo           # Binario compilado
+    ├── gota.po           # Spanish translation
+    └── gota.mo           # Compiled binary
 ```
 
-**Características**:
-- ✅ Detección automática del idioma de KOReader
-- ✅ Inglés como idioma predeterminado (source language)
-- ✅ Traducción completa al español (126 strings)
-- ✅ Listo para agregar más idiomas fácilmente
+**Features**:
+- ✅ Automatic detection of KOReader's language
+- ✅ English as the default language (source language)
+- ✅ Full Spanish translation (126 strings)
+- ✅ Ready to easily add more languages
 
-**Archivos modificados** (146 strings reemplazados):
+**Modified files** (146 strings replaced):
 - `api.lua`: 7 strings
 - `article_manager.lua`: 16 strings
 - `content_processor.lua`: 26 strings
@@ -36,54 +33,54 @@ l10n/
 - `ui_builder.lua`: 26 strings
 - `_meta.lua`: 2 strings
 
-**Herramientas de traducción**:
-- `extract_strings.py`: Extrae strings del código y genera .pot/.po
-- `compile_translations.sh`: Compila archivos .po → .mo
-- `replace_strings.py`: Script de migración español → inglés
+**Translation Tools**:
+- `extract_strings.py`: Extracts strings from the code and generates .pot/.po
+- `compile_translations.sh`: Compiles .po → .mo files
+- `replace_strings.py`: Spanish → English migration script
 
-**Cómo contribuir traducciones**:
-1. Copiar `l10n/templates/gota.pot` a `l10n/<idioma>/gota.po`
-2. Traducir los strings en el archivo .po
-3. Compilar con `./compile_translations.sh <idioma>`
+**How to contribute translations**:
+1. Copy `l10n/templates/gota.pot` to `l10n/<language>/gota.po`
+2. Translate the strings in the .po file
+3. Compile with `./compile_translations.sh <language>`
 
-**Ejemplo de traducción**:
+**Translation Example**:
 ```po
 msgid "Configure access token"
-msgstr "Configurar token de acceso"  # Para español
+msgstr "Configurar token de acceso"  # For Spanish
 ```
 
-### 🎯 Simplificación de UI
+### 🎯 UI Simplification
 
-**Cambio**: Se eliminó la opción redundante "Download HTML" del menú de artículos.
+**Change**: The redundant "Download HTML" option has been removed from the article menu.
 
-**Antes**: 
-- "Open in full reader" → Guardaba archivo temporal y abría en lector
-- "Download HTML" → Guardaba archivo permanente y mostraba opciones
+**Before**:
+- "Open in full reader" → Saved a temporary file and opened it in the reader
+- "Download HTML" → Saved a permanent file and showed options
 
-**Ahora**:
-- "Open in full reader" → Guarda archivo permanente y abre en lector
-- Misma funcionalidad, interfaz más simple
+**Now**:
+- "Open in full reader" → Saves a permanent file and opens it in the reader
+- Same functionality, simpler interface
 
-**Beneficios**:
-- ✅ Menú más limpio (3 opciones en lugar de 4)
-- ✅ Comportamiento más intuitivo
-- ✅ Los archivos siempre se guardan permanentemente
-- ✅ Reducción de código (~60 líneas eliminadas)
+**Benefits**:
+- ✅ Cleaner menu (3 options instead of 4)
+- ✅ More intuitive behavior
+- ✅ Files are always saved permanently
+- ✅ Code reduction (~60 lines removed)
 
-**Archivos afectados**:
-- `article_manager.lua`: Eliminada función `downloadHTML()` y `openDownloadFolder()`
-- `ui_builder.lua`: Removida opción "Download HTML" del menú
-- `main.lua`: Eliminado callback `download_html` y función `showDownloadOptions()`
+**Affected Files**:
+- `article_manager.lua`: Removed `downloadHTML()` and `openDownloadFolder()` functions
+- `ui_builder.lua`: Removed "Download HTML" option from the menu
+- `main.lua`: Removed `download_html` callback and `showDownloadOptions()` function
 
-**Estadísticas actualizadas**:
-- Total strings únicos: **127** (+2 vs búsqueda avanzada)
-- Total apariciones: **151** (+2 vs búsqueda avanzada)
+**Updated Statistics**:
+- Total unique strings: **127** (+2 vs advanced search)
+- Total occurrences: **151** (+2 vs advanced search)
 
-### 🎨 Mejoras de UX
+### 🎨 UX Improvements
 
-**Reorganización del Menú Principal**:
+**Main Menu Reorganization**:
 
-**Antes**:
+**Before**:
 ```
 ├── Configure access token
 ├── Configure download folder
@@ -94,7 +91,7 @@ msgstr "Configurar token de acceso"  # Para español
 └── All articles
 ```
 
-**Ahora**:
+**Now**:
 ```
 ├── All articles
 ├── View collections
@@ -106,243 +103,243 @@ msgstr "Configurar token de acceso"  # Para español
     └── Debug Raindrop API connection
 ```
 
-**Beneficios**:
-- ✅ Opciones de uso frecuente al principio
-- ✅ Configuración agrupada en submenú
-- ✅ Orden lógico: ver → buscar → configurar
-- ✅ Nombre más descriptivo para debug
+**Benefits**:
+- ✅ Frequently used options at the top
+- ✅ Configuration grouped in a submenu
+- ✅ Logical order: view → search → configure
+- ✅ More descriptive name for debug
 
-**Pantalla Completa en Búsquedas**:
-- Resultados de búsqueda ahora ocupan toda la pantalla
-- Consistente con colecciones y "All articles"
-- Mejor experiencia de lectura
+**Full Screen in Searches**:
+- Search results now take up the full screen
+- Consistent with collections and "All articles"
+- Better reading experience
 
-### 🔍 Búsqueda Avanzada con Filtros
+### 🔍 Advanced Search with Filters
 
-**Nueva Funcionalidad**: Sistema de búsqueda avanzada con filtros contextuales.
+**New Feature**: Advanced search system with contextual filters.
 
-**Características**:
-- ✅ Nueva opción "Advanced search" en menú principal
-- ✅ Filtrado por **tags** (etiquetas de usuario)
-- ✅ Filtrado por **tipo** (article, image, video, document)
-- ✅ Combinación de búsqueda de texto + filtros
-- ✅ Muestra tags populares con contador
-- ✅ Muestra tipos disponibles con contador
-- ✅ Título de resultados indica filtros activos
+**Features**:
+- ✅ New "Advanced search" option in the main menu
+- ✅ Filtering by **tags** (user tags)
+- ✅ Filtering by **type** (article, image, video, document)
+- ✅ Combination of text search + filters
+- ✅ Shows popular tags with a counter
+- ✅ Shows available types with a counter
+- ✅ Results title indicates active filters
 
-**Antes** (v1.9.0):
-- Solo búsqueda por texto simple
+**Before** (v1.9.0):
+- Only simple text search
 
-**Ahora** (v2.0.0):
-- "Search articles" → Búsqueda simple (solo texto)
-- "Advanced search" → Búsqueda con filtros (tags, tipos, texto opcional)
+**Now** (v2.0.0):
+- "Search articles" → Simple search (text only)
+- "Advanced search" → Search with filters (tags, types, optional text)
 
-**Ejemplo de uso**:
-1. Usuario selecciona "Advanced search"
-2. Plugin carga filtros disponibles desde API
-3. Muestra tags populares: `guides (9)`, `performance (19)`, etc.
-4. Muestra tipos: `article (313)`, `image (143)`, `video (26)`, etc.
-5. Usuario ingresa criterios: tag="guides", type="article"
-6. Resultados se filtran: `Results: '' (42) [#guides] [article]`
+**Usage Example**:
+1. User selects "Advanced search"
+2. Plugin loads available filters from the API
+3. Shows popular tags: `guides (9)`, `performance (19)`, etc.
+4. Shows types: `article (313)`, `image (143)`, `video (26)`, etc.
+5. User enters criteria: tag="guides", type="article"
+6. Results are filtered: `Results: '' (42) [#guides] [article]`
 
-**Implementación técnica**:
-- `api.lua`: 
-  - Nuevo método `getFilters(collectionId)` → obtiene filtros disponibles
-  - Método `searchRaindrops()` extendido con parámetro `filters`
+**Technical Implementation**:
+- `api.lua`:
+  - New `getFilters(collectionId)` method → gets available filters
+  - `searchRaindrops()` method extended with `filters` parameter
 - `dialogs.lua`:
-  - Nueva función `showAdvancedSearchDialog()` → dialog con 3 campos
-  - Usa `MultiInputDialog` para entrada múltiple
+  - New `showAdvancedSearchDialog()` function → dialog with 3 fields
+  - Uses `MultiInputDialog` for multiple inputs
 - `main.lua`:
-  - Nueva función `showAdvancedSearchDialog()` → carga filtros y muestra dialog
-  - Función `searchRaindrops()` extendida con parámetro `filters`
-  - Título de resultados muestra filtros activos
+  - New `showAdvancedSearchDialog()` function → loads filters and shows dialog
+  - `searchRaindrops()` function extended with `filters` parameter
+  - Results title shows active filters
 
-**API de Raindrop utilizada**:
+**Raindrop API Used**:
 ```
 GET /filters/{collectionId}
 GET /raindrops/0?search=X&tag=Y&type=Z
 ```
 
-**Beneficios**:
-- ✅ Búsqueda más precisa y contextual
-- ✅ Descubrimiento de contenido por tags
-- ✅ Filtrado por tipo de contenido
-- ✅ Experiencia similar a la app oficial de Raindrop
-- ✅ Mantiene búsqueda simple para casos rápidos
+**Benefits**:
+- ✅ More precise and contextual search
+- ✅ Content discovery by tags
+- ✅ Filtering by content type
+- ✅ Experience similar to the official Raindrop app
+- ✅ Keeps simple search for quick cases
 
 ---
 
-## v1.9.0 - UX Improvements (5 de octubre de 2025)
+## v1.9.0 - UX Improvements (October 5, 2025)
 
-### ✨ Mejoras
+### ✨ Improvements
 
-#### Unificación de Carpetas de Descarga
+#### Unification of Download Folders
 
-**Problema**: Las dos opciones para ver artículos guardaban archivos en ubicaciones diferentes:
-- "Abrir en lector completo" → Creaba archivo temporal en `/cache/gota/`
-- "Descargar HTML" → Guardaba archivo en `/gota_articles/`
+**Problem**: The two options for viewing articles saved files in different locations:
+- "Open in full reader" → Created a temporary file in `/cache/gota/`
+- "Download HTML" → Saved a file in `/gota_articles/`
 
-**Solución**: 
-1. **Carpeta unificada**: Ambas opciones ahora usan la **misma carpeta configurable**
-2. **Nueva configuración**: Se agregó campo `download_path` en settings.lua (default: "gota_articles")
-3. **UI de configuración**: Nueva opción en menú principal "Configurar carpeta de descargas"
-4. **Persistencia**: La configuración se guarda automáticamente en el archivo de settings
+**Solution**:
+1. **Unified folder**: Both options now use the **same configurable folder**
+2. **New setting**: Added `download_path` field in settings.lua (default: "gota_articles")
+3. **Configuration UI**: New option in the main menu "Configure download folder"
+4. **Persistence**: The configuration is automatically saved in the settings file
 
-**Cambios técnicos**:
-- `settings.lua`: Agregados `download_path`, `getDownloadPath()`, `setDownloadPath()`, `getFullDownloadPath()`
-- `article_manager.lua`: Modificados `downloadHTML()` y `openInReader()` para usar ruta configurable
-- `article_manager.lua`: Agregado `setSettings()` para recibir referencia a settings
-- `dialogs.lua`: Agregado `showDownloadPathDialog()` con validación de ruta y sanitización
-- `main.lua`: Agregado menú "Configurar carpeta de descargas" y método `showDownloadPathDialog()`
+**Technical Changes**:
+- `settings.lua`: Added `download_path`, `getDownloadPath()`, `setDownloadPath()`, `getFullDownloadPath()`
+- `article_manager.lua`: Modified `downloadHTML()` and `openInReader()` to use the configurable path
+- `article_manager.lua`: Added `setSettings()` to receive a reference to settings
+- `dialogs.lua`: Added `showDownloadPathDialog()` with path validation and sanitization
+- `main.lua`: Added "Configure download folder" menu and `showDownloadPathDialog()` method
 
-**Beneficios para el usuario**:
-- ✅ Todos los artículos se guardan en la misma carpeta
-- ✅ Carpeta configurable según preferencias del usuario
-- ✅ Ruta relativa a DataDir (típicamente `koreader/`)
-- ✅ Configuración persistente entre sesiones
+**User Benefits**:
+- ✅ All articles are saved in the same folder
+- ✅ Configurable folder according to user preferences
+- ✅ Path relative to DataDir (typically `koreader/`)
+- ✅ Persistent settings between sessions
 
-#### Revisión de Internacionalización (i18n)
+#### Internationalization (i18n) Review
 
-**Verificación**: Se revisó que todos los strings de UI usen correctamente la función `_()` de gettext
-- ✅ `dialogs.lua`: Todos los botones y textos usan `_()` 
-- ✅ `menu_builder.lua`: Todos los ítems de menú usan `_()`
-- ✅ `main.lua`: Todas las notificaciones y mensajes usan `_()`
+**Verification**: Checked that all UI strings correctly use the gettext `_()` function
+- ✅ `dialogs.lua`: All buttons and texts use `_()`
+- ✅ `menu_builder.lua`: All menu items use `_()`
+- ✅ `main.lua`: All notifications and messages use `_()`
 
-**Idioma por defecto**: Español (source language)
-**Soporte futuro**: El plugin está listo para traducciones a otros idiomas mediante archivos `.po` de KOReader
-
----
-
-## v1.8.2 - Bugfix Release (5 de octubre de 2025)
-
-### 🐛 Bug Corregido
-
-#### Inconsistencia en Detección de Caché de Artículos
-
-**Síntoma**: El menú de artículo mostraba "La caché no está disponible" pero al ver la información del artículo indicaba que SÍ había caché disponible (status: ready, size > 0).
-
-**Causa Raíz**: 
-1. La función `hasValidCache()` consideraba que había caché válido si `cache.status == "ready"` Y `cache.size > 0`, incluso sin tener el contenido HTML (`cache.text`) cargado
-2. El flujo en `main.lua` era confuso: verificaba `hasValidCache()` antes de intentar cargar el contenido
-3. Según la API de Raindrop.io, el objeto `raindrop` incluye metadata del caché (`status`, `size`) pero NO el contenido HTML. El contenido requiere una llamada separada a `/raindrop/{id}/cache`
-
-**Solución**:
-
-1. **Mejorada `hasValidCache()` en article_manager.lua**:
-```lua
-// Lógica más clara y explícita
-- Primero verifica que existe cache
-- Luego verifica que status == "ready"
-- Si ya hay texto cargado, verifica que tenga >50 caracteres
-- Si no hay texto pero size > 0, retorna true (disponible para descarga)
-```
-
-2. **Mejorada `loadCacheContent()` en article_manager.lua**:
-```lua
-// Manejo de errores más robusto
-- Verifica que status == "ready" antes de intentar cargar
-- Si falla la carga, NO establece texto por defecto
-- Logs más descriptivos para debugging
-```
-
-3. **Mejorado flujo en `showRaindropContent()` en main.lua**:
-```lua
-// Separación clara de conceptos
-1. cache_available: ¿Está disponible? (status == "ready")
-2. Si disponible pero sin texto → intentar cargar
-3. has_cache: ¿Realmente tenemos contenido? (texto cargado y válido)
-```
-
-**Archivos modificados**:
-- `article_manager.lua`: Funciones `hasValidCache()` y `loadCacheContent()`
-- `main.lua`: Función `showRaindropContent()`
-
-**Resultado**: 
-- Ahora el menú refleja correctamente si el contenido está disponible para uso inmediato
-- Los mensajes son consistentes con el estado real del caché
-- Mejor manejo de errores cuando falla la carga del contenido
-
-### ✅ Verificación
-- Todos los módulos con sintaxis correcta
-- Lógica de caché más robusta y clara
+**Default language**: Spanish (source language)
+**Future support**: The plugin is ready for translations into other languages using KOReader's `.po` files
 
 ---
 
-## v1.8.1 - Bugfix Release (5 de octubre de 2025)
+## v1.8.2 - Bugfix Release (October 5, 2025)
 
-### 🐛 Bugs Corregidos
+### 🐛 Bug Fixed
 
-#### 1. Error en Closures de Diálogos (dialogs.lua)
-**Síntoma**: Crash al hacer clic en cualquier botón de los diálogos
+#### Inconsistency in Article Cache Detection
+
+**Symptom**: The article menu showed "Cache is not available" but viewing the article information indicated that the cache WAS available (status: ready, size > 0).
+
+**Root Cause**:
+1. The `hasValidCache()` function considered the cache valid if `cache.status == "ready"` AND `cache.size > 0`, even without the HTML content (`cache.text`) being loaded.
+2. The flow in `main.lua` was confusing: it checked `hasValidCache()` before attempting to load the content.
+3. According to the Raindrop.io API, the `raindrop` object includes cache metadata (`status`, `size`) but NOT the HTML content. The content requires a separate call to `/raindrop/{id}/cache`.
+
+**Solution**:
+
+1. **Improved `hasValidCache()` in article_manager.lua**:
+```lua
+// Clearer and more explicit logic
+- First, it checks if the cache exists
+- Then, it checks if status == "ready"
+- If text is already loaded, it verifies that it has >50 characters
+- If there is no text but size > 0, it returns true (available for download)
+```
+
+2. **Improved `loadCacheContent()` in article_manager.lua**:
+```lua
+// More robust error handling
+- Checks that status == "ready" before attempting to load
+- If the load fails, it does NOT set default text
+- More descriptive logs for debugging
+```
+
+3. **Improved flow in `showRaindropContent()` in main.lua**:
+```lua
+// Clear separation of concepts
+1. cache_available: Is it available? (status == "ready")
+2. If available but without text → try to load
+3. has_cache: Do we really have content? (text loaded and valid)
+```
+
+**Modified files**:
+- `article_manager.lua`: `hasValidCache()` and `loadCacheContent()` functions
+- `main.lua`: `showRaindropContent()` function
+
+**Result**:
+- The menu now correctly reflects if the content is available for immediate use
+- Messages are consistent with the actual state of the cache
+- Better error handling when content loading fails
+
+### ✅ Verification
+- All modules have correct syntax
+- More robust and clear cache logic
+
+---
+
+## v1.8.1 - Bugfix Release (October 5, 2025)
+
+### 🐛 Bugs Fixed
+
+#### 1. Error in Dialog Closures (dialogs.lua)
+**Symptom**: Crash when clicking any button in the dialogs
 ```
 attempt to index global 'token_dialog' (a nil value)
 ```
 
-**Causa**: Variables locales declaradas y asignadas en la misma línea no están disponibles para closures internos.
+**Cause**: Local variables declared and assigned on the same line are not available to inner closures.
 
-**Solución**: Declarar variables antes de asignarlas
+**Solution**: Declare variables before assigning them
 ```lua
--- ANTES
+-- BEFORE
 local token_dialog = InputDialog:new{...}
 
--- DESPUÉS  
+-- AFTER
 local token_dialog
 token_dialog = InputDialog:new{...}
 ```
 
-**Archivos modificados**:
-- `dialogs.lua` líneas 28, 103
-- Funciones: `showTokenDialog()`, `showSearchDialog()`
+**Modified files**:
+- `dialogs.lua` lines 28, 103
+- Functions: `showTokenDialog()`, `showSearchDialog()`
 
-#### 2. Error de Sobrescritura de Función de Traducción (main.lua)
-**Síntoma**: Crash al ver contenido de artículos
+#### 2. Translation Function Overwrite Error (main.lua)
+**Symptom**: Crash when viewing article content
 ```
 attempt to call upvalue '_' (a nil value)
 ```
 
-**Causa**: Usar `_` como nombre de variable descartada sobrescribe la función `_()` de gettext.
+**Cause**: Using `_` as a discarded variable name overwrites the gettext `_()` function.
 
-**Solución**: Usar nombre diferente para variable descartada
+**Solution**: Use a different name for the discarded variable
 ```lua
--- ANTES
+-- BEFORE
 raindrop, _ = self.article_manager:loadFullArticle(raindrop)
 
--- DESPUÉS
+-- AFTER
 local err
 raindrop, err = self.article_manager:loadFullArticle(raindrop)
 ```
 
-**Archivos modificados**:
-- `main.lua` línea 248
-- Función: `showRaindropContent()`
+**Modified files**:
+- `main.lua` line 248
+- Function: `showRaindropContent()`
 
-### ✅ Verificación
-- Todos los módulos (8/8) con sintaxis correcta
-- Bugs conocidos: 0
+### ✅ Verification
+- All modules (8/8) have correct syntax
+- Known bugs: 0
 
 ---
 
-## v1.8 - Ultra Modularización (5 de octubre de 2025)
+## v1.8 - Ultra Modularization (October 5, 2025)
 
-### 🎯 Objetivo
-Reducir `main.lua` de forma ultra agresiva para facilitar el trabajo con LLMs.
+### 🎯 Objective
+To ultra-aggressively reduce `main.lua` to make it easier to work with LLMs.
 
-### ✨ Cambios Principales
+### ✨ Main Changes
 
-#### Reducción de main.lua
-- **v1.6 (original)**: 1571 líneas
-- **v1.7**: 940 líneas (-40%)
-- **v1.8**: 455 líneas (-71% total, -51% vs v1.7)
+#### Reduction of main.lua
+- **v1.6 (original)**: 1571 lines
+- **v1.7**: 940 lines (-40%)
+- **v1.8**: 455 lines (-71% total, -51% vs v1.7)
 
-#### Nuevos Módulos Creados
+#### New Modules Created
 
-**1. ui_builder.lua (280 líneas)**
-- Construcción de todos los menús
-- Items de colecciones y artículos
-- Paginación simple y avanzada
-- Botones para viewers
+**1. ui_builder.lua (280 lines)**
+- Construction of all menus
+- Collection and article items
+- Simple and advanced pagination
+- Buttons for viewers
 
-Funciones principales:
+Main functions:
 ```lua
 UIBuilder:buildRaindropItems(raindrops, callback)
 UIBuilder:buildCollectionItems(collections, callback)
@@ -352,12 +349,12 @@ UIBuilder:createMenu(title, items)
 UIBuilder:buildContentViewerButtons(callbacks)
 ```
 
-**2. dialogs.lua (231 líneas)**
-- Gestión de todos los diálogos
-- Input dialogs (token, búsqueda)
-- Text viewers (debug, info, contenido)
+**2. dialogs.lua (231 lines)**
+- Management of all dialogs
+- Input dialogs (token, search)
+- Text viewers (debug, info, content)
 
-Funciones principales:
+Main functions:
 ```lua
 Dialogs:showTokenDialog(current_token, callbacks)
 Dialogs:showSearchDialog(on_search, on_cancel)
@@ -367,13 +364,13 @@ Dialogs:showContentViewer(title, content, buttons)
 Dialogs:showLinkInfo(raindrop)
 ```
 
-**3. article_manager.lua (216 líneas)**
-- Gestión completa de operaciones con artículos
-- Carga de contenido completo y caché
-- Descarga de HTML
-- Apertura en reader
+**3. article_manager.lua (216 lines)**
+- Complete management of article operations
+- Loading of full content and cache
+- HTML download
+- Opening in reader
 
-Funciones principales:
+Main functions:
 ```lua
 ArticleManager:loadFullArticle(raindrop)
 ArticleManager:loadCacheContent(raindrop)
@@ -384,64 +381,64 @@ ArticleManager:openInReader(raindrop, close_callback, return_callback)
 ArticleManager:openDownloadFolder(filename, close_callback)
 ```
 
-### 🏗️ Nueva Arquitectura
+### 🏗️ New Architecture
 
 ```
-main.lua (455L) - COORDINADOR PURO
-├── settings.lua (153L) - Configuración
-├── api.lua (259L) - Comunicación Raindrop.io
-├── content_processor.lua (293L) - Procesamiento HTML
-├── ui_builder.lua (280L) - Construcción UI
-├── dialogs.lua (231L) - Gestión diálogos
-├── article_manager.lua (216L) - Gestión artículos
-└── gota_reader.lua (156L) - Integración ReaderUI
+main.lua (455L) - PURE COORDINATOR
+├── settings.lua (153L) - Configuration
+├── api.lua (259L) - Raindrop.io Communication
+├── content_processor.lua (293L) - HTML Processing
+├── ui_builder.lua (280L) - UI Construction
+├── dialogs.lua (231L) - Dialog Management
+├── article_manager.lua (216L) - Article Management
+└── gota_reader.lua (156L) - ReaderUI Integration
 ```
 
-### 📊 Beneficios para LLM
+### 📊 Benefits for LLM
 
-| Tarea | Líneas v1.6 | Líneas v1.8 | Mejora |
-|-------|-------------|-------------|--------|
-| Modificar UI | 1571 | 280 | -82% |
-| Cambiar diálogos | 1571 | 231 | -85% |
-| Gestionar artículos | 1571 | 216 | -86% |
-| Modificar API | 1571 | 259 | -84% |
-| Procesar HTML | 1571 | 293 | -81% |
-| Coordinación general | 1571 | 455 | -71% |
+| Task | Lines v1.6 | Lines v1.8 | Improvement |
+|---|---|---|---|
+| Modify UI | 1571 | 280 | -82% |
+| Change dialogs | 1571 | 231 | -85% |
+| Manage articles | 1571 | 216 | -86% |
+| Modify API | 1571 | 259 | -84% |
+| Process HTML | 1571 | 293 | -81% |
+| General coordination | 1571 | 455 | -71% |
 
-### 🎭 Separación de Responsabilidades
+### 🎭 Separation of Responsibilities
 
-**main.lua**: Solo coordinación, delegación y callbacks de alto nivel
-**ui_builder.lua**: Solo construcción de menús e items
-**dialogs.lua**: Solo creación y gestión de diálogos
-**article_manager.lua**: Solo operaciones con artículos
-**api.lua**: Solo comunicación HTTP
-**content_processor.lua**: Solo procesamiento de contenido
-**settings.lua**: Solo persistencia de configuración
-**gota_reader.lua**: Solo integración con ReaderUI
+**main.lua**: Only coordination, delegation, and high-level callbacks
+**ui_builder.lua**: Only construction of menus and items
+**dialogs.lua**: Only creation and management of dialogs
+**article_manager.lua**: Only article operations
+**api.lua**: Only HTTP communication
+**content_processor.lua**: Only content processing
+**settings.lua**: Only configuration persistence
+**gota_reader.lua**: Only integration with ReaderUI
 
 ---
 
-## v1.7 - Primera Refactorización (anterior)
+## v1.7 - First Refactoring (previous)
 
-### 🎯 Objetivo
-Modularizar el código monolítico para mejorar mantenibilidad.
+### 🎯 Objective
+To modularize the monolithic code to improve maintainability.
 
-### ✨ Cambios Principales
+### ✨ Main Changes
 
-#### Reducción de main.lua
-- **v1.6 (original)**: 1571 líneas
-- **v1.7**: 940 líneas (-40%)
+#### Reduction of main.lua
+- **v1.6 (original)**: 1571 lines
+- **v1.7**: 940 lines (-40%)
 
-#### Nuevos Módulos Creados
+#### New Modules Created
 
-**1. api.lua (259 líneas)**
-- Toda la comunicación con Raindrop.io API
-- Caché de respuestas (TTL 5 minutos)
-- Reintentos automáticos
-- Descompresión Gzip
-- Manejo de SSL sin verificación (para Kindle)
+**1. api.lua (259 lines)**
+- All communication with the Raindrop.io API
+- Response caching (5-minute TTL)
+- Automatic retries
+- Gzip decompression
+- SSL handling without verification (for Kindle)
 
-Funciones principales:
+Main functions:
 ```lua
 API:getUser()
 API:getCollections()
@@ -452,14 +449,14 @@ API:searchRaindrops(search_term, page, perpage)
 API:testToken(token)
 ```
 
-**2. content_processor.lua (293 líneas)**
-- Conversión HTML → Texto plano
-- Limpieza de contenido (ads, nav, etc.)
-- Extracción de contenido principal
-- Generación de HTML para reader
-- Formateo de información de artículos
+**2. content_processor.lua (293 lines)**
+- HTML → Plain text conversion
+- Content cleaning (ads, nav, etc.)
+- Main content extraction
+- HTML generation for the reader
+- Formatting of article information
 
-Funciones principales:
+Main functions:
 ```lua
 ContentProcessor:htmlToText(html_content)
 ContentProcessor:createReaderHTML(raindrop)
@@ -467,95 +464,96 @@ ContentProcessor:formatArticleText(raindrop)
 ContentProcessor:formatArticleInfo(raindrop)
 ```
 
-### 🏗️ Arquitectura
+### 🏗️ Architecture
 
 ```
-main.lua (940L) - Orquestador principal
-├── settings.lua (153L) - Configuración
-├── api.lua (259L) - Comunicación API (NUEVO)
-├── content_processor.lua (293L) - Procesamiento (NUEVO)
-└── gota_reader.lua (156L) - Integración ReaderUI
+main.lua (940L) - Main orchestrator
+├── settings.lua (153L) - Configuration
+├── api.lua (259L) - API Communication (NEW)
+├── content_processor.lua (293L) - Processing (NEW)
+└── gota_reader.lua (156L) - ReaderUI Integration
 ```
 
 ---
 
-## v1.6 y anteriores
+## v1.6 and earlier
 
-Versión monolítica original con toda la funcionalidad en `main.lua` (1571 líneas).
+Original monolithic version with all functionality in `main.lua` (1571 lines).
 
-### Funcionalidades
-- ✅ Configuración de token Raindrop.io
-- ✅ Listado de colecciones
-- ✅ Visualización de artículos con paginación
-- ✅ Búsqueda de artículos
-- ✅ Ver contenido en texto simple
-- ✅ Abrir artículos en lector completo (HTML)
-- ✅ Descargar HTML para lectura offline
-- ✅ Gestión de caché
-- ✅ Información de artículos
-- ✅ Copiar URLs
+### Features
+- ✅ Raindrop.io token configuration
+- ✅ Listing of collections
+- ✅ Viewing articles with pagination
+- ✅ Searching for articles
+- ✅ Viewing content in plain text
+- ✅ Opening articles in full reader (HTML)
+- ✅ Downloading HTML for offline reading
+- ✅ Cache management
+- ✅ Article information
+- ✅ Copying URLs
 - ✅ Debug info
 
 ---
 
-## 📊 Resumen de Evolución
+## 📊 Evolution Summary
 
-| Versión | main.lua | Módulos | Características |
-|---------|----------|---------|-----------------|
-| v1.6 | 1571 L | 4 | Monolítico |
-| v1.7 | 940 L (-40%) | 6 | API + Procesamiento separados |
+| Version | main.lua | Modules | Features |
+|---|---|---|---|
+| v1.6 | 1571 L | 4 | Monolithic |
+| v1.7 | 940 L (-40%) | 6 | API + Processing separated |
 | v1.8 | 455 L (-71%) | 9 | Ultra modular |
-| v1.8.1 | 455 L | 9 | Bugfixes de runtime |
+| v1.8.1 | 455 L | 9 | Runtime bugfixes |
 
-### Métricas Finales v1.8.1
+### Final Metrics v1.8.1
 
-- **Total líneas de código**: ~2,049 (sin contar backups)
-- **Módulos**: 9
-- **Módulo más grande**: content_processor.lua (293 líneas)
-- **Módulo más pequeño**: _meta.lua (6 líneas)
-- **Todos los módulos**: <300 líneas (óptimo para LLM)
-- **Bugs conocidos**: 0
-- **Cobertura de tests**: Manual (pendiente automatización)
+- **Total lines of code**: ~2,049 (not counting backups)
+- **Modules**: 9
+- **Largest module**: content_processor.lua (293 lines)
+- **Smallest module**: _meta.lua (6 lines)
+- **All modules**: <300 lines (optimal for LLM)
+- **Known bugs**: 0
+- **Test coverage**: Manual (automation pending)
 
 ---
 
-## 🎓 Lecciones Aprendidas
+## 🎓 Lessons Learned
 
 ### v1.8.1
-1. **Closures y variables locales**: Declarar variables antes de usarlas en callbacks
-2. **Nombres reservados**: Nunca usar `_` como variable en KOReader (es la función gettext)
-3. **Testing de runtime**: Verificación de sintaxis no es suficiente, siempre probar en emulador
+1. **Closures and local variables**: Declare variables before using them in callbacks
+2. **Reserved names**: Never use `_` as a variable in KOReader (it is the gettext function)
+3. **Runtime testing**: Syntax checking is not enough, always test in an emulator
 
 ### v1.8
-1. **Módulos <300 líneas**: Tamaño ideal para contexto de LLM
-2. **Single Responsibility**: Un módulo, una responsabilidad
-3. **Dependency Injection**: Los módulos reciben lo que necesitan en el constructor
-4. **Composición**: main.lua compone módulos en lugar de implementar todo
+1. **Modules <300 lines**: Ideal size for LLM context
+2. **Single Responsibility**: One module, one responsibility
+3. **Dependency Injection**: Modules receive what they need in the constructor
+4. **Composition**: main.lua composes modules instead of implementing everything
 
 ### v1.7
-1. **Separación de concerns**: API y procesamiento son responsabilidades independientes
-2. **Caché inteligente**: TTL de 5 minutos mejora experiencia de usuario
-3. **Manejo de errores**: Reintentos y mensajes claros son esenciales
+1. **Separation of concerns**: API and processing are independent responsibilities
+2. **Smart caching**: 5-minute TTL improves user experience
+3. **Error handling**: Retries and clear messages are essential
 
 ---
 
-## 🔮 Roadmap Futuro
+## 🔮 Future Roadmap
 
-### v1.9 (Planeado)
-- [ ] Unit tests automatizados
-- [ ] CI/CD con GitHub Actions
-- [ ] Mejoras en caché persistente
-- [ ] Soporte para colecciones anidadas
-- [ ] Sincronización de estado de lectura
+### v1.9 (Planned)
+- [ ] Automated unit tests
+- [ ] CI/CD with GitHub Actions
+- [ ] Improvements in persistent cache
+- [ ] Support for nested collections
+- [ ] Reading status synchronization
 
-### v2.0 (Visión)
-- [ ] Soporte para múltiples servicios (Pocket, Instapaper)
-- [ ] Anotaciones sincronizadas
-- [ ] Modo offline mejorado
-- [ ] Exportación de highlights
+### v2.0 (Vision)
+- [ ] Support for multiple services (Pocket, Instapaper)
+- [ ] Synchronized annotations
+- [ ] Improved offline mode
+- [ ] Exporting highlights
 
 ---
 
-**Mantenedor**: Christian Stenger  
-**Licencia**: MIT  
-**Última actualización**: 5 de octubre de 2025
+**Maintainer**: Christian Stenger
+**License**: MIT
+**Last updated**: October 5, 2025
+
