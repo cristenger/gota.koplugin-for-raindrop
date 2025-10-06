@@ -12,7 +12,7 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 
 - 📖 **Browse Collections**: Navigate your Raindrop collections with full pagination
 - 🔍 **Simple Search**: Quick text-based article search
-- 🎯 **Advanced Search**: Filter by tags and content types (article/image/video/document)
+- 🎯 **Advanced Search**: Filter by tags and content types (article/image/document)
 - 📄 **Read Articles**: View content as plain text or open in full HTML reader
 - 💾 **Save Offline**: Download HTML articles for offline reading
 - 🌍 **Internationalization**: Automatic language detection (English/Spanish supported)
@@ -98,7 +98,7 @@ Menu → Search → Gota → Search articles
 Menu → Search → Gota → Advanced search
 ```
 - Filter by **tags** (e.g., `#programming`, `#design`)
-- Filter by **type** (article, image, video, document)
+- Filter by **type** (article, image, document)
 - Combine filters with text search
 - Shows available tags with article counts
 
@@ -219,13 +219,6 @@ gota.koplugin/
 │   └── es/gota.po           # Spanish translation
 └── _meta.lua                 # Plugin metadata
 ```
-
-## 📊 Statistics
-
-- **Translations**: 133 unique strings, 157 total
-- **Languages**: English, Spanish (more coming!)
-- **API Endpoints**: 7 (collections, articles, search, filters, tags, etc.)
-- **Supported Content**: Articles, images, videos, documents
 
 ## 🤝 Contributing
 
