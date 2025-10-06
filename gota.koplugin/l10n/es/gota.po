@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 23:06\n"
-"PO-Revision-Date: 2025-10-05 23:06\n"
+"POT-Creation-Date: 2025-10-05 23:13\n"
+"PO-Revision-Date: 2025-10-05 23:13\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -160,14 +160,32 @@ msgstr "Warning: Token seems very short, but it will be saved anyway"
 msgid "Download folder"
 msgstr "Download folder"
 
-msgid "Invalid folder name"
-msgstr "Invalid folder name"
+msgid "Current folder"
+msgstr "Current folder"
+
+msgid "Full path"
+msgstr "Full path"
+
+msgid "Browse folders"
+msgstr "Browse folders"
+
+msgid "Enter folder name manually"
+msgstr "Enter folder name manually"
+
+msgid "Select download folder"
+msgstr "Select download folder"
 
 msgid "Folder configured: "
 msgstr "Folder configured: "
 
 msgid "Error saving: "
 msgstr "Error saving: "
+
+msgid "Enter the folder name where downloaded articles will be saved"
+msgstr "Enter the folder name where downloaded articles will be saved"
+
+msgid "Invalid folder name"
+msgstr "Invalid folder name"
 
 msgid "Please enter a folder name"
 msgstr "Please enter a folder name"

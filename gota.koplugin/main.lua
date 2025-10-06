@@ -2,10 +2,10 @@
     Gota: Lector para Raindrop.io en KOReader
     Permite leer artículos guardados en Raindrop.io directamente en tu dispositivo.
     
-    Versión: 1.8 (Modularizado Ultra - main.lua minimalista)
+    Versión: 1.8 
     
     IMPORTANTE: SSL está desactivado para evitar problemas de certificados
-    en dispositivos Kindle. Esto es necesario para que funcione correctamente.
+    en dispositivos eink. Esto es necesario para que funcione correctamente.
 ]]
 
 local InfoMessage = require("ui/widget/infomessage")

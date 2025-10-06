@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 23:06\n"
+"POT-Creation-Date: 2025-10-05 23:13\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -160,13 +160,31 @@ msgstr ""
 msgid "Download folder"
 msgstr ""
 
-msgid "Invalid folder name"
+msgid "Current folder"
+msgstr ""
+
+msgid "Full path"
+msgstr ""
+
+msgid "Browse folders"
+msgstr ""
+
+msgid "Enter folder name manually"
+msgstr ""
+
+msgid "Select download folder"
 msgstr ""
 
 msgid "Folder configured: "
 msgstr ""
 
 msgid "Error saving: "
+msgstr ""
+
+msgid "Enter the folder name where downloaded articles will be saved"
+msgstr ""
+
+msgid "Invalid folder name"
 msgstr ""
 
 msgid "Please enter a folder name"

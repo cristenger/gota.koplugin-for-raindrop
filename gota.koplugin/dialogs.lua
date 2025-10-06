@@ -101,10 +101,91 @@ end
 -- ========== DOWNLOAD PATH DIALOG ==========
 
 function Dialogs:showDownloadPathDialog(current_path, callbacks)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    
+    local full_path = callbacks.get_data_dir() .. "/" .. current_path .. "/"
+    
+    local button_dialog
+    button_dialog = ButtonDialog:new{
+        title = _("Download folder") .. "\n\n" .. 
+                _("Current folder") .. ":\n" .. current_path .. "\n\n" ..
+                _("Full path") .. ":\n" .. full_path,
+        buttons = {
+            {
+                {
+                    text = _("Browse folders"),
+                    callback = function()
+                        UIManager:close(button_dialog)
+                        self:showFolderPicker(callbacks)
+                    end,
+                },
+            },
+            {
+                {
+                    text = _("Enter folder name manually"),
+                    callback = function()
+                        UIManager:close(button_dialog)
+                        self:showDownloadPathInputDialog(current_path, callbacks)
+                    end,
+                },
+            },
+            {
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(button_dialog)
+                    end,
+                },
+            },
+        },
+    }
+    
+    UIManager:show(button_dialog)
+    return button_dialog
+end
+
+function Dialogs:showFolderPicker(callbacks)
+    local PathChooser = require("ui/widget/pathchooser")
+    local data_dir = callbacks.get_data_dir()
+    
+    local path_chooser
+    path_chooser = PathChooser:new{
+        title = _("Select download folder"),
+        path = data_dir,
+        select_directory = true,
+        select_file = false,
+        show_hidden = false,
+        onConfirm = function(folder_path)
+            -- Convertir ruta absoluta a relativa
+            local relative_path = folder_path:gsub("^" .. data_dir .. "/?", "")
+            
+            if relative_path == "" or relative_path == folder_path then
+                -- Si no es relativa al data_dir, usar el nombre de la carpeta
+                relative_path = folder_path:match("([^/]+)/?$") or "gota_articles"
+            end
+            
+            local success, err = callbacks.save(relative_path)
+            
+            if success then
+                callbacks.notify(_("Folder configured: ") .. relative_path, 3)
+            else
+                callbacks.notify(_("Error saving: ") .. (err or "unknown"))
+            end
+            
+            UIManager:close(path_chooser)
+        end,
+    }
+    
+    UIManager:show(path_chooser)
+    return path_chooser
+end
+
+function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
     local path_dialog
     path_dialog = InputDialog:new{
         title = _("Download folder"),
-        description = _("Ingresa el nombre de la carpeta donde se guardarán los artículos descargados.\n\nRuta completa: " .. (callbacks.get_data_dir() .. "/" .. current_path .. "/")),
+        description = _("Enter the folder name where downloaded articles will be saved") .. "\n\n" ..
+                     _("Full path") .. ": " .. (callbacks.get_data_dir() .. "/" .. current_path .. "/"),
         input = current_path,
         input_type = "text",
         buttons = {
@@ -135,7 +216,7 @@ function Dialogs:showDownloadPathDialog(current_path, callbacks)
                             if success then
                                 callbacks.notify(_("Folder configured: ") .. new_path, 3)
                             else
-                                callbacks.notify(_("Error saving: ") .. (err or "desconocido"))
+                                callbacks.notify(_("Error saving: ") .. (err or "unknown"))
                             end
                         else
                             callbacks.notify(_("Please enter a folder name"), 2)
