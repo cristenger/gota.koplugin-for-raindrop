@@ -193,18 +193,25 @@ function Gota:showSearchDialog()
 end
 
 function Gota:showAdvancedSearchDialog()
-    -- Primero obtener los filtros disponibles
+    -- Primero obtener los tags disponibles (más confiable que filters)
     self:showProgress(_("Loading filters..."))
-    local filters_data, err = self.api:getFilters(0)
+    local tags_data, tags_err = self.api:getTags(0)
+    local filters_data, filters_err = self.api:getFilters(0)
     self:hideProgress()
     
-    if not filters_data then
-        self:notify(_("Error loading filters: ") .. (err or _("Unknown error")), 4)
+    if not tags_data and not filters_data then
+        self:notify(_("Error loading filters: ") .. (tags_err or filters_err or _("Unknown error")), 4)
         return
     end
     
+    -- Combinar tags de ambos endpoints
+    local combined_data = filters_data or {}
+    if tags_data and tags_data.items then
+        combined_data.tags = tags_data.items
+    end
+    
     self.widgets.advanced_search_dialog = self.dialogs:showAdvancedSearchDialog(
-        filters_data,
+        combined_data,
         {
             on_search = function(search_term, filters)
                 self:searchRaindrops(search_term, 0, filters)
@@ -446,11 +453,9 @@ function Gota:searchRaindrops(search_term, page, filters)
     end
     
     self:closeWidget("search_menu")
-    self.widgets.search_menu = self.ui_builder:createCustomMenu(
+    self.widgets.search_menu = self.ui_builder:createMenu(
         title,
-        items,
-        0.9,
-        0.8
+        items
     )
     UIManager:show(self.widgets.search_menu)
 end

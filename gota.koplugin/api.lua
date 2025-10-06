@@ -243,15 +243,19 @@ function API:searchRaindrops(search_term, page, perpage, filters)
     
     local params = string.format("perpage=%d&page=%d", perpage, page)
     
-    -- Agregar término de búsqueda si existe
-    if search_term and search_term ~= "" then
-        params = params .. "&search=" .. urlEncode(search_term)
-    end
+    -- Construir término de búsqueda combinado (texto + tag)
+    local combined_search = search_term or ""
     
     -- Agregar filtros opcionales
     if filters then
         if filters.tag then
-            params = params .. "&tag=" .. urlEncode(filters.tag)
+            -- Usar formato de búsqueda con # para tags (más confiable en Raindrop)
+            local tag_search = "#" .. filters.tag
+            if combined_search ~= "" then
+                combined_search = combined_search .. " " .. tag_search
+            else
+                combined_search = tag_search
+            end
         end
         if filters.type then
             params = params .. "&type=" .. urlEncode(filters.type)
@@ -259,6 +263,11 @@ function API:searchRaindrops(search_term, page, perpage, filters)
         if filters.important ~= nil then
             params = params .. "&important=" .. (filters.important and "true" or "false")
         end
+    end
+    
+    -- Agregar término de búsqueda combinado si existe
+    if combined_search ~= "" then
+        params = params .. "&search=" .. urlEncode(combined_search)
     end
     
     local endpoint = "/raindrops/0?" .. params
@@ -274,6 +283,12 @@ function API:getFilters(collection_id, search_term)
     end
     
     local endpoint = string.format("/filters/%s%s", collection_id, params)
+    return self:cachedRequest(endpoint)
+end
+
+function API:getTags(collection_id)
+    collection_id = collection_id or 0
+    local endpoint = string.format("/tags/%s", collection_id)
     return self:cachedRequest(endpoint)
 end
 

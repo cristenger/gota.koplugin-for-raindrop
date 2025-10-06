@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 22:24\n"
+"POT-Creation-Date: 2025-10-05 22:30\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -197,6 +197,9 @@ msgid "Article information"
 msgstr ""
 
 msgid "Available tags"
+msgstr ""
+
+msgid "case-insensitive"
 msgstr ""
 
 msgid "No tags available"

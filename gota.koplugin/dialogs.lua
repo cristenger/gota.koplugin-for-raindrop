@@ -290,7 +290,7 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
     local MultiInputDialog = require("ui/widget/multiinputdialog")
     
     -- Construir lista de tags para mostrar
-    local tags_text = _("Available tags") .. ":\n"
+    local tags_text = _("Available tags") .. " (" .. _("case-insensitive") .. "):\n"
     if filters_data and filters_data.tags and #filters_data.tags > 0 then
         for i, tag in ipairs(filters_data.tags) do
             if i <= 10 then  -- Mostrar solo los 10 más populares
@@ -368,7 +368,8 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                         -- Construir objeto de filtros
                         local filters = {}
                         if tag and tag ~= "" then
-                            filters.tag = tag
+                            -- Convertir a minúsculas y quitar espacios
+                            filters.tag = tag:lower():gsub("^%s*(.-)%s*$", "%1")
                         end
                         if type_filter and type_filter ~= "" then
                             filters.type = type_filter:lower()
