@@ -283,20 +283,20 @@ end
 function Dialogs:showDebugInfo(debug_info_table, server_url)
     local debug_info = "DEBUG GOTA PLUGIN v1.8\n"
     debug_info = debug_info .. "══════════════════════\n\n"
-    debug_info = debug_info .. "Token actual: " .. debug_info_table.token_status .. "\n"
-    debug_info = debug_info .. "Archivo config: " .. debug_info_table.settings_file .. "\n\n"
+    debug_info = debug_info .. "Token status: " .. debug_info_table.token_status .. "\n"
+    debug_info = debug_info .. "Config file: " .. debug_info_table.settings_file .. "\n\n"
     
     if debug_info_table.file_exists then
-        debug_info = debug_info .. "Archivo existe: SÍ\n"
-        debug_info = debug_info .. "Tamaño archivo: " .. debug_info_table.file_size .. " bytes\n"
-        debug_info = debug_info .. "Contenido (primeros 200 chars):\n" .. debug_info_table.file_content .. "\n\n"
+        debug_info = debug_info .. "File exists: YES\n"
+        debug_info = debug_info .. "File size: " .. debug_info_table.file_size .. " bytes\n"
+        debug_info = debug_info .. "(Content hidden for security)\n\n"
     else
-        debug_info = debug_info .. "Archivo existe: NO\n\n"
+        debug_info = debug_info .. "File exists: NO\n\n"
     end
     
     debug_info = debug_info .. "\nServer URL: " .. server_url
-    debug_info = debug_info .. "\nSistema: REFACTORIZADO v1.8"
-    debug_info = debug_info .. "\nMódulos: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
+    debug_info = debug_info .. "\nSystem: REFACTORED v1.8"
+    debug_info = debug_info .. "\nModules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
     
     local text_viewer = TextViewer:new{
         title = "Debug Info - Gota Plugin",

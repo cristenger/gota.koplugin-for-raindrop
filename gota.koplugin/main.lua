@@ -468,7 +468,7 @@ end
 -- ========== TEST TOKEN ==========
 
 function Gota:testToken(test_token)
-    logger.dbg("Gota: Iniciando test de token, longitud:", #test_token)
+    logger.dbg("Gota: Starting token test")
     
     if not test_token or test_token == "" then
         self:notify(_("Warning: Empty token, cannot test"), 3)
@@ -484,7 +484,7 @@ function Gota:testToken(test_token)
     self:hideProgress()
     
     if user_data and user_data.user then
-        logger.dbg("Gota: Test de token exitoso")
+        logger.dbg("Gota: Token test successful")
         local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
         local pro_status = user_data.user.pro and _(" (PRO)") or ""
         self:notify(_("Valid token!\nUser: ") .. user_name .. pro_status, 4)

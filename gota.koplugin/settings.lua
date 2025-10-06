@@ -17,13 +17,13 @@ local function parseSettings(content)
         if ok then
             -- Verificar específicamente si token existe en env
             if env and env.token then
-                logger.dbg("Gota: Token encontrado en configuración")
+                logger.dbg("Gota: Token found in configuration")
                 return env
             elseif result and type(result) == "table" and result.token then
-                logger.dbg("Gota: Token encontrado en resultado de chunk")
+                logger.dbg("Gota: Token found in chunk result")
                 return result
             else
-                logger.warn("Gota: Configuración cargada pero no contiene token")
+                logger.warn("Gota: Configuration loaded but does not contain token")
             end
         else
             logger.warn("Gota: Error ejecutando chunk:", result)
@@ -64,10 +64,10 @@ function Settings:load()
                 -- Usar función de parsing robusta
                 settings = parseSettings(content)
                 if next(settings) then
-                    logger.dbg("Gota: Configuración cargada exitosamente")
-                    logger.dbg("Gota: Token cargado con longitud:", settings.token and #settings.token or "nil")
+                    logger.dbg("Gota: Configuration loaded successfully")
+                    logger.dbg("Gota: Token status:", settings.token and "present" or "missing")
                 else
-                    logger.warn("Gota: No se pudo parsear configuración, usando defaults")
+                    logger.warn("Gota: Could not parse configuration, using defaults")
                 end
             else
                 logger.dbg("Gota: Archivo vacío o no legible")
@@ -80,8 +80,8 @@ function Settings:load()
     self.token = settings.token or ""
     self.download_path = settings.download_path or "gota_articles"
     
-    logger.dbg("Gota: Token final cargado, longitud:", #self.token)
-    logger.dbg("Gota: Carpeta de descargas:", self.download_path)
+    logger.dbg("Gota: Token loaded:", self.token ~= "" and "configured" or "not configured")
+    logger.dbg("Gota: Download folder:", self.download_path)
 end
 
 function Settings:save()
@@ -90,8 +90,8 @@ function Settings:save()
         download_path = self.download_path,
     }
     
-    logger.dbg("Gota: Intentando guardar token, longitud:", #self.token)
-    logger.dbg("Gota: Carpeta de descargas:", self.download_path)
+    logger.dbg("Gota: Attempting to save token:", self.token ~= "" and "present" or "empty")
+    logger.dbg("Gota: Download folder:", self.download_path)
     
     -- Crear directorio si no existe
     local settings_dir = DataStorage:getSettingsDir()
@@ -151,7 +151,7 @@ end
 
 function Settings:getDebugInfo()
     local debug_info = {}
-    debug_info.token_status = self.token ~= "" and ("SET (" .. #self.token .. " chars)") or "NO SET"
+    debug_info.token_status = self.token ~= "" and "configured" or "not configured"
     debug_info.settings_file = self.settings_file or "NO SET"
     
     if self.settings_file then
@@ -161,7 +161,8 @@ function Settings:getDebugInfo()
             file:close()
             debug_info.file_exists = true
             debug_info.file_size = content and #content or 0
-            debug_info.file_content = content and content:sub(1, 200) or "VACÍO"
+            -- NO exponer el contenido del archivo que contiene el token
+            debug_info.file_content = nil
         else
             debug_info.file_exists = false
         end
