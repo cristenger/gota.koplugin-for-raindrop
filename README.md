@@ -37,7 +37,92 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 
 ## 🚀 Quick Start
 
-1. Use your existing personal access token from Raindrop.io
+### 1. Get Your Raindrop.io Access Token
+
+You have two options to obtain an access token:
+
+#### Option A: Test Token (Recommended for Personal Use)
+
+**Perfect for testing or personal use - No OAuth setup required!**
+
+1. Go to [Raindrop.io App Management Console](https://app.raindrop.io/settings/integrations)
+2. Click **"Create new app"** (or open an existing app)
+3. Give it a name (e.g., "KOReader")
+4. Once created, you'll see a **"Test token"** in your app settings
+5. Click to copy the test token (looks like: `abc123def456...`)
+
+✅ **Advantages:**
+- Immediate access - no configuration needed
+- Never expires
+- Perfect for personal use
+- No need to set up OAuth redirect URLs
+
+#### Option B: OAuth Token (For Public Applications)
+
+**Only needed if you're distributing an app to multiple users**
+
+<details>
+<summary>Click to expand OAuth setup instructions</summary>
+
+If you're developing a public application that needs to access other users' Raindrop accounts, you'll need to implement the full OAuth2 flow:
+
+**Prerequisites:**
+- Register your app in [App Management Console](https://app.raindrop.io/settings/integrations)
+- Configure a valid OAuth redirect URL
+- Note your `Client ID` and `Client Secret`
+
+**OAuth Flow Steps:**
+
+1. **Authorization Request**
+   ```
+   GET https://raindrop.io/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI
+   ```
+
+2. **User Authorization**
+   - User logs in (if not already logged in)
+   - User grants permission to your app
+   - User is redirected to your redirect_uri with a `code` parameter
+
+3. **Token Exchange**
+   ```bash
+   curl -X POST "https://raindrop.io/oauth/access_token" \
+        -H 'Content-Type: application/json' \
+        -d '{
+          "grant_type": "authorization_code",
+          "code": "CODE_FROM_STEP_2",
+          "client_id": "YOUR_CLIENT_ID",
+          "client_secret": "YOUR_CLIENT_SECRET",
+          "redirect_uri": "YOUR_REDIRECT_URI"
+        }'
+   ```
+
+4. **Response:**
+   ```json
+   {
+     "access_token": "ae261404-11r4-47c0-bce3-e18a423da828",
+     "refresh_token": "c8080368-fad2-4a3f-b2c9-71d3z85011vb",
+     "expires_in": 1209599,
+     "token_type": "Bearer"
+   }
+   ```
+
+**Token Refresh (OAuth tokens expire after 2 weeks):**
+```bash
+curl -X POST "https://raindrop.io/oauth/access_token" \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "grant_type": "refresh_token",
+       "client_id": "YOUR_CLIENT_ID",
+       "client_secret": "YOUR_CLIENT_SECRET",
+       "refresh_token": "YOUR_REFRESH_TOKEN"
+     }'
+```
+
+📚 **Full OAuth documentation:** [Raindrop.io API Docs](https://developer.raindrop.io/v1/authentication)
+
+</details>
+
+⚠️ **Note for KOReader users:** For personal use on your e-reader, **Option A (Test Token)** is strongly recommended as it's simpler and the token never expires.
 
 ### 2. Configure the Plugin
 
