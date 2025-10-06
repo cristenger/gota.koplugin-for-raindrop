@@ -237,11 +237,43 @@ function API:getRaindropCache(raindrop_id)
     return self:makeRequestWithRetry("/raindrop/" .. raindrop_id .. "/cache")
 end
 
-function API:searchRaindrops(search_term, page, perpage)
+function API:searchRaindrops(search_term, page, perpage, filters)
     page = page or 0
     perpage = perpage or 25
-    local endpoint = string.format("/raindrops/0?search=%s&perpage=%d&page=%d", 
-                                   urlEncode(search_term), perpage, page)
+    
+    local params = string.format("perpage=%d&page=%d", perpage, page)
+    
+    -- Agregar término de búsqueda si existe
+    if search_term and search_term ~= "" then
+        params = params .. "&search=" .. urlEncode(search_term)
+    end
+    
+    -- Agregar filtros opcionales
+    if filters then
+        if filters.tag then
+            params = params .. "&tag=" .. urlEncode(filters.tag)
+        end
+        if filters.type then
+            params = params .. "&type=" .. urlEncode(filters.type)
+        end
+        if filters.important ~= nil then
+            params = params .. "&important=" .. (filters.important and "true" or "false")
+        end
+    end
+    
+    local endpoint = "/raindrops/0?" .. params
+    return self:cachedRequest(endpoint)
+end
+
+function API:getFilters(collection_id, search_term)
+    collection_id = collection_id or 0
+    local params = ""
+    
+    if search_term and search_term ~= "" then
+        params = "?search=" .. urlEncode(search_term)
+    end
+    
+    local endpoint = string.format("/filters/%s%s", collection_id, params)
     return self:cachedRequest(endpoint)
 end
 

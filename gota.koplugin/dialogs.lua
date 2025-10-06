@@ -284,4 +284,108 @@ function Dialogs:showContentViewer(title, content, buttons_table)
     return text_viewer
 end
 
+-- ========== ADVANCED SEARCH DIALOG ==========
+
+function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
+    local MultiInputDialog = require("ui/widget/multiinputdialog")
+    
+    -- Construir lista de tags para mostrar
+    local tags_text = _("Available tags") .. ":\n"
+    if filters_data and filters_data.tags and #filters_data.tags > 0 then
+        for i, tag in ipairs(filters_data.tags) do
+            if i <= 10 then  -- Mostrar solo los 10 más populares
+                tags_text = tags_text .. string.format("• %s (%d)\n", tag._id, tag.count)
+            end
+        end
+    else
+        tags_text = tags_text .. _("No tags available")
+    end
+    
+    -- Construir lista de tipos
+    local types_text = "\n" .. _("Available types") .. ":\n"
+    local type_names = {
+        article = _("Article"),
+        image = _("Image"),
+        video = _("Video"),
+        document = _("Document"),
+        link = _("Link")
+    }
+    if filters_data and filters_data.types and #filters_data.types > 0 then
+        for _, type_info in ipairs(filters_data.types) do
+            local display_name = type_names[type_info._id] or type_info._id
+            types_text = types_text .. string.format("• %s (%d)\n", display_name, type_info.count)
+        end
+    end
+    
+    local description = tags_text .. types_text .. "\n" .. 
+                       _("Enter search criteria") .. ":"
+    
+    local advanced_dialog
+    advanced_dialog = MultiInputDialog:new{
+        title = _("Advanced Search"),
+        fields = {
+            {
+                text = "",
+                hint = _("Search term (optional)"),
+                input_type = "string",
+            },
+            {
+                text = "",
+                hint = _("Tag (e.g., 'guides')"),
+                input_type = "string",
+            },
+            {
+                text = "",
+                hint = _("Type (article/image/video/document)"),
+                input_type = "string",
+            },
+        },
+        buttons = {
+            {
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(advanced_dialog)
+                    end,
+                },
+                {
+                    text = _("Search"),
+                    is_enter_default = true,
+                    callback = function()
+                        local fields = advanced_dialog:getFields()
+                        local search_term = fields[1]
+                        local tag = fields[2]
+                        local type_filter = fields[3]
+                        
+                        -- Validar que al menos haya un criterio
+                        if (not search_term or search_term == "") and 
+                           (not tag or tag == "") and 
+                           (not type_filter or type_filter == "") then
+                            callbacks.notify(_("Please enter at least one search criterion"), 2)
+                            return
+                        end
+                        
+                        -- Construir objeto de filtros
+                        local filters = {}
+                        if tag and tag ~= "" then
+                            filters.tag = tag
+                        end
+                        if type_filter and type_filter ~= "" then
+                            filters.type = type_filter:lower()
+                        end
+                        
+                        UIManager:close(advanced_dialog)
+                        callbacks.on_search(search_term, filters)
+                    end,
+                },
+            },
+        },
+    }
+    
+    UIManager:show(advanced_dialog)
+    advanced_dialog:onShowKeyboard()
+    
+    return advanced_dialog
+end
+
 return Dialogs

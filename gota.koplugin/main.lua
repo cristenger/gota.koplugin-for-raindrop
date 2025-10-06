@@ -148,6 +148,15 @@ function Gota:addToMainMenu(menu_items)
                 callback = function() self:showSearchDialog() end,
             },
             {
+                text = _("Advanced search"),
+                enabled_func = function() return self.settings:isTokenValid() end,
+                callback = function()
+                    NetworkMgr:runWhenOnline(function()
+                        self:showAdvancedSearchDialog()
+                    end)
+                end,
+            },
+            {
                 text = _("All articles"),
                 enabled_func = function() return self.settings:isTokenValid() end,
                 callback = function()
@@ -178,8 +187,30 @@ end
 
 function Gota:showSearchDialog()
     self.widgets.search_dialog = self.dialogs:showSearchDialog(
-        function(term) self:searchRaindrops(term) end,
+        function(term) self:searchRaindrops(term, 0, nil) end,
         function(msg) if msg then self:notify(msg) end end
+    )
+end
+
+function Gota:showAdvancedSearchDialog()
+    -- Primero obtener los filtros disponibles
+    self:showProgress(_("Loading filters..."))
+    local filters_data, err = self.api:getFilters(0)
+    self:hideProgress()
+    
+    if not filters_data then
+        self:notify(_("Error loading filters: ") .. (err or _("Unknown error")), 4)
+        return
+    end
+    
+    self.widgets.advanced_search_dialog = self.dialogs:showAdvancedSearchDialog(
+        filters_data,
+        {
+            on_search = function(search_term, filters)
+                self:searchRaindrops(search_term, 0, filters)
+            end,
+            notify = function(...) self:notify(...) end,
+        }
     )
 end
 
@@ -307,16 +338,6 @@ function Gota:showRaindropContent(raindrop)
                 self:notify(_("Content is not available yet"))
             end
         end,
-        download_html = function()
-            if has_cache then
-                local filename = self.article_manager:downloadHTML(raindrop)
-                if filename then
-                    self:showDownloadOptions(filename, raindrop.title)
-                end
-            else
-                self:notify(_("No cached content available for download"))
-            end
-        end,
         show_info = function()
             self:showRaindropInfo(raindrop)
         end,
@@ -386,12 +407,12 @@ end
 
 -- ========== BÚSQUEDA ==========
 
-function Gota:searchRaindrops(search_term, page)
+function Gota:searchRaindrops(search_term, page, filters)
     page = page or 0
     local perpage = 25
     
     self:showProgress(_("Searching articles..."))
-    local results, err = self.api:searchRaindrops(search_term, page, perpage)
+    local results, err = self.api:searchRaindrops(search_term, page, perpage, filters)
     self:hideProgress()
     
     if not results then
@@ -410,48 +431,28 @@ function Gota:searchRaindrops(search_term, page)
         results.count or 0,
         page,
         perpage,
-        function(new_page) self:searchRaindrops(search_term, new_page) end
+        function(new_page) self:searchRaindrops(search_term, new_page, filters) end
     )
+    
+    -- Construir título con información de filtros
+    local title = _("Results: '") .. (search_term or "") .. "' (" .. (results.count or 0) .. ")"
+    if filters then
+        if filters.tag then
+            title = title .. " [#" .. filters.tag .. "]"
+        end
+        if filters.type then
+            title = title .. " [" .. filters.type .. "]"
+        end
+    end
     
     self:closeWidget("search_menu")
     self.widgets.search_menu = self.ui_builder:createCustomMenu(
-        _("Results: '") .. search_term .. "' (" .. (results.count or 0) .. ")",
+        title,
         items,
         0.9,
         0.8
     )
     UIManager:show(self.widgets.search_menu)
-end
-
--- ========== DESCARGA ==========
-
-function Gota:showDownloadOptions(filename, title)
-    self:closeWidget("download_menu")
-    
-    local items = {
-        {
-            text = _("Go to download folder"),
-            callback = function()
-                UIManager:nextTick(function()
-                    self.article_manager:openDownloadFolder(
-                        filename,
-                        function() self:closeAllWidgets() end
-                    )
-                end)
-            end
-        },
-        {
-            text = _("Back"),
-            callback = function()
-                UIManager:nextTick(function()
-                    self:closeWidget("download_menu")
-                end)
-            end
-        }
-    }
-    
-    self.widgets.download_menu = self.ui_builder:createMenu(_("HTML downloaded"), items)
-    UIManager:show(self.widgets.download_menu)
 end
 
 -- ========== TEST TOKEN ==========

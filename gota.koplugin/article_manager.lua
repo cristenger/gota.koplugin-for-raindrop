@@ -120,61 +120,6 @@ function ArticleManager:reloadArticle(raindrop_id, on_success_callback)
     end
 end
 
--- ========== DOWNLOAD HTML ==========
-
-function ArticleManager:downloadHTML(raindrop)
-    if not raindrop._id then
-        self.callbacks.notify(_("Cannot download: ID not found"))
-        return nil
-    end
-    
-    if not raindrop.cache or raindrop.cache.status ~= "ready" then
-        self.callbacks.notify(_("No cached content available for download"))
-        return nil
-    end
-    
-    -- Obtener directorio configurado
-    local html_dir = self.settings:getFullDownloadPath()
-    if not util.makePath(html_dir) then
-        self.callbacks.notify(_("Error creating directory to save HTML"))
-        return nil
-    end
-    
-    -- Nombre de archivo seguro
-    local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 30)
-    local filename = html_dir .. raindrop._id .. "_" .. safe_title .. ".html"
-    
-    -- Descargar contenido
-    self.callbacks.showProgress(_("Downloading HTML..."))
-    local html_content, err = self.api:getRaindropCache(raindrop._id)
-    self.callbacks.hideProgress()
-
-    if not html_content or type(html_content) ~= "string" then
-        self.callbacks.notify(_("Error downloading HTML: ") .. (err or "Respuesta inválida"))
-        return nil
-    end
-        
-    if #html_content < 100 then
-        self.callbacks.notify(_("Downloaded content appears incomplete"))
-        return nil
-    end
-    
-    -- Guardar archivo
-    local file, file_err = io.open(filename, "wb")
-    if not file then
-        self.callbacks.notify(_("Error creating file: ") .. tostring(file_err))
-        return nil
-    end
-    
-    file:write(html_content)
-    file:close()
-    
-    logger.dbg("ArticleManager: HTML guardado:", filename)
-    self.callbacks.notify(string.format(_("HTML saved to: %s"), filename), 5)
-    
-    return filename
-end
-
 -- ========== OPEN IN READER ==========
 
 function ArticleManager:openInReader(raindrop, close_all_callback, on_return_callback)
@@ -193,9 +138,9 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         util.makePath(html_dir)
     end
     
-    -- Crear archivo HTML con nombre único
+    -- Crear archivo HTML permanente (mismo formato que downloadHTML)
     local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 30)
-    local filename = html_dir .. raindrop._id .. "_" .. safe_title .. "_temp.html"
+    local filename = html_dir .. raindrop._id .. "_" .. safe_title .. ".html"
     local html = self.content_processor:createReaderHTML(raindrop)
     
     local file = io.open(filename, "w")
@@ -220,21 +165,6 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     })
     
     return true
-end
-
--- ========== OPEN DOWNLOAD FOLDER ==========
-
-function ArticleManager:openDownloadFolder(filename, close_all_callback)
-    close_all_callback()
-    
-    local FileManager = require("apps/filemanager/filemanager")
-    local folder_path = filename:match("(.+)/[^/]+$")
-    
-    if FileManager.instance then
-        FileManager.instance:reinit(folder_path)
-    else
-        FileManager:showFiles(folder_path)
-    end
 end
 
 return ArticleManager

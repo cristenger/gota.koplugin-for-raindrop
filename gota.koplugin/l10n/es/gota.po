@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 21:47\n"
-"PO-Revision-Date: 2025-10-05 21:47\n"
+"POT-Creation-Date: 2025-10-05 22:24\n"
+"PO-Revision-Date: 2025-10-05 22:24\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -17,380 +17,377 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid "Empty server response"
-msgstr "Respuesta vacía del servidor"
+msgstr "Empty server response"
 
 msgid "Error: Could not decompress server response"
-msgstr "Error: No se pudo descomprimir la respuesta del servidor"
+msgstr "Error: Could not decompress server response"
 
 msgid "Error processing server response"
-msgstr "Error al procesar respuesta del servidor"
+msgstr "Error processing server response"
 
 msgid "Server error: "
-msgstr "Error del servidor: "
+msgstr "Server error: "
 
 msgid "HTTP error "
-msgstr "Error HTTP "
+msgstr "HTTP error "
 
 msgid "Failed after "
-msgstr "Falló después de "
+msgstr "Failed after "
 
 msgid " attempts"
-msgstr " intentos"
+msgstr " attempts"
 
 msgid "Loading full content..."
-msgstr "Cargando contenido completo..."
+msgstr "Loading full content..."
 
 msgid "Loading cached content..."
-msgstr "Cargando contenido en caché..."
+msgstr "Loading cached content..."
 
 msgid "Reloading article..."
-msgstr "Recargando artículo..."
+msgstr "Reloading article..."
 
 msgid "The article does not yet have cached content available"
-msgstr "El artículo aún no tiene contenido en caché disponible"
+msgstr "The article does not yet have cached content available"
 
 msgid "Error reloading article: "
-msgstr "Error al recargar artículo: "
+msgstr "Error reloading article: "
 
 msgid "Unknown error"
-msgstr "Error desconocido"
-
-msgid "Cannot download: ID not found"
-msgstr "No se puede descargar: ID no encontrado"
-
-msgid "No cached content available for download"
-msgstr "No hay contenido en caché disponible para descargar"
-
-msgid "Error creating directory to save HTML"
-msgstr "Error al crear directorio para guardar HTML"
-
-msgid "Downloading HTML..."
-msgstr "Descargando HTML..."
-
-msgid "Error downloading HTML: "
-msgstr "Error al descargar HTML: "
-
-msgid "Downloaded content appears incomplete"
-msgstr "El contenido descargado parece incompleto"
-
-msgid "Error creating file: "
-msgstr "Error al crear archivo: "
-
-msgid "HTML saved to: %s"
-msgstr "HTML guardado en: %s"
+msgstr "Unknown error"
 
 msgid "No content available"
-msgstr "No hay contenido disponible"
+msgstr "No content available"
 
 msgid "Error creating temporary file"
-msgstr "Error al crear archivo temporal"
+msgstr "Error creating temporary file"
 
 msgid "Untitled"
-msgstr "Sin título"
+msgstr "Untitled"
 
 msgid "Source: "
-msgstr "Fuente: "
+msgstr "Source: "
 
 msgid "URL: "
 msgstr "URL: "
 
 msgid "Domain: "
-msgstr "Dominio: "
+msgstr "Domain: "
 
 msgid "Saved: "
-msgstr "Guardado: "
+msgstr "Saved: "
 
 msgid "Link"
-msgstr "Enlace"
+msgstr "Link"
 
 msgid "Article"
-msgstr "Artículo"
+msgstr "Article"
 
 msgid "Image"
-msgstr "Imagen"
+msgstr "Image"
 
 msgid "Video"
 msgstr "Video"
 
 msgid "Document"
-msgstr "Documento"
+msgstr "Document"
 
 msgid "Audio"
 msgstr "Audio"
 
 msgid "Type: "
-msgstr "Tipo: "
+msgstr "Type: "
 
 msgid "Excerpt:"
-msgstr "Extracto:"
+msgstr "Excerpt:"
 
 msgid "Notes:"
-msgstr "Notas:"
+msgstr "Notes:"
 
 msgid "Tags: "
-msgstr "Etiquetas: "
+msgstr "Tags: "
 
 msgid "Cache: "
-msgstr "Caché: "
+msgstr "Cache: "
 
 msgid "Available"
-msgstr "Disponible"
+msgstr "Available"
 
 msgid "Size: "
-msgstr "Tamaño: "
+msgstr "Size: "
 
 msgid "Ready"
-msgstr "Listo"
+msgstr "Ready"
 
 msgid "Retrying"
-msgstr "Reintentando"
+msgstr "Retrying"
 
 msgid "Failed"
-msgstr "Falló"
+msgstr "Failed"
 
 msgid "Invalid origin"
-msgstr "Origen inválido"
+msgstr "Invalid origin"
 
 msgid "Timeout"
-msgstr "Tiempo agotado"
+msgstr "Timeout"
 
 msgid "Invalid size"
-msgstr "Tamaño inválido"
+msgstr "Invalid size"
 
 msgid "Cache status: "
-msgstr "Estado del caché: "
+msgstr "Cache status: "
 
 msgid "Raindrop.io Access Token"
-msgstr "Token de acceso de Raindrop.io"
+msgstr "Raindrop.io Access Token"
 
 msgid "Cancel"
-msgstr "Cancelar"
+msgstr "Cancel"
 
 msgid "Test"
-msgstr "Probar"
+msgstr "Test"
 
 msgid "Please enter a token to test"
-msgstr "Por favor ingresa un token para probar"
+msgstr "Please enter a token to test"
 
 msgid "Save"
-msgstr "Guardar"
+msgstr "Save"
 
 msgid "Please enter a valid token"
-msgstr "Por favor ingresa un token válido"
+msgstr "Please enter a valid token"
 
 msgid "Warning: Token seems very short, but it will be saved anyway"
-msgstr "Aviso: Token parece muy corto, pero se guardará de todos modos"
+msgstr "Warning: Token seems very short, but it will be saved anyway"
 
 msgid "Download folder"
-msgstr "Carpeta de descargas"
+msgstr "Download folder"
 
 msgid "Invalid folder name"
-msgstr "Nombre de carpeta inválido"
+msgstr "Invalid folder name"
 
 msgid "Folder configured: "
-msgstr "Carpeta configurada: "
+msgstr "Folder configured: "
 
 msgid "Error saving: "
-msgstr "Error al guardar: "
+msgstr "Error saving: "
 
 msgid "Please enter a folder name"
-msgstr "Por favor ingresa un nombre de carpeta"
+msgstr "Please enter a folder name"
 
 msgid "Search articles"
-msgstr "Buscar artículos"
+msgstr "Search articles"
 
 msgid "Search"
-msgstr "Buscar"
+msgstr "Search"
 
 msgid "Please enter a search term"
-msgstr "Por favor ingresa un término de búsqueda"
+msgstr "Please enter a search term"
 
 msgid "Article URL:"
-msgstr "URL del artículo:"
+msgstr "Article URL:"
 
 msgid "Cannot be opened directly in KOReader."
-msgstr "No se puede abrir directamente en KOReader."
+msgstr "Cannot be opened directly in KOReader."
 
 msgid "You can copy this URL to open it on another device."
-msgstr "Puedes copiar esta URL para abrirla en otro dispositivo."
+msgstr "You can copy this URL to open it on another device."
 
 msgid "Article link"
-msgstr "Enlace del artículo"
+msgstr "Article link"
 
 msgid "Article information"
-msgstr "Información del artículo"
+msgstr "Article information"
+
+msgid "Available tags"
+msgstr "Available tags"
+
+msgid "No tags available"
+msgstr "No tags available"
+
+msgid "Available types"
+msgstr "Available types"
+
+msgid "Enter search criteria"
+msgstr "Enter search criteria"
+
+msgid "Advanced Search"
+msgstr "Advanced Search"
+
+msgid "Search term (optional)"
+msgstr "Search term (optional)"
+
+msgid "Type (article/image/video/document)"
+msgstr "Type (article/image/video/document)"
+
+msgid "Please enter at least one search criterion"
+msgstr "Please enter at least one search criterion"
 
 msgid "Error: Could not find HTML file"
-msgstr "Error: No se pudo encontrar el archivo HTML"
+msgstr "Error: Could not find HTML file"
 
 msgid "Error: Could not open HTML file"
-msgstr "Error: No se pudo abrir el archivo HTML"
+msgstr "Error: Could not open HTML file"
 
 msgid "Gota"
 msgstr "Gota"
 
 msgid "< Back to Gota"
-msgstr "< Volver a Gota"
+msgstr "< Back to Gota"
 
 msgid "Copy article URL"
-msgstr "Copiar URL del artículo"
+msgstr "Copy article URL"
 
 msgid "Gota (Raindrop.io)"
 msgstr "Gota (Raindrop.io)"
 
 msgid "Configure access token"
-msgstr "Configurar token de acceso"
+msgstr "Configure access token"
 
 msgid "Configure download folder"
-msgstr "Configurar carpeta de descargas"
+msgstr "Configure download folder"
 
 msgid "Debug: View configuration"
-msgstr "Debug: Ver configuración"
+msgstr "Debug: View configuration"
 
 msgid "View collections"
-msgstr "Ver colecciones"
+msgstr "View collections"
+
+msgid "Advanced search"
+msgstr "Advanced search"
 
 msgid "All articles"
-msgstr "Todos los artículos"
+msgstr "All articles"
+
+msgid "Loading filters..."
+msgstr "Loading filters..."
+
+msgid "Error loading filters: "
+msgstr "Error loading filters: "
 
 msgid "Download folder updated: "
-msgstr "Carpeta de descargas actualizada: "
+msgstr "Download folder updated: "
 
 msgid "Error saving configuration"
-msgstr "Error al guardar configuración"
+msgstr "Error saving configuration"
 
 msgid "Loading collections..."
-msgstr "Cargando colecciones..."
+msgstr "Loading collections..."
 
 msgid "Error retrieving collections:"
-msgstr "Error al obtener colecciones:"
+msgstr "Error retrieving collections:"
 
 msgid "Raindrop Collections"
-msgstr "Colecciones de Raindrop"
+msgstr "Raindrop Collections"
 
 msgid "Loading articles..."
-msgstr "Cargando artículos..."
+msgstr "Loading articles..."
 
 msgid "Error retrieving articles: "
-msgstr "Error al obtener artículos: "
+msgstr "Error retrieving articles: "
 
 msgid "Articles"
-msgstr "Artículos"
+msgstr "Articles"
 
 msgid "Content is not available yet"
-msgstr "El contenido no está disponible aún"
+msgstr "Content is not available yet"
 
 msgid "No cached content available"
-msgstr "No hay contenido en caché disponible"
+msgstr "No cached content available"
 
 msgid "Cached content"
-msgstr "Contenido en caché"
+msgstr "Cached content"
 
 msgid "Searching articles..."
-msgstr "Buscando artículos..."
+msgstr "Searching articles..."
 
 msgid "Search error: "
-msgstr "Error en la búsqueda: "
-
-msgid "Go to download folder"
-msgstr "Ir a carpeta de descarga"
-
-msgid "Back"
-msgstr "Volver"
-
-msgid "HTML downloaded"
-msgstr "HTML descargado"
+msgstr "Search error: "
 
 msgid "Warning: Empty token, cannot test"
-msgstr "Aviso: Token vacío, no se puede probar"
+msgstr "Warning: Empty token, cannot test"
 
 msgid "Warning: Token seems very short, but it will be tested anyway"
-msgstr "Aviso: Token parece muy corto, pero se probará de todos modos"
+msgstr "Warning: Token seems very short, but it will be tested anyway"
 
 msgid "Testing token..."
-msgstr "Probando token..."
+msgstr "Testing token..."
 
 msgid " (PRO)"
 msgstr " (PRO)"
 
-msgid "Token válido!\nUsuario: "
-msgstr "Token válido!\nUsuario: "
+msgid "Valid token!\nUser: "
+msgstr "Valid token!\nUser: "
 
-msgid "Error con el token:\n"
-msgstr "Error con el token:\n"
+msgid "Error with token:\n"
+msgstr "Error with token:\n"
 
 msgid "No articles available"
-msgstr "No hay artículos disponibles"
+msgstr "No articles available"
 
 msgid "You have no collections created"
-msgstr "No tienes colecciones creadas"
+msgstr "You have no collections created"
 
 msgid "Open in full reader"
-msgstr "Abrir en lector completo"
+msgstr "Open in full reader"
 
 msgid "View content as plain text"
-msgstr "Ver contenido en texto simple"
-
-msgid "Download HTML"
-msgstr "Descargar HTML"
+msgstr "View content as plain text"
 
 msgid "View article information"
-msgstr "Ver información del artículo"
+msgstr "View article information"
 
 msgid "Copy URL"
-msgstr "Copiar URL"
+msgstr "Copy URL"
 
 msgid "Cache is being generated, try again later"
-msgstr "La caché está siendo generada, intenta más tarde"
+msgstr "Cache is being generated, try again later"
 
 msgid "Cache generation has failed"
-msgstr "La generación de caché ha fallado"
+msgstr "Cache generation has failed"
 
 msgid "Could not generate cache due to invalid origin"
-msgstr "No se pudo generar caché por origen inválido"
+msgstr "Could not generate cache due to invalid origin"
 
 msgid "Could not generate cache due to timeout"
-msgstr "No se pudo generar caché por timeout"
+msgstr "Could not generate cache due to timeout"
 
 msgid "Could not generate cache due to excessive size"
-msgstr "No se pudo generar caché por tamaño excesivo"
+msgstr "Could not generate cache due to excessive size"
 
 msgid "Cache is not available"
-msgstr "La caché no está disponible"
+msgstr "Cache is not available"
 
 msgid "Try reloading full article"
-msgstr "Intentar recargar artículo completo"
+msgstr "Try reloading full article"
 
 msgid "This article has no cached content available"
-msgstr "Este artículo no tiene contenido en caché disponible"
+msgstr "This article has no cached content available"
 
 msgid "« First page"
-msgstr "« Primera página"
+msgstr "« First page"
 
 msgid "← Previous page"
-msgstr "← Página anterior"
+msgstr "← Previous page"
 
 msgid "Next page →"
-msgstr "Página siguiente →"
+msgstr "Next page →"
 
 msgid "» Last page"
-msgstr "» Última página"
+msgstr "» Last page"
 
 msgid "Page %d of %d"
-msgstr "Página %d de %d"
+msgstr "Page %d of %d"
 
 msgid "Close"
-msgstr "Cerrar"
+msgstr "Close"
 
 msgid "Open in reader"
-msgstr "Abrir en lector"
+msgstr "Open in reader"
 
 msgid "Share link"
-msgstr "Compartir enlace"
+msgstr "Share link"
 
 msgid "Save HTML"
-msgstr "Guardar HTML"
+msgstr "Save HTML"
 
 msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
-msgstr "Con Gota lee y gestiona tus marcadores de Raindrop.io desde KOReader!"
+msgstr "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 

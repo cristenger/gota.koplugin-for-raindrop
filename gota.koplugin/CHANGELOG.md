@@ -52,6 +52,86 @@ msgid "Configure access token"
 msgstr "Configurar token de acceso"  # Para español
 ```
 
+### 🎯 Simplificación de UI
+
+**Cambio**: Se eliminó la opción redundante "Download HTML" del menú de artículos.
+
+**Antes**: 
+- "Open in full reader" → Guardaba archivo temporal y abría en lector
+- "Download HTML" → Guardaba archivo permanente y mostraba opciones
+
+**Ahora**:
+- "Open in full reader" → Guarda archivo permanente y abre en lector
+- Misma funcionalidad, interfaz más simple
+
+**Beneficios**:
+- ✅ Menú más limpio (3 opciones en lugar de 4)
+- ✅ Comportamiento más intuitivo
+- ✅ Los archivos siempre se guardan permanentemente
+- ✅ Reducción de código (~60 líneas eliminadas)
+
+**Archivos afectados**:
+- `article_manager.lua`: Eliminada función `downloadHTML()` y `openDownloadFolder()`
+- `ui_builder.lua`: Removida opción "Download HTML" del menú
+- `main.lua`: Eliminado callback `download_html` y función `showDownloadOptions()`
+
+**Estadísticas actualizadas**:
+- Total strings únicos: **125** (+11 vs simplificación UI)
+- Total apariciones: **149** (+19 vs simplificación UI)
+
+### 🔍 Búsqueda Avanzada con Filtros
+
+**Nueva Funcionalidad**: Sistema de búsqueda avanzada con filtros contextuales.
+
+**Características**:
+- ✅ Nueva opción "Advanced search" en menú principal
+- ✅ Filtrado por **tags** (etiquetas de usuario)
+- ✅ Filtrado por **tipo** (article, image, video, document)
+- ✅ Combinación de búsqueda de texto + filtros
+- ✅ Muestra tags populares con contador
+- ✅ Muestra tipos disponibles con contador
+- ✅ Título de resultados indica filtros activos
+
+**Antes** (v1.9.0):
+- Solo búsqueda por texto simple
+
+**Ahora** (v2.0.0):
+- "Search articles" → Búsqueda simple (solo texto)
+- "Advanced search" → Búsqueda con filtros (tags, tipos, texto opcional)
+
+**Ejemplo de uso**:
+1. Usuario selecciona "Advanced search"
+2. Plugin carga filtros disponibles desde API
+3. Muestra tags populares: `guides (9)`, `performance (19)`, etc.
+4. Muestra tipos: `article (313)`, `image (143)`, `video (26)`, etc.
+5. Usuario ingresa criterios: tag="guides", type="article"
+6. Resultados se filtran: `Results: '' (42) [#guides] [article]`
+
+**Implementación técnica**:
+- `api.lua`: 
+  - Nuevo método `getFilters(collectionId)` → obtiene filtros disponibles
+  - Método `searchRaindrops()` extendido con parámetro `filters`
+- `dialogs.lua`:
+  - Nueva función `showAdvancedSearchDialog()` → dialog con 3 campos
+  - Usa `MultiInputDialog` para entrada múltiple
+- `main.lua`:
+  - Nueva función `showAdvancedSearchDialog()` → carga filtros y muestra dialog
+  - Función `searchRaindrops()` extendida con parámetro `filters`
+  - Título de resultados muestra filtros activos
+
+**API de Raindrop utilizada**:
+```
+GET /filters/{collectionId}
+GET /raindrops/0?search=X&tag=Y&type=Z
+```
+
+**Beneficios**:
+- ✅ Búsqueda más precisa y contextual
+- ✅ Descubrimiento de contenido por tags
+- ✅ Filtrado por tipo de contenido
+- ✅ Experiencia similar a la app oficial de Raindrop
+- ✅ Mantiene búsqueda simple para casos rápidos
+
 ---
 
 ## v1.9.0 - UX Improvements (5 de octubre de 2025)

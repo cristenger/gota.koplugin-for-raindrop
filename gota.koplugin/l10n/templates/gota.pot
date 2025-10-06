@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 21:47\n"
+"POT-Creation-Date: 2025-10-05 22:24\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -53,30 +53,6 @@ msgid "Error reloading article: "
 msgstr ""
 
 msgid "Unknown error"
-msgstr ""
-
-msgid "Cannot download: ID not found"
-msgstr ""
-
-msgid "No cached content available for download"
-msgstr ""
-
-msgid "Error creating directory to save HTML"
-msgstr ""
-
-msgid "Downloading HTML..."
-msgstr ""
-
-msgid "Error downloading HTML: "
-msgstr ""
-
-msgid "Downloaded content appears incomplete"
-msgstr ""
-
-msgid "Error creating file: "
-msgstr ""
-
-msgid "HTML saved to: %s"
 msgstr ""
 
 msgid "No content available"
@@ -220,6 +196,30 @@ msgstr ""
 msgid "Article information"
 msgstr ""
 
+msgid "Available tags"
+msgstr ""
+
+msgid "No tags available"
+msgstr ""
+
+msgid "Available types"
+msgstr ""
+
+msgid "Enter search criteria"
+msgstr ""
+
+msgid "Advanced Search"
+msgstr ""
+
+msgid "Search term (optional)"
+msgstr ""
+
+msgid "Type (article/image/video/document)"
+msgstr ""
+
+msgid "Please enter at least one search criterion"
+msgstr ""
+
 msgid "Error: Could not find HTML file"
 msgstr ""
 
@@ -250,7 +250,16 @@ msgstr ""
 msgid "View collections"
 msgstr ""
 
+msgid "Advanced search"
+msgstr ""
+
 msgid "All articles"
+msgstr ""
+
+msgid "Loading filters..."
+msgstr ""
+
+msgid "Error loading filters: "
 msgstr ""
 
 msgid "Download folder updated: "
@@ -292,15 +301,6 @@ msgstr ""
 msgid "Search error: "
 msgstr ""
 
-msgid "Go to download folder"
-msgstr ""
-
-msgid "Back"
-msgstr ""
-
-msgid "HTML downloaded"
-msgstr ""
-
 msgid "Warning: Empty token, cannot test"
 msgstr ""
 
@@ -313,10 +313,10 @@ msgstr ""
 msgid " (PRO)"
 msgstr ""
 
-msgid "Token válido!\nUsuario: "
+msgid "Valid token!\nUser: "
 msgstr ""
 
-msgid "Error con el token:\n"
+msgid "Error with token:\n"
 msgstr ""
 
 msgid "No articles available"
@@ -329,9 +329,6 @@ msgid "Open in full reader"
 msgstr ""
 
 msgid "View content as plain text"
-msgstr ""
-
-msgid "Download HTML"
 msgstr ""
 
 msgid "View article information"

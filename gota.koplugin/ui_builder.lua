@@ -89,11 +89,6 @@ function UIBuilder:buildArticleMenu(raindrop, has_cache, callbacks)
             callback = callbacks.show_text,
         },
         {
-            text = _("Download HTML"),
-            enabled = has_cache,
-            callback = callbacks.download_html,
-        },
-        {
             text = _("View article information"),
             callback = callbacks.show_info,
         },
