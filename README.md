@@ -30,8 +30,8 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 ### Method 2: From Source
 
 ```bash
-git clone https://github.com/yourusername/raindrop.koplugin.git
-cd raindrop.koplugin
+git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
+cd gota.koplugin-for-raindrop
 cp -r gota.koplugin /path/to/koreader/plugins/
 ```
 
@@ -237,8 +237,8 @@ Contributions are welcome! Areas where you can help:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/raindrop.koplugin.git
-cd raindrop.koplugin/gota.koplugin
+git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
+cd gota.koplugin-for-raindrop/gota.koplugin
 
 # Check syntax
 luac -p *.lua
@@ -277,8 +277,8 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/raindrop.koplugin/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/raindrop.koplugin/discussions)
+- **Issues**: [GitHub Issues](https://github.com/cristenger/gota.koplugin-for-raindrop/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/cristenger/gota.koplugin-for-raindrop/discussions)
 
 ---
 

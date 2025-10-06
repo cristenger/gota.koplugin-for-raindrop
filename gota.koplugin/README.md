@@ -30,22 +30,12 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 ### Method 2: From Source
 
 ```bash
-git clone https://github.com/yourusername/raindrop.koplugin.git
-cd raindrop.koplugin
+git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
+cd gota.koplugin-for-raindrop
 cp -r gota.koplugin /path/to/koreader/plugins/
 ```
 
 ## 🚀 Quick Start
-
-### 1. Get Your Raindrop.io Access Token
-
-**Option 1: Test Token (Recommended for beginners)**
-
-1. Go to [Raindrop.io Integrations](https://app.raindrop.io/settings/integrations)
-2. Click "Create new app"
-3. Copy the **Test token** (it looks like: `abc123def456...`)
-
-**Option 2: Personal Access Token (For advanced users)**
 
 1. Use your existing personal access token from Raindrop.io
 
@@ -214,8 +204,6 @@ gota.koplugin/
 └── _meta.lua                 # Plugin metadata
 ```
 
-**Total**: ~2,000 lines of modular Lua code
-
 ## 📊 Statistics
 
 - **Translations**: 133 unique strings, 157 total
@@ -237,8 +225,8 @@ Contributions are welcome! Areas where you can help:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/raindrop.koplugin.git
-cd raindrop.koplugin/gota.koplugin
+git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
+cd gota.koplugin-for-raindrop/gota.koplugin
 
 # Check syntax
 luac -p *.lua
@@ -274,11 +262,6 @@ MIT License - see [LICENSE](LICENSE) file for details
 - [KOReader](https://github.com/koreader/koreader) - The amazing e-reader software
 - [Raindrop.io](https://raindrop.io) - Excellent bookmark management service
 - All contributors and testers
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/raindrop.koplugin/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/raindrop.koplugin/discussions)
 
 ---
 
