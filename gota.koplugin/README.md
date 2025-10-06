@@ -17,19 +17,14 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 - 💾 **Save Offline**: Download HTML articles for offline reading
 - 🌍 **Internationalization**: Automatic language detection (English/Spanish supported)
 - ⚙️ **Configurable**: Customizable download folder with visual folder picker
-- 📱 **Multi-Device**: Works on Kindle, Kobo, Android, and other KOReader-supported devices
+- 📱 **Multi-Device**: Works on any device that supports KOReader
 
 ## 📦 Installation
 
 ### Method 1: Manual Installation
 
 1. Download the latest release or clone this repository
-2. Copy the `gota.koplugin` folder to your KOReader plugins directory:
-   - **Kindle**: `/mnt/us/koreader/plugins/`
-   - **Kobo**: `/.adds/koreader/plugins/`
-   - **Android**: `/sdcard/koreader/plugins/`
-   - **Linux/Mac**: `~/.config/koreader/plugins/`
-
+2. Copy the `gota.koplugin` folder to your KOReader plugins directory
 3. Restart KOReader
 
 ### Method 2: From Source
