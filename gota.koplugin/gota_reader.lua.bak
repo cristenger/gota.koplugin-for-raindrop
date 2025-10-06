@@ -23,7 +23,7 @@ function GotaReader:show(options)
     if not file_mode or file_mode ~= "file" then
         logger.err("GotaReader: El archivo no existe o no es válido:", options.path)
         UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("Error: Could not find HTML file"),
+            text = _("Error: No se pudo encontrar el archivo HTML"),
             timeout = 3,
         })
         return
@@ -71,7 +71,7 @@ function GotaReader:show(options)
             else
                 logger.err("GotaReader: No se pudo abrir el documento")
                 UIManager:show(require("ui/widget/infomessage"):new{
-                    text = _("Error: Could not open HTML file"),
+                    text = _("Error: No se pudo abrir el archivo HTML"),
                     timeout = 3,
                 })
             end
@@ -94,7 +94,7 @@ function GotaReader:addGotaMenu(reader_instance)
         text = _("Gota"),
         sub_item_table = {
             {
-                text = _("< Back to Gota"),
+                text = _("< Volver a Gota"),
                 callback = function()
                     self:onReturn()
                 end,
@@ -106,7 +106,7 @@ function GotaReader:addGotaMenu(reader_instance)
     if self.original_raindrop then
         if self.original_raindrop.link then
             table.insert(gota_menu.sub_item_table, {
-                text = _("Copy article URL"),
+                text = _("Copiar URL del artículo"),
                 callback = function()
                     -- Aquí podrías implementar la copia al portapapeles
                     -- o mostrar la URL en un diálogo

@@ -42,6 +42,7 @@ function Settings:new()
     
     o.settings_file = DataStorage:getSettingsDir() .. "/gota.lua"
     o.token = ""
+    o.download_path = "gota_articles"  -- Carpeta por defecto para descargas
     
     return o
 end
@@ -77,16 +78,20 @@ function Settings:load()
     end
     
     self.token = settings.token or ""
+    self.download_path = settings.download_path or "gota_articles"
     
     logger.dbg("Gota: Token final cargado, longitud:", #self.token)
+    logger.dbg("Gota: Carpeta de descargas:", self.download_path)
 end
 
 function Settings:save()
     local settings = {
         token = self.token,
+        download_path = self.download_path,
     }
     
     logger.dbg("Gota: Intentando guardar token, longitud:", #self.token)
+    logger.dbg("Gota: Carpeta de descargas:", self.download_path)
     
     -- Crear directorio si no existe
     local settings_dir = DataStorage:getSettingsDir()
@@ -98,7 +103,8 @@ function Settings:save()
     local file, err = io.open(self.settings_file, "w")
     if file then
         -- Serialización más robusta con escape completo
-        local serialized = string.format("return {\n  token = %q,\n}\n", settings.token)
+        local serialized = string.format("return {\n  token = %q,\n  download_path = %q,\n}\n", 
+                                        settings.token, settings.download_path)
         file:write(serialized)
         file:close()
         logger.dbg("Gota: Configuración guardada exitosamente")
@@ -128,6 +134,19 @@ end
 
 function Settings:isTokenValid()
     return self.token and self.token ~= ""
+end
+
+function Settings:getDownloadPath()
+    return self.download_path or "gota_articles"
+end
+
+function Settings:setDownloadPath(path)
+    self.download_path = path or "gota_articles"
+end
+
+function Settings:getFullDownloadPath()
+    local DataStorage = require("datastorage")
+    return DataStorage:getDataDir() .. "/" .. self:getDownloadPath() .. "/"
 end
 
 function Settings:getDebugInfo()

@@ -1,0 +1,396 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Gota Plugin 1.9.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-10-05 21:47\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Empty server response"
+msgstr ""
+
+msgid "Error: Could not decompress server response"
+msgstr ""
+
+msgid "Error processing server response"
+msgstr ""
+
+msgid "Server error: "
+msgstr ""
+
+msgid "HTTP error "
+msgstr ""
+
+msgid "Failed after "
+msgstr ""
+
+msgid " attempts"
+msgstr ""
+
+msgid "Loading full content..."
+msgstr ""
+
+msgid "Loading cached content..."
+msgstr ""
+
+msgid "Reloading article..."
+msgstr ""
+
+msgid "The article does not yet have cached content available"
+msgstr ""
+
+msgid "Error reloading article: "
+msgstr ""
+
+msgid "Unknown error"
+msgstr ""
+
+msgid "Cannot download: ID not found"
+msgstr ""
+
+msgid "No cached content available for download"
+msgstr ""
+
+msgid "Error creating directory to save HTML"
+msgstr ""
+
+msgid "Downloading HTML..."
+msgstr ""
+
+msgid "Error downloading HTML: "
+msgstr ""
+
+msgid "Downloaded content appears incomplete"
+msgstr ""
+
+msgid "Error creating file: "
+msgstr ""
+
+msgid "HTML saved to: %s"
+msgstr ""
+
+msgid "No content available"
+msgstr ""
+
+msgid "Error creating temporary file"
+msgstr ""
+
+msgid "Untitled"
+msgstr ""
+
+msgid "Source: "
+msgstr ""
+
+msgid "URL: "
+msgstr ""
+
+msgid "Domain: "
+msgstr ""
+
+msgid "Saved: "
+msgstr ""
+
+msgid "Link"
+msgstr ""
+
+msgid "Article"
+msgstr ""
+
+msgid "Image"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "Document"
+msgstr ""
+
+msgid "Audio"
+msgstr ""
+
+msgid "Type: "
+msgstr ""
+
+msgid "Excerpt:"
+msgstr ""
+
+msgid "Notes:"
+msgstr ""
+
+msgid "Tags: "
+msgstr ""
+
+msgid "Cache: "
+msgstr ""
+
+msgid "Available"
+msgstr ""
+
+msgid "Size: "
+msgstr ""
+
+msgid "Ready"
+msgstr ""
+
+msgid "Retrying"
+msgstr ""
+
+msgid "Failed"
+msgstr ""
+
+msgid "Invalid origin"
+msgstr ""
+
+msgid "Timeout"
+msgstr ""
+
+msgid "Invalid size"
+msgstr ""
+
+msgid "Cache status: "
+msgstr ""
+
+msgid "Raindrop.io Access Token"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Test"
+msgstr ""
+
+msgid "Please enter a token to test"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Please enter a valid token"
+msgstr ""
+
+msgid "Warning: Token seems very short, but it will be saved anyway"
+msgstr ""
+
+msgid "Download folder"
+msgstr ""
+
+msgid "Invalid folder name"
+msgstr ""
+
+msgid "Folder configured: "
+msgstr ""
+
+msgid "Error saving: "
+msgstr ""
+
+msgid "Please enter a folder name"
+msgstr ""
+
+msgid "Search articles"
+msgstr ""
+
+msgid "Search"
+msgstr ""
+
+msgid "Please enter a search term"
+msgstr ""
+
+msgid "Article URL:"
+msgstr ""
+
+msgid "Cannot be opened directly in KOReader."
+msgstr ""
+
+msgid "You can copy this URL to open it on another device."
+msgstr ""
+
+msgid "Article link"
+msgstr ""
+
+msgid "Article information"
+msgstr ""
+
+msgid "Error: Could not find HTML file"
+msgstr ""
+
+msgid "Error: Could not open HTML file"
+msgstr ""
+
+msgid "Gota"
+msgstr ""
+
+msgid "< Back to Gota"
+msgstr ""
+
+msgid "Copy article URL"
+msgstr ""
+
+msgid "Gota (Raindrop.io)"
+msgstr ""
+
+msgid "Configure access token"
+msgstr ""
+
+msgid "Configure download folder"
+msgstr ""
+
+msgid "Debug: View configuration"
+msgstr ""
+
+msgid "View collections"
+msgstr ""
+
+msgid "All articles"
+msgstr ""
+
+msgid "Download folder updated: "
+msgstr ""
+
+msgid "Error saving configuration"
+msgstr ""
+
+msgid "Loading collections..."
+msgstr ""
+
+msgid "Error retrieving collections:"
+msgstr ""
+
+msgid "Raindrop Collections"
+msgstr ""
+
+msgid "Loading articles..."
+msgstr ""
+
+msgid "Error retrieving articles: "
+msgstr ""
+
+msgid "Articles"
+msgstr ""
+
+msgid "Content is not available yet"
+msgstr ""
+
+msgid "No cached content available"
+msgstr ""
+
+msgid "Cached content"
+msgstr ""
+
+msgid "Searching articles..."
+msgstr ""
+
+msgid "Search error: "
+msgstr ""
+
+msgid "Go to download folder"
+msgstr ""
+
+msgid "Back"
+msgstr ""
+
+msgid "HTML downloaded"
+msgstr ""
+
+msgid "Warning: Empty token, cannot test"
+msgstr ""
+
+msgid "Warning: Token seems very short, but it will be tested anyway"
+msgstr ""
+
+msgid "Testing token..."
+msgstr ""
+
+msgid " (PRO)"
+msgstr ""
+
+msgid "Token válido!\nUsuario: "
+msgstr ""
+
+msgid "Error con el token:\n"
+msgstr ""
+
+msgid "No articles available"
+msgstr ""
+
+msgid "You have no collections created"
+msgstr ""
+
+msgid "Open in full reader"
+msgstr ""
+
+msgid "View content as plain text"
+msgstr ""
+
+msgid "Download HTML"
+msgstr ""
+
+msgid "View article information"
+msgstr ""
+
+msgid "Copy URL"
+msgstr ""
+
+msgid "Cache is being generated, try again later"
+msgstr ""
+
+msgid "Cache generation has failed"
+msgstr ""
+
+msgid "Could not generate cache due to invalid origin"
+msgstr ""
+
+msgid "Could not generate cache due to timeout"
+msgstr ""
+
+msgid "Could not generate cache due to excessive size"
+msgstr ""
+
+msgid "Cache is not available"
+msgstr ""
+
+msgid "Try reloading full article"
+msgstr ""
+
+msgid "This article has no cached content available"
+msgstr ""
+
+msgid "« First page"
+msgstr ""
+
+msgid "← Previous page"
+msgstr ""
+
+msgid "Next page →"
+msgstr ""
+
+msgid "» Last page"
+msgstr ""
+
+msgid "Page %d of %d"
+msgstr ""
+
+msgid "Close"
+msgstr ""
+
+msgid "Open in reader"
+msgstr ""
+
+msgid "Share link"
+msgstr ""
+
+msgid "Save HTML"
+msgstr ""
+
+msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
+msgstr ""
+

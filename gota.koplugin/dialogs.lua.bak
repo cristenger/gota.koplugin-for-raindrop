@@ -1,0 +1,287 @@
+--[[
+    Dialogs Module for Gota Plugin
+    Handles all dialog creation and management
+]]
+
+local InputDialog = require("ui/widget/inputdialog")
+local TextViewer = require("ui/widget/textviewer")
+local Device = require("device")
+local NetworkMgr = require("ui/network/manager")
+local UIManager = require("ui/uimanager")
+local logger = require("logger")
+local _ = require("gettext")
+
+local Dialogs = {}
+
+function Dialogs:new(parent)
+    local o = {}
+    setmetatable(o, self)
+    self.__index = self
+    
+    o.parent = parent  -- Referencia al plugin principal
+    
+    return o
+end
+
+-- ========== TOKEN DIALOG ==========
+
+function Dialogs:showTokenDialog(current_token, callbacks)
+    local token_dialog  -- Declarar antes para que los callbacks puedan acceder
+    token_dialog = InputDialog:new{
+        title = _("Token de acceso de Raindrop.io"),
+        description = _("OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"),
+        input = current_token,
+        input_type = "text",
+        buttons = {
+            {
+                {
+                    text = _("Cancelar"),
+                    callback = function()
+                        UIManager:close(token_dialog)
+                    end,
+                },
+                {
+                    text = _("Probar"),
+                    callback = function()
+                        local test_token = token_dialog:getInputText()
+                        if test_token and test_token ~= "" then
+                            test_token = test_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            if test_token ~= "" then
+                                NetworkMgr:runWhenOnline(function()
+                                    callbacks.test(test_token)
+                                end)
+                            else
+                                callbacks.notify(_("Por favor ingresa un token para probar"))
+                            end
+                        else
+                            callbacks.notify(_("Por favor ingresa un token para probar"))
+                        end
+                    end,
+                },
+                {
+                    text = _("Guardar"),
+                    is_enter_default = true,
+                    callback = function()
+                        local new_token = token_dialog:getInputText()
+                        if new_token and new_token ~= "" then
+                            new_token = new_token:gsub("^%s+", ""):gsub("%s+$", "")
+                            
+                            if new_token == "" then
+                                callbacks.notify(_("Por favor ingresa un token válido"), 2)
+                                return
+                            end
+                            
+                            if #new_token < 10 then
+                                callbacks.notify(_("Aviso: Token parece muy corto, pero se guardará de todos modos"), 3)
+                            end
+                            
+                            local success, err = callbacks.save(new_token)
+                            UIManager:close(token_dialog)
+                            
+                            if success then
+                                callbacks.notify(_("Token guardado correctamente\nUsa 'Probar' para verificar funcionalidad"), 3)
+                            else
+                                callbacks.notify("Error: No se pudo guardar la configuración - " .. (err or "desconocido"))
+                            end
+                        else
+                            callbacks.notify(_("Por favor ingresa un token válido"), 2)
+                        end
+                    end,
+                }
+            }
+        },
+    }
+    
+    UIManager:show(token_dialog)
+    token_dialog:onShowKeyboard()
+    
+    return token_dialog
+end
+
+-- ========== DOWNLOAD PATH DIALOG ==========
+
+function Dialogs:showDownloadPathDialog(current_path, callbacks)
+    local path_dialog
+    path_dialog = InputDialog:new{
+        title = _("Carpeta de descargas"),
+        description = _("Ingresa el nombre de la carpeta donde se guardarán los artículos descargados.\n\nRuta completa: " .. (callbacks.get_data_dir() .. "/" .. current_path .. "/")),
+        input = current_path,
+        input_type = "text",
+        buttons = {
+            {
+                {
+                    text = _("Cancelar"),
+                    callback = function()
+                        UIManager:close(path_dialog)
+                    end,
+                },
+                {
+                    text = _("Guardar"),
+                    is_enter_default = true,
+                    callback = function()
+                        local new_path = path_dialog:getInputText()
+                        if new_path and new_path ~= "" then
+                            new_path = new_path:gsub("^%s+", ""):gsub("%s+$", "")
+                            new_path = new_path:gsub("[%c%p%s]+", "_")  -- Sanitizar
+                            
+                            if new_path == "" then
+                                callbacks.notify(_("Nombre de carpeta inválido"), 2)
+                                return
+                            end
+                            
+                            local success, err = callbacks.save(new_path)
+                            UIManager:close(path_dialog)
+                            
+                            if success then
+                                callbacks.notify(_("Carpeta configurada: ") .. new_path, 3)
+                            else
+                                callbacks.notify(_("Error al guardar: ") .. (err or "desconocido"))
+                            end
+                        else
+                            callbacks.notify(_("Por favor ingresa un nombre de carpeta"), 2)
+                        end
+                    end,
+                }
+            }
+        },
+    }
+    
+    UIManager:show(path_dialog)
+    path_dialog:onShowKeyboard()
+    
+    return path_dialog
+end
+
+-- ========== SEARCH DIALOG ==========
+
+function Dialogs:showSearchDialog(on_search_callback, on_cancel_callback)
+    local search_dialog  -- Declarar antes para que los callbacks puedan acceder
+    search_dialog = InputDialog:new{
+        title = _("Buscar artículos"),
+        input = "",
+        buttons = {
+            {
+                {
+                    text = _("Cancelar"),
+                    callback = function()
+                        UIManager:close(search_dialog)
+                        if on_cancel_callback then
+                            on_cancel_callback()
+                        end
+                    end,
+                },
+                {
+                    text = _("Buscar"),
+                    is_enter_default = true,
+                    callback = function()
+                        local search_term = search_dialog:getInputText()
+                        if search_term and search_term ~= "" then
+                            UIManager:close(search_dialog)
+                            NetworkMgr:runWhenOnline(function()
+                                on_search_callback(search_term)
+                            end)
+                        else
+                            if on_cancel_callback then
+                                on_cancel_callback(_("Por favor ingresa un término de búsqueda"))
+                            end
+                        end
+                    end,
+                }
+            }
+        },
+    }
+    
+    UIManager:show(search_dialog)
+    search_dialog:onShowKeyboard()
+    
+    return search_dialog
+end
+
+-- ========== DEBUG INFO VIEWER ==========
+
+function Dialogs:showDebugInfo(debug_info_table, server_url)
+    local debug_info = "DEBUG GOTA PLUGIN v1.8\n"
+    debug_info = debug_info .. "══════════════════════\n\n"
+    debug_info = debug_info .. "Token actual: " .. debug_info_table.token_status .. "\n"
+    debug_info = debug_info .. "Archivo config: " .. debug_info_table.settings_file .. "\n\n"
+    
+    if debug_info_table.file_exists then
+        debug_info = debug_info .. "Archivo existe: SÍ\n"
+        debug_info = debug_info .. "Tamaño archivo: " .. debug_info_table.file_size .. " bytes\n"
+        debug_info = debug_info .. "Contenido (primeros 200 chars):\n" .. debug_info_table.file_content .. "\n\n"
+    else
+        debug_info = debug_info .. "Archivo existe: NO\n\n"
+    end
+    
+    debug_info = debug_info .. "\nServer URL: " .. server_url
+    debug_info = debug_info .. "\nSistema: REFACTORIZADO v1.8"
+    debug_info = debug_info .. "\nMódulos: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
+    
+    local text_viewer = TextViewer:new{
+        title = "Debug Info - Gota Plugin",
+        text = debug_info,
+        width = Device.screen:getWidth() * 0.9,
+        height = Device.screen:getHeight() * 0.8,
+    }
+    
+    UIManager:show(text_viewer)
+    
+    return text_viewer
+end
+
+-- ========== LINK INFO VIEWER ==========
+
+function Dialogs:showLinkInfo(raindrop)
+    if not raindrop or not raindrop.link then
+        return nil
+    end
+    
+    local content = _("URL del artículo:") .. "\n\n"
+    content = content .. raindrop.link .. "\n\n"
+    content = content .. _("No se puede abrir directamente en KOReader.") .. "\n"
+    content = content .. _("Puedes copiar esta URL para abrirla en otro dispositivo.")
+    
+    local text_viewer = TextViewer:new{
+        title = _("Enlace del artículo"),
+        text = content,
+        width = Device.screen:getWidth() * 0.95,
+        height = Device.screen:getHeight() * 0.95,
+    }
+    
+    UIManager:show(text_viewer)
+    
+    return text_viewer
+end
+
+-- ========== ARTICLE INFO VIEWER ==========
+
+function Dialogs:showArticleInfo(raindrop, formatted_info)
+    local text_viewer = TextViewer:new{
+        title = raindrop.title or _("Información del artículo"),
+        text = formatted_info,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
+    }
+    
+    UIManager:show(text_viewer)
+    
+    return text_viewer
+end
+
+-- ========== CONTENT VIEWER (with buttons) ==========
+
+function Dialogs:showContentViewer(title, content, buttons_table)
+    local text_viewer = TextViewer:new{
+        title = title,
+        text = content,
+        width = Device.screen:getWidth(),
+        height = Device.screen:getHeight(),
+        buttons = buttons_table,
+    }
+    
+    UIManager:show(text_viewer)
+    
+    return text_viewer
+end
+
+return Dialogs

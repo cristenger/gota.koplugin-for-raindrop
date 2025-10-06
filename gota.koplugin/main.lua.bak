@@ -122,19 +122,19 @@ function Gota:addToMainMenu(menu_items)
         sorting_hint = "search",
         sub_item_table = {
             {
-                text = _("Configure access token"),
+                text = _("Configurar token de acceso"),
                 callback = function() self:showTokenDialog() end,
             },
             {
-                text = _("Configure download folder"),
+                text = _("Configurar carpeta de descargas"),
                 callback = function() self:showDownloadPathDialog() end,
             },
             {
-                text = _("Debug: View configuration"),
+                text = _("Debug: Ver configuración"),
                 callback = function() self:showDebugInfo() end,
             },
             {
-                text = _("View collections"),
+                text = _("Ver colecciones"),
                 enabled_func = function() return self.settings:isTokenValid() end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
@@ -143,16 +143,16 @@ function Gota:addToMainMenu(menu_items)
                 end,
             },
             {
-                text = _("Search articles"),
+                text = _("Buscar artículos"),
                 enabled_func = function() return self.settings:isTokenValid() end,
                 callback = function() self:showSearchDialog() end,
             },
             {
-                text = _("All articles"),
+                text = _("Todos los artículos"),
                 enabled_func = function() return self.settings:isTokenValid() end,
                 callback = function()
                     NetworkMgr:runWhenOnline(function()
-                        self:showRaindrops(0, _("All articles"))
+                        self:showRaindrops(0, _("Todos los artículos"))
                     end)
                 end,
             },
@@ -198,9 +198,9 @@ function Gota:showDownloadPathDialog()
                 self.settings:setDownloadPath(new_path)
                 local success = self.settings:save()
                 if success then
-                    self:notify(_("Download folder updated: ") .. new_path)
+                    self:notify(_("Carpeta de descargas actualizada: ") .. new_path)
                 else
-                    self:notify(_("Error saving configuration"))
+                    self:notify(_("Error al guardar configuración"))
                 end
                 return success
             end,
@@ -213,12 +213,12 @@ end
 -- ========== COLECCIONES ==========
 
 function Gota:showCollections()
-    self:showProgress(_("Loading collections..."))
+    self:showProgress(_("Cargando colecciones..."))
     local collections, err = self.api:getCollections()
     self:hideProgress()
     
     if not collections then
-        self:notify(_("Error retrieving collections:") .. "\n" .. (err or _("Unknown error")), 4)
+        self:notify(_("Error al obtener colecciones:") .. "\n" .. (err or _("Error desconocido")), 4)
         return
     end
     
@@ -228,7 +228,7 @@ function Gota:showCollections()
     )
     
     self:closeWidget("collections_menu")
-    self.widgets.collections_menu = self.ui_builder:createMenu(_("Raindrop Collections"), items)
+    self.widgets.collections_menu = self.ui_builder:createMenu(_("Colecciones de Raindrop"), items)
     UIManager:show(self.widgets.collections_menu)
 end
 
@@ -238,12 +238,12 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     page = page or 0
     local perpage = 25
     
-    self:showProgress(_("Loading articles..."))
+    self:showProgress(_("Cargando artículos..."))
     local raindrops, err = self.api:getRaindrops(collection_id, page, perpage)
     self:hideProgress()
     
     if not raindrops then
-        self:notify(_("Error retrieving articles: ") .. (err or _("Unknown error")), 4)
+        self:notify(_("Error al obtener artículos: ") .. (err or _("Error desconocido")), 4)
         return
     end
     
@@ -263,7 +263,7 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     
     self:closeWidget("raindrops_menu")
     self.widgets.raindrops_menu = self.ui_builder:createMenu(
-        string.format("%s (%d)", collection_name or _("Articles"), raindrops.count or 0),
+        string.format("%s (%d)", collection_name or _("Artículos"), raindrops.count or 0),
         items
     )
     UIManager:show(self.widgets.raindrops_menu)
@@ -297,14 +297,14 @@ function Gota:showRaindropContent(raindrop)
                     function(rd) self:showRaindropContent(rd) end
                 )
             else
-                self:notify(_("Content is not available yet"))
+                self:notify(_("El contenido no está disponible aún"))
             end
         end,
         show_text = function()
             if has_cache then
                 self:showRaindropCachedContent(raindrop)
             else
-                self:notify(_("Content is not available yet"))
+                self:notify(_("El contenido no está disponible aún"))
             end
         end,
         download_html = function()
@@ -314,7 +314,7 @@ function Gota:showRaindropContent(raindrop)
                     self:showDownloadOptions(filename, raindrop.title)
                 end
             else
-                self:notify(_("No cached content available for download"))
+                self:notify(_("No hay contenido en caché disponible para descargar"))
             end
         end,
         show_info = function()
@@ -333,7 +333,7 @@ function Gota:showRaindropContent(raindrop)
     
     self:closeWidget("article_menu")
     self.widgets.article_menu = self.ui_builder:createMenu(
-        raindrop.title or _("Article"),
+        raindrop.title or _("Artículo"),
         items
     )
     UIManager:show(self.widgets.article_menu)
@@ -346,7 +346,7 @@ end
 
 function Gota:showRaindropCachedContent(raindrop)
     if not raindrop.cache or not raindrop.cache.text then
-        self:notify(_("No cached content available"))
+        self:notify(_("No hay contenido en caché disponible"))
         return
     end
     
@@ -378,7 +378,7 @@ function Gota:showRaindropCachedContent(raindrop)
     })
     
     self.widgets.text_viewer = self.dialogs:showContentViewer(
-        _("Cached content"),
+        _("Contenido en caché"),
         formatted_content,
         buttons
     )
@@ -390,12 +390,12 @@ function Gota:searchRaindrops(search_term, page)
     page = page or 0
     local perpage = 25
     
-    self:showProgress(_("Searching articles..."))
+    self:showProgress(_("Buscando artículos..."))
     local results, err = self.api:searchRaindrops(search_term, page, perpage)
     self:hideProgress()
     
     if not results then
-        self:notify(_("Search error: ") .. (err or _("Unknown error")), 4)
+        self:notify(_("Error en la búsqueda: ") .. (err or _("Error desconocido")), 4)
         return
     end
     
@@ -415,7 +415,7 @@ function Gota:searchRaindrops(search_term, page)
     
     self:closeWidget("search_menu")
     self.widgets.search_menu = self.ui_builder:createCustomMenu(
-        _("Results: '") .. search_term .. "' (" .. (results.count or 0) .. ")",
+        _("Resultados: '") .. search_term .. "' (" .. (results.count or 0) .. ")",
         items,
         0.9,
         0.8
@@ -430,7 +430,7 @@ function Gota:showDownloadOptions(filename, title)
     
     local items = {
         {
-            text = _("Go to download folder"),
+            text = _("Ir a carpeta de descarga"),
             callback = function()
                 UIManager:nextTick(function()
                     self.article_manager:openDownloadFolder(
@@ -441,7 +441,7 @@ function Gota:showDownloadOptions(filename, title)
             end
         },
         {
-            text = _("Back"),
+            text = _("Volver"),
             callback = function()
                 UIManager:nextTick(function()
                     self:closeWidget("download_menu")
@@ -450,7 +450,7 @@ function Gota:showDownloadOptions(filename, title)
         }
     }
     
-    self.widgets.download_menu = self.ui_builder:createMenu(_("HTML downloaded"), items)
+    self.widgets.download_menu = self.ui_builder:createMenu(_("HTML descargado"), items)
     UIManager:show(self.widgets.download_menu)
 end
 
@@ -460,15 +460,15 @@ function Gota:testToken(test_token)
     logger.dbg("Gota: Iniciando test de token, longitud:", #test_token)
     
     if not test_token or test_token == "" then
-        self:notify(_("Warning: Empty token, cannot test"), 3)
+        self:notify(_("Aviso: Token vacío, no se puede probar"), 3)
         return
     end
     
     if #test_token < 10 then
-        self:notify(_("Warning: Token seems very short, but it will be tested anyway"), 2)
+        self:notify(_("Aviso: Token parece muy corto, pero se probará de todos modos"), 2)
     end
     
-    self:showProgress(_("Testing token..."))
+    self:showProgress(_("Probando token..."))
     local user_data, err = self.api:testToken(test_token)
     self:hideProgress()
     
@@ -476,10 +476,10 @@ function Gota:testToken(test_token)
         logger.dbg("Gota: Test de token exitoso")
         local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
         local pro_status = user_data.user.pro and _(" (PRO)") or ""
-        self:notify(_("Valid token!\nUser: ") .. user_name .. pro_status, 4)
+        self:notify(_("Token válido!\nUsuario: ") .. user_name .. pro_status, 4)
     else
         logger.err("Gota: Test de token falló:", err)
-        self:notify(_("Error with token:\n") .. (err or "Token inválido"), 5)
+        self:notify(_("Error con el token:\n") .. (err or "Token inválido"), 5)
     end
 end
 

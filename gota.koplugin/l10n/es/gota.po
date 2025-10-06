@@ -1,0 +1,396 @@
+# Gota Plugin Spanish Translation
+# Copyright (C) 2025
+# This file is distributed under the same license as the Gota package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Gota Plugin 1.9.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-10-05 21:47\n"
+"PO-Revision-Date: 2025-10-05 21:47\n"
+"Last-Translator: Christian Stenger\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Empty server response"
+msgstr "Respuesta vacía del servidor"
+
+msgid "Error: Could not decompress server response"
+msgstr "Error: No se pudo descomprimir la respuesta del servidor"
+
+msgid "Error processing server response"
+msgstr "Error al procesar respuesta del servidor"
+
+msgid "Server error: "
+msgstr "Error del servidor: "
+
+msgid "HTTP error "
+msgstr "Error HTTP "
+
+msgid "Failed after "
+msgstr "Falló después de "
+
+msgid " attempts"
+msgstr " intentos"
+
+msgid "Loading full content..."
+msgstr "Cargando contenido completo..."
+
+msgid "Loading cached content..."
+msgstr "Cargando contenido en caché..."
+
+msgid "Reloading article..."
+msgstr "Recargando artículo..."
+
+msgid "The article does not yet have cached content available"
+msgstr "El artículo aún no tiene contenido en caché disponible"
+
+msgid "Error reloading article: "
+msgstr "Error al recargar artículo: "
+
+msgid "Unknown error"
+msgstr "Error desconocido"
+
+msgid "Cannot download: ID not found"
+msgstr "No se puede descargar: ID no encontrado"
+
+msgid "No cached content available for download"
+msgstr "No hay contenido en caché disponible para descargar"
+
+msgid "Error creating directory to save HTML"
+msgstr "Error al crear directorio para guardar HTML"
+
+msgid "Downloading HTML..."
+msgstr "Descargando HTML..."
+
+msgid "Error downloading HTML: "
+msgstr "Error al descargar HTML: "
+
+msgid "Downloaded content appears incomplete"
+msgstr "El contenido descargado parece incompleto"
+
+msgid "Error creating file: "
+msgstr "Error al crear archivo: "
+
+msgid "HTML saved to: %s"
+msgstr "HTML guardado en: %s"
+
+msgid "No content available"
+msgstr "No hay contenido disponible"
+
+msgid "Error creating temporary file"
+msgstr "Error al crear archivo temporal"
+
+msgid "Untitled"
+msgstr "Sin título"
+
+msgid "Source: "
+msgstr "Fuente: "
+
+msgid "URL: "
+msgstr "URL: "
+
+msgid "Domain: "
+msgstr "Dominio: "
+
+msgid "Saved: "
+msgstr "Guardado: "
+
+msgid "Link"
+msgstr "Enlace"
+
+msgid "Article"
+msgstr "Artículo"
+
+msgid "Image"
+msgstr "Imagen"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Document"
+msgstr "Documento"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Type: "
+msgstr "Tipo: "
+
+msgid "Excerpt:"
+msgstr "Extracto:"
+
+msgid "Notes:"
+msgstr "Notas:"
+
+msgid "Tags: "
+msgstr "Etiquetas: "
+
+msgid "Cache: "
+msgstr "Caché: "
+
+msgid "Available"
+msgstr "Disponible"
+
+msgid "Size: "
+msgstr "Tamaño: "
+
+msgid "Ready"
+msgstr "Listo"
+
+msgid "Retrying"
+msgstr "Reintentando"
+
+msgid "Failed"
+msgstr "Falló"
+
+msgid "Invalid origin"
+msgstr "Origen inválido"
+
+msgid "Timeout"
+msgstr "Tiempo agotado"
+
+msgid "Invalid size"
+msgstr "Tamaño inválido"
+
+msgid "Cache status: "
+msgstr "Estado del caché: "
+
+msgid "Raindrop.io Access Token"
+msgstr "Token de acceso de Raindrop.io"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Test"
+msgstr "Probar"
+
+msgid "Please enter a token to test"
+msgstr "Por favor ingresa un token para probar"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Please enter a valid token"
+msgstr "Por favor ingresa un token válido"
+
+msgid "Warning: Token seems very short, but it will be saved anyway"
+msgstr "Aviso: Token parece muy corto, pero se guardará de todos modos"
+
+msgid "Download folder"
+msgstr "Carpeta de descargas"
+
+msgid "Invalid folder name"
+msgstr "Nombre de carpeta inválido"
+
+msgid "Folder configured: "
+msgstr "Carpeta configurada: "
+
+msgid "Error saving: "
+msgstr "Error al guardar: "
+
+msgid "Please enter a folder name"
+msgstr "Por favor ingresa un nombre de carpeta"
+
+msgid "Search articles"
+msgstr "Buscar artículos"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Please enter a search term"
+msgstr "Por favor ingresa un término de búsqueda"
+
+msgid "Article URL:"
+msgstr "URL del artículo:"
+
+msgid "Cannot be opened directly in KOReader."
+msgstr "No se puede abrir directamente en KOReader."
+
+msgid "You can copy this URL to open it on another device."
+msgstr "Puedes copiar esta URL para abrirla en otro dispositivo."
+
+msgid "Article link"
+msgstr "Enlace del artículo"
+
+msgid "Article information"
+msgstr "Información del artículo"
+
+msgid "Error: Could not find HTML file"
+msgstr "Error: No se pudo encontrar el archivo HTML"
+
+msgid "Error: Could not open HTML file"
+msgstr "Error: No se pudo abrir el archivo HTML"
+
+msgid "Gota"
+msgstr "Gota"
+
+msgid "< Back to Gota"
+msgstr "< Volver a Gota"
+
+msgid "Copy article URL"
+msgstr "Copiar URL del artículo"
+
+msgid "Gota (Raindrop.io)"
+msgstr "Gota (Raindrop.io)"
+
+msgid "Configure access token"
+msgstr "Configurar token de acceso"
+
+msgid "Configure download folder"
+msgstr "Configurar carpeta de descargas"
+
+msgid "Debug: View configuration"
+msgstr "Debug: Ver configuración"
+
+msgid "View collections"
+msgstr "Ver colecciones"
+
+msgid "All articles"
+msgstr "Todos los artículos"
+
+msgid "Download folder updated: "
+msgstr "Carpeta de descargas actualizada: "
+
+msgid "Error saving configuration"
+msgstr "Error al guardar configuración"
+
+msgid "Loading collections..."
+msgstr "Cargando colecciones..."
+
+msgid "Error retrieving collections:"
+msgstr "Error al obtener colecciones:"
+
+msgid "Raindrop Collections"
+msgstr "Colecciones de Raindrop"
+
+msgid "Loading articles..."
+msgstr "Cargando artículos..."
+
+msgid "Error retrieving articles: "
+msgstr "Error al obtener artículos: "
+
+msgid "Articles"
+msgstr "Artículos"
+
+msgid "Content is not available yet"
+msgstr "El contenido no está disponible aún"
+
+msgid "No cached content available"
+msgstr "No hay contenido en caché disponible"
+
+msgid "Cached content"
+msgstr "Contenido en caché"
+
+msgid "Searching articles..."
+msgstr "Buscando artículos..."
+
+msgid "Search error: "
+msgstr "Error en la búsqueda: "
+
+msgid "Go to download folder"
+msgstr "Ir a carpeta de descarga"
+
+msgid "Back"
+msgstr "Volver"
+
+msgid "HTML downloaded"
+msgstr "HTML descargado"
+
+msgid "Warning: Empty token, cannot test"
+msgstr "Aviso: Token vacío, no se puede probar"
+
+msgid "Warning: Token seems very short, but it will be tested anyway"
+msgstr "Aviso: Token parece muy corto, pero se probará de todos modos"
+
+msgid "Testing token..."
+msgstr "Probando token..."
+
+msgid " (PRO)"
+msgstr " (PRO)"
+
+msgid "Token válido!\nUsuario: "
+msgstr "Token válido!\nUsuario: "
+
+msgid "Error con el token:\n"
+msgstr "Error con el token:\n"
+
+msgid "No articles available"
+msgstr "No hay artículos disponibles"
+
+msgid "You have no collections created"
+msgstr "No tienes colecciones creadas"
+
+msgid "Open in full reader"
+msgstr "Abrir en lector completo"
+
+msgid "View content as plain text"
+msgstr "Ver contenido en texto simple"
+
+msgid "Download HTML"
+msgstr "Descargar HTML"
+
+msgid "View article information"
+msgstr "Ver información del artículo"
+
+msgid "Copy URL"
+msgstr "Copiar URL"
+
+msgid "Cache is being generated, try again later"
+msgstr "La caché está siendo generada, intenta más tarde"
+
+msgid "Cache generation has failed"
+msgstr "La generación de caché ha fallado"
+
+msgid "Could not generate cache due to invalid origin"
+msgstr "No se pudo generar caché por origen inválido"
+
+msgid "Could not generate cache due to timeout"
+msgstr "No se pudo generar caché por timeout"
+
+msgid "Could not generate cache due to excessive size"
+msgstr "No se pudo generar caché por tamaño excesivo"
+
+msgid "Cache is not available"
+msgstr "La caché no está disponible"
+
+msgid "Try reloading full article"
+msgstr "Intentar recargar artículo completo"
+
+msgid "This article has no cached content available"
+msgstr "Este artículo no tiene contenido en caché disponible"
+
+msgid "« First page"
+msgstr "« Primera página"
+
+msgid "← Previous page"
+msgstr "← Página anterior"
+
+msgid "Next page →"
+msgstr "Página siguiente →"
+
+msgid "» Last page"
+msgstr "» Última página"
+
+msgid "Page %d of %d"
+msgstr "Página %d de %d"
+
+msgid "Close"
+msgstr "Cerrar"
+
+msgid "Open in reader"
+msgstr "Abrir en lector"
+
+msgid "Share link"
+msgstr "Compartir enlace"
+
+msgid "Save HTML"
+msgstr "Guardar HTML"
+
+msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
+msgstr "Con Gota lee y gestiona tus marcadores de Raindrop.io desde KOReader!"
+
