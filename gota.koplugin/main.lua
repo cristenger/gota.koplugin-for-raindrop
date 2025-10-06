@@ -122,16 +122,13 @@ function Gota:addToMainMenu(menu_items)
         sorting_hint = "search",
         sub_item_table = {
             {
-                text = _("Configure access token"),
-                callback = function() self:showTokenDialog() end,
-            },
-            {
-                text = _("Configure download folder"),
-                callback = function() self:showDownloadPathDialog() end,
-            },
-            {
-                text = _("Debug: View configuration"),
-                callback = function() self:showDebugInfo() end,
+                text = _("All articles"),
+                enabled_func = function() return self.settings:isTokenValid() end,
+                callback = function()
+                    NetworkMgr:runWhenOnline(function()
+                        self:showRaindrops(0, _("All articles"))
+                    end)
+                end,
             },
             {
                 text = _("View collections"),
@@ -157,13 +154,21 @@ function Gota:addToMainMenu(menu_items)
                 end,
             },
             {
-                text = _("All articles"),
-                enabled_func = function() return self.settings:isTokenValid() end,
-                callback = function()
-                    NetworkMgr:runWhenOnline(function()
-                        self:showRaindrops(0, _("All articles"))
-                    end)
-                end,
+                text = _("Configuration"),
+                sub_item_table = {
+                    {
+                        text = _("Configure access token"),
+                        callback = function() self:showTokenDialog() end,
+                    },
+                    {
+                        text = _("Configure download folder"),
+                        callback = function() self:showDownloadPathDialog() end,
+                    },
+                    {
+                        text = _("Debug Raindrop API connection"),
+                        callback = function() self:showDebugInfo() end,
+                    },
+                },
             },
         }
     }

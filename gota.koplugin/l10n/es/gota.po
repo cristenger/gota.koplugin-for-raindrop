@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 22:30\n"
-"PO-Revision-Date: 2025-10-05 22:30\n"
+"POT-Creation-Date: 2025-10-05 23:06\n"
+"PO-Revision-Date: 2025-10-05 23:06\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -241,14 +241,8 @@ msgstr "Copy article URL"
 msgid "Gota (Raindrop.io)"
 msgstr "Gota (Raindrop.io)"
 
-msgid "Configure access token"
-msgstr "Configure access token"
-
-msgid "Configure download folder"
-msgstr "Configure download folder"
-
-msgid "Debug: View configuration"
-msgstr "Debug: View configuration"
+msgid "All articles"
+msgstr "All articles"
 
 msgid "View collections"
 msgstr "View collections"
@@ -256,8 +250,17 @@ msgstr "View collections"
 msgid "Advanced search"
 msgstr "Advanced search"
 
-msgid "All articles"
-msgstr "All articles"
+msgid "Configuration"
+msgstr "Configuration"
+
+msgid "Configure access token"
+msgstr "Configure access token"
+
+msgid "Configure download folder"
+msgstr "Configure download folder"
+
+msgid "Debug Raindrop API connection"
+msgstr "Debug Raindrop API connection"
 
 msgid "Loading filters..."
 msgstr "Loading filters..."

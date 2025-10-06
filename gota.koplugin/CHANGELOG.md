@@ -76,8 +76,46 @@ msgstr "Configurar token de acceso"  # Para español
 - `main.lua`: Eliminado callback `download_html` y función `showDownloadOptions()`
 
 **Estadísticas actualizadas**:
-- Total strings únicos: **125** (+11 vs simplificación UI)
-- Total apariciones: **149** (+19 vs simplificación UI)
+- Total strings únicos: **127** (+2 vs búsqueda avanzada)
+- Total apariciones: **151** (+2 vs búsqueda avanzada)
+
+### 🎨 Mejoras de UX
+
+**Reorganización del Menú Principal**:
+
+**Antes**:
+```
+├── Configure access token
+├── Configure download folder
+├── Debug: View configuration
+├── View collections
+├── Search articles
+├── Advanced search
+└── All articles
+```
+
+**Ahora**:
+```
+├── All articles
+├── View collections
+├── Search articles
+├── Advanced search
+└── Configuration
+    ├── Configure access token
+    ├── Configure download folder
+    └── Debug Raindrop API connection
+```
+
+**Beneficios**:
+- ✅ Opciones de uso frecuente al principio
+- ✅ Configuración agrupada en submenú
+- ✅ Orden lógico: ver → buscar → configurar
+- ✅ Nombre más descriptivo para debug
+
+**Pantalla Completa en Búsquedas**:
+- Resultados de búsqueda ahora ocupan toda la pantalla
+- Consistente con colecciones y "All articles"
+- Mejor experiencia de lectura
 
 ### 🔍 Búsqueda Avanzada con Filtros
 
