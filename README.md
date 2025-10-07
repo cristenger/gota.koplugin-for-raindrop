@@ -39,43 +39,25 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 
 ### 1. Get Your Raindrop.io Test Token
 
-The plugin uses Raindrop.io **Test Tokens**, which are perfect for personal use on e-readers:
-
 1. Go to [Raindrop.io App Management Console](https://app.raindrop.io/settings/integrations)
 2. Click **"Create new app"** (or open an existing app)
 3. Give it a name (e.g., "KOReader")
-4. Once created, you'll see a **"Test token"** in your app settings
-5. Click to copy the test token (looks like: `abc123def456...`)
+4. Copy the **"Test token"** from your app settings
 
-✅ **Why Test Tokens?**
-- ✨ **No setup required** - Just copy and paste
-- ⏰ **Never expires** - Set it once, use it forever
-- 🔒 **Secure** - Full access to your personal Raindrop account
-- 📱 **Perfect for e-readers** - No web browser needed
+✅ **Why Test Tokens?** No setup required, never expires, secure, and perfect for e-readers.
 
-⚠️ **Note**: OAuth tokens are not supported because they require a web browser for authorization, which most e-readers don't have.
+⚠️ OAuth tokens are not supported (require web browser).
 
 ### 2. Configure the Plugin
 
 1. Open KOReader
-2. Go to: **☰ Menu → Gota → Configuration**
-   - *Note: On first use, the menu will show "NEW: Gota" until you open it once*
-   - *On some Kindle devices, look for "Gota" in the main menu list*
-3. Select **Configure access token**
-4. Paste your token
-5. Tap **Save** (or **Test** to verify first)
-6. The token will be automatically loaded when you restart KOReader
+2. Go to: **☰ Menu → Gota → Configuration → Configure access token**
+3. Paste your token
+4. Tap **Save** (or **Test** to verify first)
 
-### 3. Find Gota in the Menu
+*Note: First time shows "NEW: Gota" - this disappears after opening it once.*
 
-Gota appears in the **main menu** of KOReader:
-
-📍 **Location**: Tap the ☰ (menu icon) → Look for **"Gota"** in the list
-<p align="center">
-  <img src="gota.koplugin/gota-m.jpeg" alt="Gota Plugin Menu" width="600">
-</p>
-
-### 4. Start Reading!
+### 3. Start Reading!
 
 Once configured, you can:
 
@@ -86,136 +68,64 @@ Once configured, you can:
 
 ## 📖 Usage Guide
 
-
-### Browse Your Collections
+### Browse Collections
 
 ```
 Menu → Gota → View collections
 ```
-
-- Shows all your Raindrop collections with article counts
-- Tap any collection to see its articles
-- Navigate with pagination (25 articles per page)
+Shows all your Raindrop collections with article counts and pagination.
 
 ### Search Articles
 
-**Simple Search:**
-```
-Menu → Gota → Search articles
-```
-- Enter any search term
-- Results show matching articles across all collections
+**Simple Search:** `Menu → Gota → Search articles`
+- Enter any search term to find matching articles
 
-**Advanced Search:**
-```
-Menu → Gota → Advanced search
-```
-- Filter by **tags** (e.g., `#programming`, `#design`)
-- Filter by **type** (article, image, document)
-- Combine filters with text search
-- Shows available tags with article counts
+**Advanced Search:** `Menu → Gota → Advanced search`
+- Filter by tags (e.g., `#programming`) or content type (article/image/document)
 
 ### Read an Article
 
-When viewing article results, tap any article to see options:
-
-1. **Open in full reader**: Opens HTML with formatting
-2. **View content as plain text**: Simple text view
-3. **View article information**: See metadata (tags, URL, cache status)
-4. **Copy URL**: Copy article link to clipboard
+Tap any article to see options:
+- **Open in full reader**: HTML with formatting
+- **View as plain text**: Simple text view
+- **View information**: Metadata, tags, URL, cache status
+- **Copy URL**: Copy article link
 
 ### Configure Download Folder
 
-```
-Menu → Gota → Configuration → Configure download folder
-```
+`Menu → Gota → Configuration → Configure download folder`
 
-**Option 1: Browse folders (Recommended)**
-- Visual folder picker
-- Navigate your file system
-- Select existing folder with one tap
-
-**Option 2: Enter folder name manually**
-- For advanced users
-- Type folder name (e.g., `my_articles`)
-- Folder created automatically in KOReader data directory
+Choose between visual folder picker or manual folder name entry.
 
 ## 🌍 Language Support
 
-The plugin automatically detects your KOReader language setting:
-
+The plugin auto-detects your KOReader language:
 - **English** (default)
 - **Español** (Spanish)
 
-To change language:
-```
-KOReader Settings → Language → Select your language → Restart KOReader
-```
+Change language in: `KOReader Settings → Language`
 
-### Contributing Translations
-
-Want to add your language?
-
-1. Copy `l10n/templates/gota.pot` to `l10n/<language_code>/gota.po`
-2. Translate the strings in the `.po` file
-3. Compile: `./compile_translations.sh <language_code>`
-4. Submit a pull request!
-
-See [l10n/README.md](l10n/README.md) for detailed translation guide.
+Want to add your language? See [l10n/README.md](l10n/README.md) for translation guide.
 
 ## ⚙️ Configuration
 
-### Access Token
-- **Where**: Configuration → Configure access token
-- **Required**: Yes
-- **Tip**: Use "Test" button to verify before saving
+- **Access Token**: Configuration → Configure access token (required)
+- **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
+- **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
 
-### Download Folder
-- **Where**: Configuration → Configure download folder
-- **Default**: `gota_articles/`
-- **Tip**: Use folder picker for easy selection
+## 🔧 Troubleshooting
 
-### Debug Connection
-- **Where**: Configuration → Debug Raindrop API connection
-- **Shows**: Token status, API URL, saved settings
-- **Use**: Troubleshoot connection issues
-
-### Articles not showing
-
+**Articles not showing?**
 1. Check you have articles in Raindrop.io
-2. Verify token 
+2. Verify token with "Test" button
 3. Try "All articles" to see everything
 
-### SSL Certificate Issues
+**SSL Note**: SSL verification is disabled for e-reader compatibility.
 
-⚠️ **Important**: SSL verification is disabled by default to prevent certificate errors on e-ink devices.
-
-This is necessary because many e-readers have outdated certificate stores and cannot verify modern SSL certificates. The plugin disables SSL verification to ensure reliable connections to Raindrop.io API.
-
-**Security note**: While this reduces security slightly, it's a necessary compromise for e-reader compatibility. Your access token is still transmitted over HTTPS encryption.
-
-## 🏗️ Architecture
-
-```
-gota.koplugin/
-├── main.lua                  # Plugin coordinator
-├── api.lua                   # Raindrop.io API client
-├── settings.lua              # Configuration management
-├── dialogs.lua               # UI dialogs
-├── ui_builder.lua            # Menu construction
-├── content_processor.lua     # HTML processing
-├── article_manager.lua       # Article operations
-├── gota_reader.lua           # Reader integration
-├── l10n/                     # Translations
-│   ├── templates/gota.pot    # Translation template
-│   └── es/gota.po           # Spanish translation
-└── _meta.lua                 # Plugin metadata
-```
-
-### Development Setup
+## 🏗️ Development
 
 ```bash
-# Clone repository
+# Clone and setup
 git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
 cd gota.koplugin-for-raindrop/gota.koplugin
 
@@ -225,15 +135,11 @@ luac -p *.lua
 # Update translations
 python3 extract_strings.py
 ./compile_translations.sh
-
-# Test in KOReader
-cp -r ../gota.koplugin /path/to/koreader/plugins/
 ```
-
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details
+MIT License - see [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
