@@ -436,7 +436,7 @@ To modularize the monolithic code to improve maintainability.
 - Response caching (5-minute TTL)
 - Automatic retries
 - Gzip decompression
-- SSL handling without verification (for Kindle)
+- SSL handling without verification (for e-ink device compatibility)
 
 Main functions:
 ```lua

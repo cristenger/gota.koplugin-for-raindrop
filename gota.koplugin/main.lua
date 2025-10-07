@@ -5,7 +5,7 @@
     Versión: 1.8 
     
     IMPORTANTE: SSL está desactivado para evitar problemas de certificados
-    en dispositivos eink. Esto es necesario para que funcione correctamente.
+    en dispositivos e-ink. Esto es necesario para que funcione correctamente.
 ]]
 
 local InfoMessage = require("ui/widget/infomessage")

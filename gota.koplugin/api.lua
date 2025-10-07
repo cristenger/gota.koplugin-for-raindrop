@@ -33,9 +33,9 @@ function API:new(settings, server_url)
     o.response_cache = {}
     o.cache_ttl = 300  -- 5 minutos
     
-    -- Configurar SSL una sola vez al inicio
+    -- Configurar SSL una sola vez al inicio (desactivado para compatibilidad con dispositivos e-ink)
     https.cert_verify = false
-    logger.dbg("Gota API: SSL verificación desactivada para compatibilidad")
+    logger.dbg("Gota API: SSL verificación desactivada para compatibilidad con dispositivos e-ink")
     
     return o
 end
