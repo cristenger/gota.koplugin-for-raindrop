@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 23:13\n"
-"PO-Revision-Date: 2025-10-05 23:13\n"
+"POT-Creation-Date: 2025-11-05 01:58\n"
+"PO-Revision-Date: 2025-11-05 01:58\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -98,16 +98,19 @@ msgid "Type: "
 msgstr "Type: "
 
 msgid "Excerpt:"
-msgstr "Excerpt:"
+msgstr "Extracto:"
 
 msgid "Notes:"
-msgstr "Notes:"
+msgstr "Notas:"
+
+msgid "Highlights:"
+msgstr "Resaltados:"
 
 msgid "Tags: "
-msgstr "Tags: "
+msgstr "Etiquetas: "
 
 msgid "Cache: "
-msgstr "Cache: "
+msgstr "Caché: "
 
 msgid "Available"
 msgstr "Available"
@@ -255,9 +258,6 @@ msgstr "< Back to Gota"
 
 msgid "Copy article URL"
 msgstr "Copy article URL"
-
-msgid "Gota (Raindrop.io)"
-msgstr "Gota (Raindrop.io)"
 
 msgid "All articles"
 msgstr "All articles"

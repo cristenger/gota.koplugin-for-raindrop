@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 1.9.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-05 23:13\n"
+"POT-Creation-Date: 2025-11-05 01:58\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -101,6 +101,9 @@ msgid "Excerpt:"
 msgstr ""
 
 msgid "Notes:"
+msgstr ""
+
+msgid "Highlights:"
 msgstr ""
 
 msgid "Tags: "
@@ -254,9 +257,6 @@ msgid "< Back to Gota"
 msgstr ""
 
 msgid "Copy article URL"
-msgstr ""
-
-msgid "Gota (Raindrop.io)"
 msgstr ""
 
 msgid "All articles"

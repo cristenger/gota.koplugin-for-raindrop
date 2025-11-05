@@ -1,4 +1,29 @@
-# 📋 Changelog - Gota Plugin for KOReader
+# Changelog - Gota Plugin for KOReader
+
+## v2.1.0 - Highlights Display (November 5, 2025)
+
+### Added
+- **Highlights Display**: View all your Raindrop.io highlights directly in article information
+  - Shows highlight text with color indicators ([Yellow], [Blue], [Red], [Green])
+  - Displays highlight-specific notes when available
+  - Automatic numbering of highlights for easy reference
+  - Separator line for clear visual organization
+
+### Fixed
+- **Spanish Translations**: Fixed missing translations for "Notes:", "Excerpt:", "Tags:", and "Cache:"
+  - `Notes:` → `Notas:`
+  - `Excerpt:` → `Extracto:`
+  - `Tags:` → `Etiquetas:`
+  - `Cache:` → `Caché:`
+
+### Technical
+- Modified `content_processor.lua`: Added highlight formatting logic (~35 lines)
+- Updated translation files with new string "Highlights:" / "Resaltados:"
+- Total strings: 133 unique (was 132)
+- No breaking changes - purely additive feature
+- Graceful degradation when no highlights exist
+
+---
 
 ## v2.0.0 - Full Internationalization (October 5, 2025)
 
@@ -18,10 +43,10 @@ l10n/
 ```
 
 **Features**:
-- ✅ Automatic detection of KOReader's language
-- ✅ English as the default language (source language)
-- ✅ Full Spanish translation (126 strings)
-- ✅ Ready to easily add more languages
+- Automatic detection of KOReader's language
+- English as the default language (source language)
+- Full Spanish translation (126 strings)
+- Ready to easily add more languages
 
 **Modified files** (146 strings replaced):
 - `api.lua`: 7 strings
@@ -49,7 +74,7 @@ msgid "Configure access token"
 msgstr "Configurar token de acceso"  # For Spanish
 ```
 
-### 🎯 UI Simplification
+### UI Simplification
 
 **Change**: The redundant "Download HTML" option has been removed from the article menu.
 
@@ -62,10 +87,10 @@ msgstr "Configurar token de acceso"  # For Spanish
 - Same functionality, simpler interface
 
 **Benefits**:
-- ✅ Cleaner menu (3 options instead of 4)
-- ✅ More intuitive behavior
-- ✅ Files are always saved permanently
-- ✅ Code reduction (~60 lines removed)
+- Cleaner menu (3 options instead of 4)
+- More intuitive behavior
+- Files are always saved permanently
+- Code reduction (~60 lines removed)
 
 **Affected Files**:
 - `article_manager.lua`: Removed `downloadHTML()` and `openDownloadFolder()` functions
@@ -76,7 +101,7 @@ msgstr "Configurar token de acceso"  # For Spanish
 - Total unique strings: **127** (+2 vs advanced search)
 - Total occurrences: **151** (+2 vs advanced search)
 
-### 🎨 UX Improvements
+### UX Improvements
 
 **Main Menu Reorganization**:
 
@@ -104,28 +129,28 @@ msgstr "Configurar token de acceso"  # For Spanish
 ```
 
 **Benefits**:
-- ✅ Frequently used options at the top
-- ✅ Configuration grouped in a submenu
-- ✅ Logical order: view → search → configure
-- ✅ More descriptive name for debug
+- Frequently used options at the top
+- Configuration grouped in a submenu
+- Logical order: view → search → configure
+- More descriptive name for debug
 
 **Full Screen in Searches**:
 - Search results now take up the full screen
 - Consistent with collections and "All articles"
 - Better reading experience
 
-### 🔍 Advanced Search with Filters
+### Advanced Search with Filters
 
 **New Feature**: Advanced search system with contextual filters.
 
 **Features**:
-- ✅ New "Advanced search" option in the main menu
-- ✅ Filtering by **tags** (user tags)
-- ✅ Filtering by **type** (article, image, video, document)
-- ✅ Combination of text search + filters
-- ✅ Shows popular tags with a counter
-- ✅ Shows available types with a counter
-- ✅ Results title indicates active filters
+- New "Advanced search" option in the main menu
+- Filtering by **tags** (user tags)
+- Filtering by **type** (article, image, video, document)
+- Combination of text search + filters
+- Shows popular tags with a counter
+- Shows available types with a counter
+- Results title indicates active filters
 
 **Before** (v1.9.0):
 - Only simple text search
@@ -161,11 +186,11 @@ GET /raindrops/0?search=X&tag=Y&type=Z
 ```
 
 **Benefits**:
-- ✅ More precise and contextual search
-- ✅ Content discovery by tags
-- ✅ Filtering by content type
-- ✅ Experience similar to the official Raindrop app
-- ✅ Keeps simple search for quick cases
+- More precise and contextual search
+- Content discovery by tags
+- Filtering by content type
+- Experience similar to the official Raindrop app
+- Keeps simple search for quick cases
 
 ---
 
@@ -193,17 +218,17 @@ GET /raindrops/0?search=X&tag=Y&type=Z
 - `main.lua`: Added "Configure download folder" menu and `showDownloadPathDialog()` method
 
 **User Benefits**:
-- ✅ All articles are saved in the same folder
-- ✅ Configurable folder according to user preferences
-- ✅ Path relative to DataDir (typically `koreader/`)
-- ✅ Persistent settings between sessions
+- All articles are saved in the same folder
+- Configurable folder according to user preferences
+- Path relative to DataDir (typically `koreader/`)
+- Persistent settings between sessions
 
 #### Internationalization (i18n) Review
 
 **Verification**: Checked that all UI strings correctly use the gettext `_()` function
-- ✅ `dialogs.lua`: All buttons and texts use `_()`
-- ✅ `menu_builder.lua`: All menu items use `_()`
-- ✅ `main.lua`: All notifications and messages use `_()`
+- `dialogs.lua`: All buttons and texts use `_()`
+- `menu_builder.lua`: All menu items use `_()`
+- `main.lua`: All notifications and messages use `_()`
 
 **Default language**: Spanish (source language)
 **Future support**: The plugin is ready for translations into other languages using KOReader's `.po` files
@@ -212,7 +237,7 @@ GET /raindrops/0?search=X&tag=Y&type=Z
 
 ## v1.8.2 - Bugfix Release (October 5, 2025)
 
-### 🐛 Bug Fixed
+### Bug Fixed
 
 #### Inconsistency in Article Cache Detection
 
@@ -259,7 +284,7 @@ GET /raindrops/0?search=X&tag=Y&type=Z
 - Messages are consistent with the actual state of the cache
 - Better error handling when content loading fails
 
-### ✅ Verification
+### Verification
 - All modules have correct syntax
 - More robust and clear cache logic
 
@@ -267,7 +292,7 @@ GET /raindrops/0?search=X&tag=Y&type=Z
 
 ## v1.8.1 - Bugfix Release (October 5, 2025)
 
-### 🐛 Bugs Fixed
+### Bugs Fixed
 
 #### 1. Error in Dialog Closures (dialogs.lua)
 **Symptom**: Crash when clicking any button in the dialogs
@@ -313,7 +338,7 @@ raindrop, err = self.article_manager:loadFullArticle(raindrop)
 - `main.lua` line 248
 - Function: `showRaindropContent()`
 
-### ✅ Verification
+### Verification
 - All modules (8/8) have correct syntax
 - Known bugs: 0
 
@@ -321,7 +346,7 @@ raindrop, err = self.article_manager:loadFullArticle(raindrop)
 
 ## v1.8 - Ultra Modularization (October 5, 2025)
 
-### 🎯 Objective
+### Objective
 To ultra-aggressively reduce `main.lua` to make it easier to work with LLMs.
 
 ### ✨ Main Changes
@@ -394,7 +419,7 @@ main.lua (455L) - PURE COORDINATOR
 └── gota_reader.lua (156L) - ReaderUI Integration
 ```
 
-### 📊 Benefits for LLM
+### Benefits for LLM
 
 | Task | Lines v1.6 | Lines v1.8 | Improvement |
 |---|---|---|---|
@@ -420,7 +445,7 @@ main.lua (455L) - PURE COORDINATOR
 
 ## v1.7 - First Refactoring (previous)
 
-### 🎯 Objective
+### Objective
 To modularize the monolithic code to improve maintainability.
 
 ### ✨ Main Changes
@@ -481,21 +506,21 @@ main.lua (940L) - Main orchestrator
 Original monolithic version with all functionality in `main.lua` (1571 lines).
 
 ### Features
-- ✅ Raindrop.io token configuration
-- ✅ Listing of collections
-- ✅ Viewing articles with pagination
-- ✅ Searching for articles
-- ✅ Viewing content in plain text
-- ✅ Opening articles in full reader (HTML)
-- ✅ Downloading HTML for offline reading
-- ✅ Cache management
-- ✅ Article information
-- ✅ Copying URLs
-- ✅ Debug info
+- Raindrop.io token configuration
+- Listing of collections
+- Viewing articles with pagination
+- Searching for articles
+- Viewing content in plain text
+- Opening articles in full reader (HTML)
+- Downloading HTML for offline reading
+- Cache management
+- Article information
+- Copying URLs
+- Debug info
 
 ---
 
-## 📊 Evolution Summary
+## Evolution Summary
 
 | Version | main.lua | Modules | Features |
 |---|---|---|---|
