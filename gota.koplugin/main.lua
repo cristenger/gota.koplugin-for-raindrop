@@ -126,7 +126,7 @@ function Gota:getSubMenuItems()
     return {
         {
             text = _("All articles"),
-            enabled_func = function() return self.settings:isTokenValid() end,
+            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showRaindrops(0, _("All articles"))
@@ -135,7 +135,7 @@ function Gota:getSubMenuItems()
         },
         {
             text = _("View collections"),
-            enabled_func = function() return self.settings:isTokenValid() end,
+            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showCollections()
@@ -144,12 +144,12 @@ function Gota:getSubMenuItems()
         },
         {
             text = _("Search articles"),
-            enabled_func = function() return self.settings:isTokenValid() end,
+            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
             callback = function() self:showSearchDialog() end,
         },
         {
             text = _("Advanced search"),
-            enabled_func = function() return self.settings:isTokenValid() end,
+            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showAdvancedSearchDialog()
@@ -416,7 +416,9 @@ function Gota:showRaindropCachedContent(raindrop)
             self:closeWidget("text_viewer")
             local filename = self.article_manager:downloadHTML(raindrop)
             if filename then
-                self:showDownloadOptions(filename, raindrop.title)
+                -- Extraer solo el nombre del archivo para mostrar
+                local display_name = filename:match("([^/]+)$") or filename
+                self:notify(_("Article saved: ") .. display_name)
             end
         end,
     })
