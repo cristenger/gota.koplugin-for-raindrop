@@ -179,11 +179,15 @@ gota.koplugin/
 └── _meta.lua                 # Plugin metadata
 ```
 
-Total: ~2,000 lines of modular Lua code
+## Disclaimer
 
-## License
+**This plugin is not affiliated with, endorsed by, or connected to Raindrop.io in any way.** This is an independent, unofficial plugin developed by the community.
 
-MIT License - see [LICENSE](gota.koplugin/LICENSE) file
+**No Warranty:** This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. The authors and contributors are not responsible for any issues, data loss, or service interruptions that may occur from using this plugin.
+
+**Third-Party Services:** This plugin relies on the Raindrop.io API and services, which are subject to their own terms of service, availability, and changes. The plugin developers have no control over Raindrop.io's services, API changes, or service availability.
+
+**Use at Your Own Risk:** By using this plugin, you acknowledge that you are using it at your own risk and that the developers assume no liability for any damages or losses resulting from its use.
 
 ## Acknowledgments
 
