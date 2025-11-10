@@ -15,7 +15,7 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 - **Advanced Search**: Filter by tags and content types (article/image/video/document)
 - **Read Articles**: View content as plain text or open in full HTML reader
 - **Personal Notes**: View your personal notes attached to bookmarks
-- **Highlights**: Access your article highlights with color indicators ([Yellow], [Blue], [Red], [Green])
+- **Highlights**: Access your article highlights
 - **Save Offline**: Download HTML articles for offline reading
 - **Internationalization**: Automatic language detection (English/Spanish supported)
 - **Configurable**: Customizable download folder with visual folder picker
