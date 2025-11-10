@@ -158,8 +158,6 @@ This means the article's permanent cache is not available. This can happen if:
 - The article hasn't been cached yet (PRO users: wait a moment and try "reload")
 - The article source doesn't allow caching
 
-**Solution:** Use "Copy URL" to open the article in a browser.
-
 ### SSL Certificate Issues
 
 **Important:** SSL verification is disabled by default to prevent certificate errors on e-ink devices.
