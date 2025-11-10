@@ -189,6 +189,10 @@ gota.koplugin/
 
 **Use at Your Own Risk:** By using this plugin, you acknowledge that you are using it at your own risk and that the developers assume no liability for any damages or losses resulting from its use.
 
+## License
+
+MIT License - see [LICENSE](gota.koplugin/LICENSE) file
+
 ## Acknowledgments
 
 - [KOReader](https://github.com/koreader/koreader) - The amazing e-reader software
