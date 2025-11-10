@@ -263,6 +263,39 @@ function ContentProcessor:formatArticleInfo(raindrop)
         content = content .. raindrop.note .. "\n\n"
     end
     
+    if raindrop.highlights and #raindrop.highlights > 0 then
+        content = content .. _("Highlights:") .. " (" .. #raindrop.highlights .. ")\n"
+        content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for i, highlight in ipairs(raindrop.highlights) do
+            -- Color indicator as text
+            local color_text = ""
+            if highlight.color == "yellow" then
+                color_text = "[Yellow] "
+            elseif highlight.color == "blue" then
+                color_text = "[Blue] "
+            elseif highlight.color == "red" then
+                color_text = "[Red] "
+            elseif highlight.color == "green" then
+                color_text = "[Green] "
+            end
+            
+            -- Highlight number and text
+            content = content .. color_text .. "[" .. i .. "] "
+            if highlight.text then
+                content = content .. highlight.text .. "\n"
+            end
+            
+            -- Highlight-specific note (if exists)
+            if highlight.note and highlight.note ~= "" then
+                content = content .. "   Note: " .. highlight.note .. "\n"
+            end
+            
+            -- Add spacing between highlights
+            content = content .. "\n"
+        end
+    end
+    
     if raindrop.tags and #raindrop.tags > 0 then
         content = content .. _("Tags: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
     end

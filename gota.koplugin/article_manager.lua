@@ -167,4 +167,54 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     return true
 end
 
+-- ========== DOWNLOAD HTML ==========
+
+function ArticleManager:downloadHTML(raindrop)
+    if not raindrop or not raindrop.cache or not raindrop.cache.text then
+        self.callbacks.notify(_("No content available to download"))
+        return nil
+    end
+
+    -- Usar el mismo directorio configurado
+    local html_dir = self.settings:getFullDownloadPath()
+    local lfs = require("libs/libkoreader-lfs")
+
+    -- Crear directorio si no existe
+    if not lfs.attributes(html_dir, "mode") then
+        local success = util.makePath(html_dir)
+        if not success then
+            self.callbacks.notify(_("Error creating download directory"))
+            return nil
+        end
+    end
+
+    -- Sanitizar nombre de archivo de forma segura
+    local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 50)
+    local safe_id = (raindrop._id or "unknown"):gsub("[^%w%-]", "")
+    local filename = html_dir .. safe_id .. "_" .. safe_title .. ".html"
+
+    -- Generar HTML usando el mismo procesador que openInReader
+    local html = self.content_processor:createReaderHTML(raindrop)
+
+    -- Guardar archivo con manejo de errores
+    local file, err = io.open(filename, "w")
+    if not file then
+        self.callbacks.notify(_("Error saving file: ") .. (err or _("unknown error")))
+        return nil
+    end
+
+    local write_ok, write_err = pcall(function()
+        file:write(html)
+    end)
+    file:close()
+
+    if not write_ok then
+        self.callbacks.notify(_("Error writing file: ") .. (write_err or _("unknown error")))
+        return nil
+    end
+
+    logger.dbg("ArticleManager: HTML saved successfully:", filename)
+    return filename
+end
+
 return ArticleManager

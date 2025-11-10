@@ -1,25 +1,27 @@
-# 📚 Gota Plugin for KOReader
+# Gota Plugin for KOReader
 
 A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) bookmarks directly on your e-reader.
 
 <p align="center">
   <img src="https://img.shields.io/badge/KOReader-Plugin-blue" alt="KOReader Plugin">
-  <img src="https://img.shields.io/badge/version-2.0.0-green" alt="Version 2.0.0">
+  <img src="https://img.shields.io/badge/version-2.1.0-green" alt="Version 2.1.0">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT License">
 </p>
 
-## ✨ Features
+## Features
 
-- 📖 **Browse Collections**: Navigate your Raindrop collections with full pagination
-- 🔍 **Simple Search**: Quick text-based article search
-- 🎯 **Advanced Search**: Filter by tags and content types (article/image/document)
-- 📄 **Read Articles**: View content as plain text or open in full HTML reader
-- 💾 **Save Offline**: Download HTML articles for offline reading
-- 🌍 **Internationalization**: Automatic language detection (English/Spanish supported)
-- ⚙️ **Configurable**: Customizable download folder with visual folder picker
-- 📱 **Multi-Device**: Works on any device that supports KOReader
+- **Browse Collections**: Navigate your Raindrop collections with full pagination
+- **Simple Search**: Quick text-based article search
+- **Advanced Search**: Filter by tags and content types (article/image/video/document)
+- **Read Articles**: View content as plain text or open in full HTML reader
+- **Personal Notes**: View your personal notes attached to bookmarks
+- **Highlights**: Access your article highlights
+- **Save Offline**: Download HTML articles for offline reading
+- **Internationalization**: Automatic language detection (English/Spanish supported)
+- **Configurable**: Customizable download folder with visual folder picker
+- **Multi-Device**: Works on any device that supports KOReader
 
-## 📦 Installation
+## Installation
 
 ### Method 1: Manual Installation
 
@@ -35,7 +37,7 @@ cd gota.koplugin-for-raindrop
 cp -r gota.koplugin /path/to/koreader/plugins/
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Get Your Raindrop.io Test Token
 
@@ -44,18 +46,18 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 3. Give it a name (e.g., "KOReader")
 4. Copy the **"Test token"** from your app settings
 
-✅ **Why Test Tokens?** No setup required, never expires, secure, and perfect for e-readers.
+**Why Test Tokens?** No setup required, never expires, secure, and perfect for e-readers.
 
-⚠️ OAuth tokens are not supported (require web browser).
+**Note:** OAuth tokens are not supported (require web browser).
 
 ### 2. Configure the Plugin
 
 1. Open KOReader
-2. Go to: **☰ Menu → Gota → Configuration → Configure access token**
+2. Go to: **Menu → Gota → Configuration → Configure access token**
 3. Paste your token
 4. Tap **Save** (or **Test** to verify first)
 
-*Note: First time shows "NEW: Gota" - this disappears after opening it once.*
+*First time shows "NEW: Gota" - this disappears after opening it once.*
 
 ### 3. Start Reading!
 
@@ -66,7 +68,7 @@ Once configured, you can:
 - **Search articles**: Quick text search
 - **Advanced search**: Filter by tags and content type
 
-## 📖 Usage Guide
+## Usage Guide
 
 ### Browse Collections
 
@@ -81,15 +83,25 @@ Shows all your Raindrop collections with article counts and pagination.
 - Enter any search term to find matching articles
 
 **Advanced Search:** `Menu → Gota → Advanced search`
-- Filter by tags (e.g., `#programming`) or content type (article/image/document)
+- Filter by tags (e.g., `#programming`) or content type (article/image/video/document)
 
 ### Read an Article
 
 Tap any article to see options:
-- **Open in full reader**: HTML with formatting
-- **View as plain text**: Simple text view
-- **View information**: Metadata, tags, URL, cache status
+- **Open in full reader**: HTML with formatting (requires Raindrop PRO)
+- **View as plain text**: Simple text view (requires Raindrop PRO)
+- **View information**: Metadata, tags, URL, cache status, notes, and highlights
 - **Copy URL**: Copy article link
+
+### Notes and Highlights
+
+When viewing article information, you'll see:
+- **Personal Notes**: Your notes about the article
+- **Highlights**: Text you've highlighted with color indicators
+  - [Yellow] [Blue] [Red] [Green] color tags
+  - Highlight-specific notes when available
+  
+**Important:** Notes and highlights work with both free and PRO accounts. However, viewing cached article content (full text/HTML) requires a **Raindrop.io PRO subscription**.
 
 ### Configure Download Folder
 
@@ -97,32 +109,64 @@ Tap any article to see options:
 
 Choose between visual folder picker or manual folder name entry.
 
-## 🌍 Language Support
+## Raindrop.io PRO Features
+
+Some features require a [Raindrop.io PRO subscription](https://raindrop.io/pro):
+
+**Available with PRO:**
+- Permanent article cache (full text content)
+- Open articles in full HTML reader
+- View articles as plain text
+- Download articles for offline reading
+
+**Available with Free Plan:**
+- Browse collections
+- Search articles
+- View article metadata
+- Access personal notes
+- View highlights
+- Copy article URLs
+
+The plugin will gracefully handle missing cache for free accounts, allowing you to copy the URL and open it in a browser instead.
+
+## Language Support
 
 The plugin auto-detects your KOReader language:
 - **English** (default)
-- **Español** (Spanish)
+- **Spanish** (Español)
 
 Change language in: `KOReader Settings → Language`
 
-Want to add your language? See [l10n/README.md](l10n/README.md) for translation guide.
+Want to add your language? See [l10n/README.md](gota.koplugin/l10n/README.md) for translation guide.
 
-## ⚙️ Configuration
+## Configuration
 
 - **Access Token**: Configuration → Configure access token (required)
 - **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
 - **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
-**Articles not showing?**
+### Articles not showing?
 1. Check you have articles in Raindrop.io
 2. Verify token with "Test" button
 3. Try "All articles" to see everything
 
-**SSL Note**: SSL verification is disabled for e-reader compatibility.
+### "No cached content available"
+This means the article's permanent cache is not available. This can happen if:
+- You're using a free Raindrop.io account (cache requires PRO)
+- The article hasn't been cached yet (PRO users: wait a moment and try "reload")
+- The article source doesn't allow caching
 
-## 🏗️ Development
+### SSL Certificate Issues
+
+**Important:** SSL verification is disabled by default to prevent certificate errors on e-ink devices.
+
+This is necessary because many e-readers have outdated certificate stores and cannot verify modern SSL certificates. The plugin disables SSL verification to ensure reliable connections to Raindrop.io API.
+
+**Security note:** While this reduces security slightly, it's a necessary compromise for e-reader compatibility. Your access token is still transmitted over HTTPS encryption.
+
+## Development
 
 ```bash
 # Clone and setup
@@ -137,21 +181,37 @@ python3 extract_strings.py
 ./compile_translations.sh
 ```
 
-## 📄 License
+## Architecture
 
-MIT License - see [LICENSE](LICENSE) file
+```
+gota.koplugin/
+├── main.lua                  # Plugin coordinator
+├── api.lua                   # Raindrop.io API client
+├── settings.lua              # Configuration management
+├── dialogs.lua               # UI dialogs
+├── ui_builder.lua            # Menu construction
+├── content_processor.lua     # HTML processing
+├── article_manager.lua       # Article operations
+├── gota_reader.lua           # Reader integration
+├── l10n/                     # Translations
+│   ├── templates/gota.pot    # Translation template
+│   └── es/gota.po           # Spanish translation
+└── _meta.lua                 # Plugin metadata
+```
 
-## 🙏 Acknowledgments
+Total: ~2,000 lines of modular Lua code
+
+## License
+
+MIT License - see [LICENSE](gota.koplugin/LICENSE) file
+
+## Acknowledgments
 
 - [KOReader](https://github.com/koreader/koreader) - The amazing e-reader software
 - [Raindrop.io](https://raindrop.io) - Excellent bookmark management service
 - All contributors and testers
 
 ---
-
-<p align="center">
-  Made with ❤️ for KOReader users
-</p>
 
 <p align="center">
   <a href="https://raindrop.io">
