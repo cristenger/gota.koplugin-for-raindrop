@@ -109,26 +109,6 @@ When viewing article information, you'll see:
 
 Choose between visual folder picker or manual folder name entry.
 
-## Raindrop.io PRO Features
-
-Some features require a [Raindrop.io PRO subscription](https://raindrop.io/pro):
-
-**Available with PRO:**
-- Permanent article cache (full text content)
-- Open articles in full HTML reader
-- View articles as plain text
-- Download articles for offline reading
-
-**Available with Free Plan:**
-- Browse collections
-- Search articles
-- View article metadata
-- Access personal notes
-- View highlights
-- Copy article URLs
-
-The plugin will gracefully handle missing cache for free accounts, allowing you to copy the URL and open it in a browser instead.
-
 ## Language Support
 
 The plugin auto-detects your KOReader language:
