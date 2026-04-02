@@ -1,14 +1,12 @@
 --[[
-    Gota: Lector para Raindrop.io en KOReader
-    Permite leer artículos guardados en Raindrop.io directamente en tu dispositivo.
-    
-    Versión: 1.8 
-    
-    IMPORTANTE: SSL está desactivado para evitar problemas de certificados
-    en dispositivos e-ink. Esto es necesario para que funcione correctamente.
+    Gota: Raindrop.io reader for KOReader
+    Read and manage your Raindrop.io bookmarks on e-ink devices.
+    Version: 2.2
 ]]
 
+local Dispatcher = require("dispatcher")
 local InfoMessage = require("ui/widget/infomessage")
+local Notification = require("ui/widget/notification")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
@@ -16,13 +14,12 @@ local DataStorage = require("datastorage")
 local logger = require("logger")
 local _ = require("gettext")
 
--- MÓDULOS DEL PLUGIN - KOReader maneja automáticamente el path del plugin
-local Settings = require("settings")
+local Settings = require("gota_settings")
 local API = require("api")
 local ContentProcessor = require("content_processor")
 local GotaReader = require("gota_reader")
-local UIBuilder = require("ui_builder")
-local Dialogs = require("dialogs")
+local UIBuilder = require("gota_ui_builder")
+local Dialogs = require("gota_dialogs")
 local ArticleManager = require("article_manager")
 
 local Gota = WidgetContainer:extend{
@@ -30,25 +27,14 @@ local Gota = WidgetContainer:extend{
     is_doc_only = false,
 }
 
--- ========== INICIALIZACIÓN ==========
+-- ========== INITIALIZATION ==========
 
 function Gota:init()
-    logger.dbg("Gota: init() started")
-    
-    -- Inicializar configuración
     self.settings = Settings:new()
-    
-    -- Inicializar API (pasando settings)
     self.api = API:new(self.settings)
-    
-    -- Inicializar procesador de contenido
     self.content_processor = ContentProcessor:new()
-    
-    -- Inicializar módulos UI
     self.ui_builder = UIBuilder:new()
     self.dialogs = Dialogs:new(self)
-    
-    -- Inicializar gestor de artículos
     self.article_manager = ArticleManager:new(
         self.api,
         self.content_processor,
@@ -60,15 +46,63 @@ function Gota:init()
         }
     )
     self.article_manager:setSettings(self.settings)
-    
-    -- Referencias para widgets
     self.widgets = {}
-    
     self.ui.menu:registerToMainMenu(self)
-    logger.dbg("Gota: init() completed")
+    logger.dbg("Gota: initialized, token:", self.settings:isTokenValid() and "valid" or "missing")
 end
 
--- ========== UTILIDADES BÁSICAS ==========
+-- ========== DISPATCHER ACTIONS ==========
+
+function Gota:onDispatcherRegisterActions()
+    Dispatcher:registerAction("gota_show_articles", {
+        category = "none",
+        event = "GotaShowArticles",
+        title = _("Gota: all articles"),
+        general = true,
+    })
+    Dispatcher:registerAction("gota_search", {
+        category = "none",
+        event = "GotaSearch",
+        title = _("Gota: search articles"),
+        general = true,
+    })
+    Dispatcher:registerAction("gota_collections", {
+        category = "none",
+        event = "GotaShowCollections",
+        title = _("Gota: view collections"),
+        general = true,
+    })
+end
+
+function Gota:onGotaShowArticles()
+    if not self.settings:isTokenValid() then
+        self:notify(_("Please configure your Raindrop.io token first"), 3)
+        return
+    end
+    NetworkMgr:runWhenOnline(function()
+        self:showRaindrops(0, _("All articles"))
+    end)
+end
+
+function Gota:onGotaSearch()
+    if not self.settings:isTokenValid() then
+        self:notify(_("Please configure your Raindrop.io token first"), 3)
+        return
+    end
+    self:showSearchDialog()
+end
+
+function Gota:onGotaShowCollections()
+    if not self.settings:isTokenValid() then
+        self:notify(_("Please configure your Raindrop.io token first"), 3)
+        return
+    end
+    NetworkMgr:runWhenOnline(function()
+        self:showCollections()
+    end)
+end
+
+-- ========== UTILITIES ==========
 
 function Gota:notify(text, timeout)
     timeout = timeout or 3
@@ -76,6 +110,11 @@ function Gota:notify(text, timeout)
         text = text,
         timeout = timeout,
     })
+end
+
+-- Non-blocking toast for confirmations (less screen disruption on e-ink)
+function Gota:toast(text)
+    Notification:notify(text)
 end
 
 function Gota:showProgress(text)
@@ -109,24 +148,25 @@ function Gota:closeWidget(name)
 end
 
 function Gota:closeAllWidgets()
-    local widget_names = {"progress", "token_dialog", "collections_menu", "raindrops_menu", 
-                          "article_menu", "search_dialog", "search_menu", "download_menu", 
-                          "text_viewer"}
-    
+    local widget_names = {"progress", "token_dialog", "collections_menu", "raindrops_menu",
+                          "article_menu", "search_dialog", "search_menu", "advanced_search_dialog",
+                          "text_viewer", "sort_dialog"}
     for _, name in ipairs(widget_names) do
         self:closeWidget(name)
     end
-    logger.dbg("Gota: Todas las ventanas cerradas")
 end
 
--- ========== MENÚ PRINCIPAL ==========
+-- ========== MAIN MENU ==========
 
--- Construye el submenú dinámicamente (patrón Hardcover)
 function Gota:getSubMenuItems()
+    local token_valid = function()
+        return self.settings and self.settings:isTokenValid()
+    end
+
     return {
         {
             text = _("All articles"),
-            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
+            enabled_func = token_valid,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showRaindrops(0, _("All articles"))
@@ -135,7 +175,7 @@ function Gota:getSubMenuItems()
         },
         {
             text = _("View collections"),
-            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
+            enabled_func = token_valid,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showCollections()
@@ -144,12 +184,12 @@ function Gota:getSubMenuItems()
         },
         {
             text = _("Search articles"),
-            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
+            enabled_func = token_valid,
             callback = function() self:showSearchDialog() end,
         },
         {
             text = _("Advanced search"),
-            enabled_func = function() return self.settings and self.settings:isTokenValid() end,
+            enabled_func = token_valid,
             callback = function()
                 NetworkMgr:runWhenOnline(function()
                     self:showAdvancedSearchDialog()
@@ -166,6 +206,20 @@ function Gota:getSubMenuItems()
                 {
                     text = _("Configure download folder"),
                     callback = function() self:showDownloadPathDialog() end,
+                },
+                {
+                    text_func = function()
+                        local sort_labels = {
+                            ["-created"] = _("newest first"),
+                            ["created"]  = _("oldest first"),
+                            ["title"]    = _("title A-Z"),
+                            ["-title"]   = _("title Z-A"),
+                            ["-sort"]    = _("custom order"),
+                        }
+                        local label = sort_labels[self.settings:getSortOrder()] or _("newest first")
+                        return _("Sort order") .. ": " .. label
+                    end,
+                    callback = function() self:showSortPicker() end,
                 },
                 {
                     text = _("Debug Raindrop API connection"),
@@ -185,7 +239,7 @@ function Gota:addToMainMenu(menu_items)
     }
 end
 
--- ========== DIÁLOGOS ==========
+-- ========== DIALOGS ==========
 
 function Gota:showTokenDialog()
     self.widgets.token_dialog = self.dialogs:showTokenDialog(
@@ -252,7 +306,7 @@ function Gota:showDownloadPathDialog()
                 self.settings:setDownloadPath(new_path)
                 local success = self.settings:save()
                 if success then
-                    self:notify(_("Download folder updated: ") .. new_path)
+                    self:toast(_("Download folder updated: ") .. new_path)
                 else
                     self:notify(_("Error saving configuration"))
                 end
@@ -264,49 +318,95 @@ function Gota:showDownloadPathDialog()
     )
 end
 
--- ========== COLECCIONES ==========
+-- ========== COLLECTIONS ==========
 
 function Gota:showCollections()
     self:showProgress(_("Loading collections..."))
     local collections, err = self.api:getCollections()
     self:hideProgress()
-    
+
     if not collections then
         self:notify(_("Error retrieving collections:") .. "\n" .. (err or _("Unknown error")), 4)
         return
     end
-    
-    local items = self.ui_builder:buildCollectionItems(
+
+    local items = {}
+
+    -- System collections at the top
+    table.insert(items, {
+        text = _("Unsorted (inbox)"),
+        callback = function() self:showRaindrops(-1, _("Unsorted")) end,
+    })
+
+    -- User collections
+    local collection_items = self.ui_builder:buildCollectionItems(
         collections,
         function(id, title) self:showRaindrops(id, title) end
     )
-    
+    for _, item in ipairs(collection_items) do
+        table.insert(items, item)
+    end
+
+    -- Trash at the bottom
+    table.insert(items, { text = "──────────────────", enabled = false })
+    table.insert(items, {
+        text = _("Trash"),
+        callback = function() self:showRaindrops(-99, _("Trash")) end,
+    })
+
+    -- Reload option
+    table.insert(items, { text = "──────────────────", enabled = false })
+    table.insert(items, {
+        text = _("Reload collections"),
+        callback = function()
+            self:closeWidget("collections_menu")
+            self.api:clearCacheFor("/collections")
+            NetworkMgr:runWhenOnline(function()
+                self:showCollections()
+            end)
+        end,
+    })
+
     self:closeWidget("collections_menu")
     self.widgets.collections_menu = self.ui_builder:createMenu(_("Raindrop Collections"), items)
     UIManager:show(self.widgets.collections_menu)
 end
 
--- ========== RAINDROPS (ARTÍCULOS) ==========
+-- ========== RAINDROPS (ARTICLES) ==========
 
 function Gota:showRaindrops(collection_id, collection_name, page)
     page = page or 0
     local perpage = 25
-    
+    local sort = self.settings:getSortOrder()
+
     self:showProgress(_("Loading articles..."))
-    local raindrops, err = self.api:getRaindrops(collection_id, page, perpage)
+    local raindrops, err = self.api:getRaindrops(collection_id, page, perpage, sort)
     self:hideProgress()
-    
+
     if not raindrops then
         self:notify(_("Error retrieving articles: ") .. (err or _("Unknown error")), 4)
         return
     end
-    
+
     local items = self.ui_builder:buildRaindropItems(
         raindrops,
-        function(raindrop) self:showRaindropContent(raindrop) end
+        function(raindrop) self:showRaindropContent(raindrop) end,
+        -- Hold callback: quick info popup (no API calls, data already in list item)
+        function(raindrop)
+            local info = (raindrop.title or _("Untitled")) .. "\n\n"
+            info = info .. (raindrop.domain or "") .. "\n"
+            info = info .. (_("Type") .. ": " .. (raindrop.type or "link")) .. "\n"
+            if raindrop.tags and #raindrop.tags > 0 then
+                info = info .. (_("Tags") .. ": " .. table.concat(raindrop.tags, ", ")) .. "\n"
+            end
+            if raindrop.cache then
+                info = info .. (_("Cache") .. ": " .. (raindrop.cache.status or "unknown"))
+            end
+            self:notify(info, 5)
+        end
     )
-    
-    -- Añadir paginación
+
+    -- Pagination
     self.ui_builder:addPagination(
         items,
         raindrops,
@@ -314,7 +414,19 @@ function Gota:showRaindrops(collection_id, collection_name, page)
         perpage,
         function(new_page) self:showRaindrops(collection_id, collection_name, new_page) end
     )
-    
+
+    -- Reload option at the bottom
+    table.insert(items, {
+        text = _("Reload"),
+        callback = function()
+            self:closeWidget("raindrops_menu")
+            self.api:clearCacheFor("/raindrops/" .. tostring(collection_id))
+            NetworkMgr:runWhenOnline(function()
+                self:showRaindrops(collection_id, collection_name, page)
+            end)
+        end,
+    })
+
     self:closeWidget("raindrops_menu")
     self.widgets.raindrops_menu = self.ui_builder:createMenu(
         string.format("%s (%d)", collection_name or _("Articles"), raindrops.count or 0),
@@ -323,7 +435,53 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     UIManager:show(self.widgets.raindrops_menu)
 end
 
--- ========== CONTENIDO DE ARTÍCULO ==========
+-- ========== SORT PICKER ==========
+
+function Gota:showSortPicker()
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local current = self.settings:getSortOrder()
+
+    local function makeSortButton(label, value)
+        local display = label
+        if value == current then
+            display = display .. " *"
+        end
+        return {
+            text = display,
+            callback = function()
+                UIManager:close(self.widgets.sort_dialog)
+                self.widgets.sort_dialog = nil
+                self.settings:setSortOrder(value)
+                self.settings:save()
+                self:toast(_("Sort order: ") .. label)
+            end,
+        }
+    end
+
+    self.widgets.sort_dialog = ButtonDialog:new{
+        title = _("Sort articles by"),
+        title_align = "center",
+        buttons = {
+            { makeSortButton(_("Newest first"), "-created") },
+            { makeSortButton(_("Oldest first"), "created") },
+            { makeSortButton(_("Title A-Z"), "title") },
+            { makeSortButton(_("Title Z-A"), "-title") },
+            { makeSortButton(_("Custom order"), "-sort") },
+            {
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(self.widgets.sort_dialog)
+                        self.widgets.sort_dialog = nil
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(self.widgets.sort_dialog)
+end
+
+-- ========== ARTICLE CONTENT ==========
 
 function Gota:showRaindropContent(raindrop)
     -- Cargar datos completos
@@ -364,6 +522,33 @@ function Gota:showRaindropContent(raindrop)
         show_info = function()
             self:showRaindropInfo(raindrop)
         end,
+        show_notes = function()
+            self:showRaindropNotes(raindrop)
+        end,
+        show_highlights = function()
+            self:showRaindropHighlights(raindrop)
+        end,
+        save_html_with_notes = function()
+            -- Cerrar menús antes de descargar
+            self:closeAllWidgets()
+
+            local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
+            if filename then
+                -- Extraer el directorio del archivo
+                local directory = filename:match("(.*/)")
+                if directory then
+                    -- Abrir FileManager mostrando el directorio de descarga
+                    UIManager:nextTick(function()
+                        local FileManager = require("apps/filemanager/filemanager")
+                        if FileManager.instance then
+                            FileManager.instance:reinit(directory)
+                        else
+                            FileManager:showFiles(directory)
+                        end
+                    end)
+                end
+            end
+        end,
         show_link = function()
             self.dialogs:showLinkInfo(raindrop)
         end,
@@ -388,6 +573,16 @@ function Gota:showRaindropInfo(raindrop)
     self.dialogs:showArticleInfo(raindrop, content)
 end
 
+function Gota:showRaindropNotes(raindrop)
+    local content = self.content_processor:formatNotes(raindrop)
+    self.dialogs:showArticleInfo(raindrop, content)
+end
+
+function Gota:showRaindropHighlights(raindrop)
+    local content = self.content_processor:formatHighlights(raindrop)
+    self.dialogs:showArticleInfo(raindrop, content)
+end
+
 function Gota:showRaindropCachedContent(raindrop)
     if not raindrop.cache or not raindrop.cache.text then
         self:notify(_("No cached content available"))
@@ -395,7 +590,7 @@ function Gota:showRaindropCachedContent(raindrop)
     end
     
     local formatted_content = self.content_processor:formatArticleText(raindrop)
-    
+
     local buttons = self.ui_builder:buildContentViewerButtons({
         close = function()
             self:closeWidget("text_viewer")
@@ -416,12 +611,32 @@ function Gota:showRaindropCachedContent(raindrop)
             self:closeWidget("text_viewer")
             local filename = self.article_manager:downloadHTML(raindrop)
             if filename then
-                -- Extraer solo el nombre del archivo para mostrar
                 local display_name = filename:match("([^/]+)$") or filename
-                self:notify(_("Article saved: ") .. display_name)
+                self:toast(_("Article saved: ") .. display_name)
             end
         end,
-    })
+        save_html_with_notes = function()
+            self:closeWidget("text_viewer")
+            self:closeAllWidgets()
+
+            local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
+            if filename then
+                -- Extraer el directorio del archivo
+                local directory = filename:match("(.*/)")
+                if directory then
+                    -- Abrir FileManager mostrando el directorio de descarga
+                    UIManager:nextTick(function()
+                        local FileManager = require("apps/filemanager/filemanager")
+                        if FileManager.instance then
+                            FileManager.instance:reinit(directory)
+                        else
+                            FileManager:showFiles(directory)
+                        end
+                    end)
+                end
+            end
+        end,
+    }, raindrop)
     
     self.widgets.text_viewer = self.dialogs:showContentViewer(
         _("Cached content"),
@@ -430,7 +645,7 @@ function Gota:showRaindropCachedContent(raindrop)
     )
 end
 
--- ========== BÚSQUEDA ==========
+-- ========== SEARCH ==========
 
 function Gota:searchRaindrops(search_term, page, filters)
     page = page or 0
@@ -447,7 +662,17 @@ function Gota:searchRaindrops(search_term, page, filters)
     
     local items = self.ui_builder:buildRaindropItems(
         results,
-        function(raindrop) self:showRaindropContent(raindrop) end
+        function(raindrop) self:showRaindropContent(raindrop) end,
+        -- Hold callback: quick info (same as showRaindrops)
+        function(raindrop)
+            local info = (raindrop.title or _("Untitled")) .. "\n\n"
+            info = info .. (raindrop.domain or "") .. "\n"
+            info = info .. (_("Type") .. ": " .. (raindrop.type or "link")) .. "\n"
+            if raindrop.tags and #raindrop.tags > 0 then
+                info = info .. (_("Tags") .. ": " .. table.concat(raindrop.tags, ", ")) .. "\n"
+            end
+            self:notify(info, 5)
+        end
     )
     
     -- Añadir paginación simple
@@ -478,32 +703,28 @@ function Gota:searchRaindrops(search_term, page, filters)
     UIManager:show(self.widgets.search_menu)
 end
 
--- ========== TEST TOKEN ==========
+-- ========== TOKEN TEST ==========
 
 function Gota:testToken(test_token)
-    logger.dbg("Gota: Starting token test")
-    
     if not test_token or test_token == "" then
         self:notify(_("Warning: Empty token, cannot test"), 3)
         return
     end
-    
+
     if #test_token < 10 then
         self:notify(_("Warning: Token seems very short, but it will be tested anyway"), 2)
     end
-    
+
     self:showProgress(_("Testing token..."))
     local user_data, err = self.api:testToken(test_token)
     self:hideProgress()
-    
+
     if user_data and user_data.user then
-        logger.dbg("Gota: Token test successful")
-        local user_name = user_data.user.fullName or user_data.user.email or "Usuario verificado"
+        local user_name = user_data.user.fullName or user_data.user.email or _("Verified user")
         local pro_status = user_data.user.pro and _(" (PRO)") or ""
         self:notify(_("Valid token!\nUser: ") .. user_name .. pro_status, 4)
     else
-        logger.err("Gota: Test de token falló:", err)
-        self:notify(_("Error with token:\n") .. (err or "Token inválido"), 5)
+        self:notify(_("Error with token:\n") .. (err or _("Invalid token")), 5)
     end
 end
 

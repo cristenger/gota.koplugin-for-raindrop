@@ -137,10 +137,17 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     if not lfs.attributes(html_dir, "mode") then
         util.makePath(html_dir)
     end
-    
-    -- Crear archivo HTML permanente (mismo formato que downloadHTML)
-    local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 30)
-    local filename = html_dir .. raindrop._id .. "_" .. safe_title .. ".html"
+
+    -- Crear archivo HTML permanente (mismo formato que downloadHTML) - MEJORADO
+    local safe_title = self:sanitizeFilename(raindrop.title or "article", 30)
+    local safe_id = self:sanitizeID(raindrop._id)
+
+    -- Asegurar que dir termine en /
+    if not html_dir:match("/$") then
+        html_dir = html_dir .. "/"
+    end
+
+    local filename = html_dir .. safe_id .. "_" .. safe_title .. ".html"
     local html = self.content_processor:createReaderHTML(raindrop)
     
     local file = io.open(filename, "w")
@@ -167,6 +174,97 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     return true
 end
 
+-- ========== FILENAME SANITIZATION ==========
+
+-- Sanitiza el nombre de archivo preservando legibilidad
+function ArticleManager:sanitizeFilename(title, max_length)
+    max_length = max_length or 80
+
+    if not title or title == "" then
+        return "untitled"
+    end
+
+    -- 1. Normalizar espacios
+    title = title:gsub("%s+", " ")
+    title = title:gsub("^%s+", "")
+    title = title:gsub("%s+$", "")
+
+    -- 2. Permitir caracteres seguros: letras, números, espacios, algunos símbolos
+    -- PRESERVAR: punto, guión, paréntesis, corchetes
+    title = title:gsub("[^%w%s%.%(%)%[%]%-_]", "")
+
+    -- 3. Convertir espacios a guión bajo
+    title = title:gsub(" ", "_")
+
+    -- 4. Reducir símbolos consecutivos
+    title = title:gsub("%.%.+", ".")
+    title = title:gsub("%-%-+", "-")
+    title = title:gsub("__+", "_")
+
+    -- 5. Remover símbolos al inicio/final
+    title = title:gsub("^[%.%-_]+", "")
+    title = title:gsub("[%.%-_]+$", "")
+
+    -- 6. Truncar respetando palabras
+    if #title > max_length then
+        title = title:sub(1, max_length)
+        -- Buscar último separador para no cortar en medio de palabra
+        local last_sep = title:match(".*[_%-]")
+        if last_sep and #last_sep > max_length * 0.7 then
+            title = last_sep:sub(1, -2)
+        end
+    end
+
+    return title ~= "" and title or "untitled"
+end
+
+-- Sanitiza el ID del raindrop
+function ArticleManager:sanitizeID(id)
+    if not id then return "unknown" end
+
+    -- Convertir a string si es número
+    id = tostring(id)
+
+    -- Remover caracteres de path traversal
+    id = id:gsub("%.%.", "")
+    id = id:gsub("/", "_")
+    id = id:gsub("\\", "_")
+
+    -- Solo alfanuméricos y guiones
+    id = id:gsub("[^%w%-]", "")
+
+    return id ~= "" and id or "unknown"
+end
+
+-- Genera un nombre de archivo único para evitar colisiones
+function ArticleManager:getUniqueFilename(dir, id, title, extension)
+    extension = extension or ".html"
+
+    -- Asegurar que dir termine en /
+    if not dir:match("/$") then
+        dir = dir .. "/"
+    end
+
+    local base = dir .. id .. "_" .. title
+    local filename = base .. extension
+    local counter = 1
+
+    local lfs = require("libs/libkoreader-lfs")
+    while lfs.attributes(filename, "mode") == "file" do
+        filename = string.format("%s_%d%s", base, counter, extension)
+        counter = counter + 1
+
+        -- Prevenir bucle infinito
+        if counter > 999 then
+            filename = string.format("%s_%d%s", base, os.time(), extension)
+            logger.warn("ArticleManager: Demasiadas colisiones, usando timestamp")
+            break
+        end
+    end
+
+    return filename
+end
+
 -- ========== DOWNLOAD HTML ==========
 
 function ArticleManager:downloadHTML(raindrop)
@@ -188,10 +286,12 @@ function ArticleManager:downloadHTML(raindrop)
         end
     end
 
-    -- Sanitizar nombre de archivo de forma segura
-    local safe_title = (raindrop.title or "article"):gsub("[%c%p%s]", "_"):sub(1, 50)
-    local safe_id = (raindrop._id or "unknown"):gsub("[^%w%-]", "")
-    local filename = html_dir .. safe_id .. "_" .. safe_title .. ".html"
+    -- Sanitizar nombre de archivo de forma segura (MEJORADO)
+    local safe_title = self:sanitizeFilename(raindrop.title or "article", 80)
+    local safe_id = self:sanitizeID(raindrop._id)
+
+    -- Generar nombre único para evitar colisiones (NUEVO)
+    local filename = self:getUniqueFilename(html_dir, safe_id, safe_title, ".html")
 
     -- Generar HTML usando el mismo procesador que openInReader
     local html = self.content_processor:createReaderHTML(raindrop)
@@ -214,6 +314,62 @@ function ArticleManager:downloadHTML(raindrop)
     end
 
     logger.dbg("ArticleManager: HTML saved successfully:", filename)
+    return filename
+end
+
+-- ========== DOWNLOAD HTML WITH NOTES & HIGHLIGHTS ==========
+
+function ArticleManager:downloadHTMLWithNotes(raindrop)
+    -- Verificar que existan notes o highlights para descargar
+    local has_notes = raindrop and raindrop.note and raindrop.note ~= ""
+    local has_highlights = raindrop and raindrop.highlights and #raindrop.highlights > 0
+
+    if not raindrop or (not has_notes and not has_highlights) then
+        self.callbacks.notify(_("No notes or highlights available to download"))
+        return nil
+    end
+
+    -- Usar el mismo directorio configurado
+    local html_dir = self.settings:getFullDownloadPath()
+    local lfs = require("libs/libkoreader-lfs")
+
+    -- Crear directorio si no existe
+    if not lfs.attributes(html_dir, "mode") then
+        local success = util.makePath(html_dir)
+        if not success then
+            self.callbacks.notify(_("Error creating download directory"))
+            return nil
+        end
+    end
+
+    -- Sanitizar nombre de archivo de forma segura
+    local safe_title = self:sanitizeFilename(raindrop.title or "article", 80)
+    local safe_id = self:sanitizeID(raindrop._id)
+
+    -- Generar nombre único con sufijo "_notes" para distinguir
+    local filename = self:getUniqueFilename(html_dir, safe_id, safe_title .. "_notes", ".html")
+
+    -- Generar HTML usando el procesador con notas y highlights
+    local html = self.content_processor:createReaderHTMLWithNotes(raindrop)
+
+    -- Guardar archivo con manejo de errores
+    local file, err = io.open(filename, "w")
+    if not file then
+        self.callbacks.notify(_("Error saving file: ") .. (err or _("unknown error")))
+        return nil
+    end
+
+    local write_ok, write_err = pcall(function()
+        file:write(html)
+    end)
+    file:close()
+
+    if not write_ok then
+        self.callbacks.notify(_("Error writing file: ") .. (write_err or _("unknown error")))
+        return nil
+    end
+
+    logger.dbg("ArticleManager: HTML with notes saved successfully:", filename)
     return filename
 end
 

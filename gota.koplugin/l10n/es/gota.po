@@ -415,3 +415,42 @@ msgstr "Save HTML"
 msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 msgstr "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 
+msgid "Article content not yet available. The full article cache is still being generated or is not available."
+msgstr "El contenido del artículo no está disponible aún. El caché completo del artículo todavía se está generando o no está disponible."
+
+msgid "No notes or highlights available to download"
+msgstr "No hay notas o resaltados disponibles para descargar"
+
+msgid "View notes"
+msgstr "Ver notas"
+
+msgid "View highlights (%d)"
+msgstr "Ver resaltados (%d)"
+
+msgid "Save HTML with notes & highlights"
+msgstr "Guardar HTML con notas y resaltados"
+
+msgid "Article with notes saved: "
+msgstr "Artículo con notas guardado: "
+
+msgid "This article has no notes"
+msgstr "Este artículo no tiene notas"
+
+msgid "This article has no highlights"
+msgstr "Este artículo no tiene resaltados"
+
+msgid "No content available to download"
+msgstr "No hay contenido disponible para descargar"
+
+msgid "Error creating download directory"
+msgstr "Error creando directorio de descarga"
+
+msgid "Error saving file: "
+msgstr "Error guardando archivo: "
+
+msgid "Error writing file: "
+msgstr "Error escribiendo archivo: "
+
+msgid "Article saved: "
+msgstr "Artículo guardado: "
+

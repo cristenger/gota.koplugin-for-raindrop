@@ -19,10 +19,42 @@ end
 
 -- ========== MENU BUILDERS ==========
 
--- Construye items de menú para lista de artículos (raindrops)
-function UIBuilder:buildRaindropItems(raindrops, on_select_callback)
+-- Type abbreviations for the mandatory field
+local TYPE_ABBREV = {
+    article  = "Art",
+    link     = "Lnk",
+    image    = "Img",
+    video    = "Vid",
+    document = "Doc",
+    audio    = "Aud",
+}
+
+-- Build status badge string for a raindrop (right-aligned in menu)
+local function buildBadge(raindrop)
+    local parts = {}
+    -- Type indicator
+    local type_abbr = TYPE_ABBREV[raindrop.type] or ""
+    if type_abbr ~= "" then
+        table.insert(parts, type_abbr)
+    end
+    -- Favorite
+    if raindrop.important then
+        table.insert(parts, "*")
+    end
+    -- Has note
+    if raindrop.note and raindrop.note ~= "" then
+        table.insert(parts, "N")
+    end
+    -- Has highlights (available in list endpoint as count or array)
+    if raindrop.highlights and #raindrop.highlights > 0 then
+        table.insert(parts, "H")
+    end
+    return table.concat(parts, " ")
+end
+
+function UIBuilder:buildRaindropItems(raindrops, on_select_callback, on_hold_callback)
     local items = {}
-    
+
     if not raindrops or not raindrops.items or #raindrops.items == 0 then
         table.insert(items, {
             text = _("No articles available"),
@@ -30,24 +62,33 @@ function UIBuilder:buildRaindropItems(raindrops, on_select_callback)
         })
         return items
     end
-    
-    local translation_func = _
+
     for _, raindrop in ipairs(raindrops.items) do
-        local title = raindrop.title or translation_func("Sin título")
+        local title = raindrop.title or _("Untitled")
         local domain = raindrop.domain or ""
         local excerpt = ""
         if raindrop.excerpt then
             excerpt = "\n" .. raindrop.excerpt:sub(1, 50) .. "..."
         end
-        
-        table.insert(items, {
+
+        local item = {
             text = title .. "\n" .. domain .. excerpt,
+            mandatory = buildBadge(raindrop),
             callback = function()
                 on_select_callback(raindrop)
             end,
-        })
+        }
+
+        -- Hold callback for quick info popup (no API calls)
+        if on_hold_callback then
+            item.hold_callback = function()
+                on_hold_callback(raindrop)
+            end
+        end
+
+        table.insert(items, item)
     end
-    
+
     return items
 end
 
@@ -93,7 +134,33 @@ function UIBuilder:buildArticleMenu(raindrop, has_cache, callbacks)
             callback = callbacks.show_info,
         },
     }
-    
+
+    -- Agregar opción de Notes si existen (NUEVO)
+    if raindrop.note and raindrop.note ~= "" then
+        table.insert(items, {
+            text = _("View notes"),
+            callback = callbacks.show_notes,
+        })
+    end
+
+    -- Agregar opción de Highlights si existen (NUEVO)
+    if raindrop.highlights and #raindrop.highlights > 0 then
+        table.insert(items, {
+            text = string.format(_("View highlights (%d)"), #raindrop.highlights),
+            callback = callbacks.show_highlights,
+        })
+    end
+
+    -- Agregar opción de descarga HTML con notes/highlights si hay contenido
+    if (raindrop.note and raindrop.note ~= "") or
+       (raindrop.highlights and #raindrop.highlights > 0) then
+        table.insert(items, {
+            text = _("Save HTML with notes & highlights"),
+            enabled = has_cache,
+            callback = callbacks.save_html_with_notes,
+        })
+    end
+
     if raindrop.link then
         table.insert(items, {
             text = _("Copy URL"),
@@ -177,10 +244,8 @@ function UIBuilder:addPagination(menu_items, data, page, perpage, callback)
         })
     end
     
-    -- Información
-    local translation_func = _
     table.insert(menu_items, {
-        text = string.format(translation_func("Mostrando %d-%d de %d artículos"), 
+        text = string.format(_("Showing %d-%d of %d articles"),
             page * perpage + 1,
             math.min((page + 1) * perpage, total_count),
             total_count),
@@ -247,8 +312,8 @@ end
 -- ========== BOTONES PARA TEXT VIEWER ==========
 
 -- Construye tabla de botones para visor de contenido
-function UIBuilder:buildContentViewerButtons(callbacks)
-    return {
+function UIBuilder:buildContentViewerButtons(callbacks, raindrop)
+    local buttons = {
         {
             {
                 text = _("Close"),
@@ -270,6 +335,20 @@ function UIBuilder:buildContentViewerButtons(callbacks)
             },
         },
     }
+
+    -- Solo agregar botón de notes/highlights si hay contenido disponible
+    if raindrop and
+       ((raindrop.note and raindrop.note ~= "") or
+        (raindrop.highlights and #raindrop.highlights > 0)) then
+        table.insert(buttons, {
+            {
+                text = _("Save HTML with notes & highlights"),
+                callback = callbacks.save_html_with_notes,
+            },
+        })
+    end
+
+    return buttons
 end
 
 return UIBuilder
