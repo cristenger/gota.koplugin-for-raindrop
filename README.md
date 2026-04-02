@@ -109,26 +109,6 @@ When viewing article information, you'll see:
 
 Choose between visual folder picker or manual folder name entry.
 
-## Raindrop.io PRO Features
-
-Some features require a [Raindrop.io PRO subscription](https://raindrop.io/pro):
-
-**Available with PRO:**
-- Permanent article cache (full text content)
-- Open articles in full HTML reader
-- View articles as plain text
-- Download articles for offline reading
-
-**Available with Free Plan:**
-- Browse collections
-- Search articles
-- View article metadata
-- Access personal notes
-- View highlights
-- Copy article URLs
-
-The plugin will gracefully handle missing cache for free accounts, allowing you to copy the URL and open it in a browser instead.
-
 ## Language Support
 
 The plugin auto-detects your KOReader language:
@@ -199,7 +179,15 @@ gota.koplugin/
 └── _meta.lua                 # Plugin metadata
 ```
 
-Total: ~2,000 lines of modular Lua code
+## Disclaimer
+
+**This plugin is not affiliated with, endorsed by, or connected to Raindrop.io in any way.** This is an independent, unofficial plugin developed by the community.
+
+**No Warranty:** This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. The authors and contributors are not responsible for any issues, data loss, or service interruptions that may occur from using this plugin.
+
+**Third-Party Services:** This plugin relies on the Raindrop.io API and services, which are subject to their own terms of service, availability, and changes. The plugin developers have no control over Raindrop.io's services, API changes, or service availability.
+
+**Use at Your Own Risk:** By using this plugin, you acknowledge that you are using it at your own risk and that the developers assume no liability for any damages or losses resulting from its use.
 
 ## License
 
