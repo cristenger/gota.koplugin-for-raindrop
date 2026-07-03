@@ -8,6 +8,8 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT License">
 </p>
 
+Important: Notes and highlights work with both free and PRO accounts. However, viewing cached article content (full text/HTML) requires a Raindrop.io PRO subscription.
+
 ## Features
 
 - **Browse Collections**: Navigate your Raindrop collections with full pagination
