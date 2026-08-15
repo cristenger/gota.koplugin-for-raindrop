@@ -48,5 +48,12 @@ __pycache__/
 *.tmp
 *.temp
 
-# Local implementation plans
-*-dev-plan-*.md
+# Local planning and implementation work products
+# Keep maintained project documentation (README, ARCHITECTURE, CHANGELOG) tracked,
+# but ignore generated/draft planning, review, audit and improvement documents.
+*[Pp][Ll][Aa][Nn]*.md
+*[Ii][Mm][Pp][Ll][Ee][Mm][Ee][Nn][Tt][Aa][Tt][Ii][Oo][Nn]*.md
+*[Aa][Uu][Dd][Ii][Tt]*.md
+*[Rr][Ee][Vv][Ii][Ee][Ww]*.md
+*[Pp][Rr][Oo][Pp][Oo][Ss][Aa][Ll]*.md
+*[Ii][Mm][Pp][Rr][Oo][Vv][Ee][Mm][Ee][Nn][Tt]*.md
