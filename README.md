@@ -29,7 +29,7 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 
 ### Method 1: Manual Installation
 
-1. Download the latest release or clone this repository
+1. Download the repository as a ZIP from GitHub, or clone it
 2. Copy the `gota.koplugin` folder to your KOReader plugins directory
 3. Restart KOReader
 
@@ -59,9 +59,7 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 1. Open KOReader
 2. Go to: **Menu → Gota → Configuration → Configure access token**
 3. Paste your token
-4. Tap **Save** (or **Test** to verify first)
-
-*First time shows "NEW: Gota" - this disappears after opening it once.*
+4. Select **Save** (or **Test** to verify first)
 
 ### 3. Start Reading!
 
@@ -70,7 +68,7 @@ Once configured, you can:
 - **All articles**: Browse all your bookmarks
 - **View collections**: Navigate your organized collections
 - **Search articles**: Quick text search
-- **Advanced search**: Filter by tags and content type
+- **Advanced search**: Combine tags, types, quick filters, exclusions and dates
 - **All highlights**: Review highlights across the library
 
 ## Usage Guide
@@ -88,24 +86,30 @@ Shows Raindrop groups, ordered roots and nested collections. All, Unsorted and T
 - Enter any search term to find matching articles
 
 **Advanced Search:** `Menu → Gota → Advanced search`
-- Filter by tags and content type, then use quick filters for favorites, no tags, uploaded files, reminders and available web archives
+- Search by text, tag or content type (`article`, `image`, `video`, `audio` or `document`)
+- **Quick filters** includes favorites, items without tags, uploaded files, reminders and available web archives; filters can be combined with OR
+- **More filters** can exclude a tag or type and filter by creation or update date
 
 ### Read an Article
 
-Tap any article to see options:
+Select any article to see its available actions:
 - **Open in full reader**: HTML with formatting (requires Raindrop PRO)
 - **View as plain text**: Simple text view (requires Raindrop PRO)
 - **View information**: Metadata, tags, URL, cache status, notes, and highlights
 - **Show article URL**: Display the article link for manual use
 - **Edit bookmark**: Change favorite, note, tags or collection; Trash is guarded against permanent deletion
+- **Save HTML with notes & highlights**: Export an annotated HTML file when the bookmark has a note or highlights
+- **Reload article metadata**: Refresh cache state and bookmark details without downloading the full HTML
 
 ### Notes and Highlights
 
 When viewing article information, you'll see:
 - **Personal Notes**: Your notes about the article
 - **Highlights**: Text you've highlighted with color indicators
-  - [Yellow] [Blue] [Red] [Green] color tags
+  - Color labels for all 12 colors supported by Raindrop
   - Highlight-specific notes when available
+
+Use **All highlights** to review the whole library. A collection's action menu also provides a highlights-only view. When Raindrop includes the related bookmark, Gota can open it directly from the highlight menu.
   
 **Important:** Notes and highlights work with both free and PRO accounts. However, viewing cached article content (full text/HTML) requires a **Raindrop.io PRO subscription**.
 
@@ -114,6 +118,12 @@ When viewing article information, you'll see:
 `Menu → Gota → Configuration → Configure download folder`
 
 Choose between visual folder picker or manual folder name entry.
+
+### Save Articles Offline
+
+Open the plain-text viewer and select **Save HTML** to download the original permanent copy. If an article has a note or highlights, **Save HTML with notes & highlights** creates an annotated file directly from the article menu. Files are written to the configured download folder.
+
+Permanent-copy downloads require Raindrop PRO and are limited by the configured reader-file size. Exports containing only notes or highlights remain available without PRO content.
 
 ## Language Support
 
@@ -129,7 +139,8 @@ Want to add your language? See [l10n/README.md](gota.koplugin/l10n/README.md) fo
 
 - **Access Token**: Configuration → Configure access token (required)
 - **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
-- **Cache Limits**: Configuration → Cache size limits (default: 4 MiB text / 32 MiB reader)
+- **Sort Order**: Newest, oldest, title, domain or Raindrop custom order
+- **Cache Limits**: 2–16 MiB for in-memory text and 16–128 MiB for reader/file downloads (default: 4 MiB / 32 MiB)
 - **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
 
 ## Troubleshooting
@@ -160,11 +171,15 @@ The token field is masked, but the credential is stored as plaintext in KOReader
 git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
 cd gota.koplugin-for-raindrop/gota.koplugin
 
-# Check syntax
-luac -p *.lua tests/run.lua
+# Check Lua 5.1 syntax
+luac5.1 -p *.lua tests/run.lua
 
 # Run the dependency-free regression suite
-lua tests/run.lua
+lua5.1 tests/run.lua
+
+# Validate localization scripts and the Spanish catalog
+python3 -m py_compile extract_strings.py replace_strings.py
+msgfmt --check -o /dev/null l10n/es/gota.po
 
 # Update translations
 python3 extract_strings.py
