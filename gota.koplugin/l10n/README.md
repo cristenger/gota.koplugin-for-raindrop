@@ -87,7 +87,7 @@ This creates the `.mo` binary file that KOReader uses at runtime.
 
 ## Translation Statistics
 
-The Gota 2.2.0 template contains **187 messages**. `msgfmt` recognizes all 187 Spanish entries as non-empty, but this is syntactic coverage, not linguistic QA: several legacy entries still mirror the English source and need review.
+The Gota 2.3.0 template contains **328 messages**. `msgfmt` recognizes all 328 Spanish entries as non-empty, but this is syntactic coverage, not linguistic QA: several legacy entries still mirror the English source and need review.
 
 To obtain current statistics instead of maintaining counts by hand:
 

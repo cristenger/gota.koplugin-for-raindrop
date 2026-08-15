@@ -4,7 +4,7 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 
 <p align="center">
   <img src="https://img.shields.io/badge/KOReader-Plugin-blue" alt="KOReader Plugin">
-  <img src="https://img.shields.io/badge/version-2.2.0-green" alt="Version 2.2.0">
+  <img src="https://img.shields.io/badge/version-2.3.0-green" alt="Version 2.3.0">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT License">
 </p>
 
@@ -12,12 +12,14 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 
 ## Features
 
-- **Browse Collections**: Navigate root and nested Raindrop collections
-- **Simple Search**: Quick text-based article search
-- **Advanced Search**: Filter by tags and content types (article/image/video/audio/document)
+- **Browse Collections**: Follow Raindrop groups, root order and nested collections
+- **Scoped Search**: Search globally, within a collection, or through its descendants
+- **Advanced Search**: E-ink-friendly quick filters, exclusions, dates and content types
 - **Read Articles**: View content as plain text or open in full HTML reader
 - **Personal Notes**: View your personal notes attached to bookmarks
-- **Highlights**: Access your article highlights
+- **Highlights**: Review highlights globally or by collection without requiring PRO
+- **Bookmark Editing**: Update favorite, note, tags and collection; move safely to/from Trash
+- **Memory Limits**: Separate configurable limits for text-in-RAM and reader-file downloads
 - **Save Offline**: Download HTML articles for offline reading
 - **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
 - **Configurable**: Customizable download folder with visual folder picker
@@ -69,6 +71,7 @@ Once configured, you can:
 - **View collections**: Navigate your organized collections
 - **Search articles**: Quick text search
 - **Advanced search**: Filter by tags and content type
+- **All highlights**: Review highlights across the library
 
 ## Usage Guide
 
@@ -77,7 +80,7 @@ Once configured, you can:
 ```
 Menu → Gota → View collections
 ```
-Shows root and nested Raindrop collections with article counts.
+Shows Raindrop groups, ordered roots and nested collections. All, Unsorted and Trash include counts when statistics are available. Selecting a user collection also offers scoped search and highlights.
 
 ### Search Articles
 
@@ -85,7 +88,7 @@ Shows root and nested Raindrop collections with article counts.
 - Enter any search term to find matching articles
 
 **Advanced Search:** `Menu → Gota → Advanced search`
-- Filter by tags (e.g., `#programming`) or content type (article/image/video/document)
+- Filter by tags and content type, then use quick filters for favorites, no tags, uploaded files, reminders and available web archives
 
 ### Read an Article
 
@@ -94,6 +97,7 @@ Tap any article to see options:
 - **View as plain text**: Simple text view (requires Raindrop PRO)
 - **View information**: Metadata, tags, URL, cache status, notes, and highlights
 - **Show article URL**: Display the article link for manual use
+- **Edit bookmark**: Change favorite, note, tags or collection; Trash is guarded against permanent deletion
 
 ### Notes and Highlights
 
@@ -125,6 +129,7 @@ Want to add your language? See [l10n/README.md](gota.koplugin/l10n/README.md) fo
 
 - **Access Token**: Configuration → Configure access token (required)
 - **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
+- **Cache Limits**: Configuration → Cache size limits (default: 4 MiB text / 32 MiB reader)
 - **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
 
 ## Troubleshooting

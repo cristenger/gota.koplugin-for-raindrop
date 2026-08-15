@@ -1,5 +1,40 @@
 # Changelog - Gota Plugin for KOReader
 
+## v2.3.0 - Raindrop capabilities for e-readers (August 15, 2026)
+
+### Added
+
+- Raindrop collection groups, remote root ordering, child ordering and session-only collapse state.
+- Global and per-collection highlight views with open pagination and related-article navigation.
+- Collection-scoped and nested search, relevance sorting for text, chronological filter-only search, and domain sorting.
+- E-ink-friendly quick filters for favorites, untagged items, uploaded files, reminders, ready web archives, exclusions, dates and OR matching.
+- User statistics for All, Unsorted and Trash, plus informational broken/duplicate counts.
+- Article metadata for broken links, favorites, update/reminder dates, files, creators and permanent-copy creation.
+- Reversible editing of favorite, note, tags and collection, plus guarded move-to-Trash and restore/move flows.
+- Configurable text-memory (2–16 MiB) and reader-file (16–128 MiB) cache limits.
+
+### Fixed
+
+- Permanent-copy HTML is no longer downloaded when opening an article menu or refreshing metadata.
+- Reader HTML streams to an atomic temporary file with both `cache.size` preflight and a hard chunk-level limit.
+- Mutating requests are never retried automatically; reads retain bounded retry behavior.
+- List/search pagination accepts Raindrop responses without the undocumented `count` field.
+- Advanced search uses one popularity-sorted `/filters` request and no longer mutates cached response tables.
+- Trash code refuses a `DELETE` when the current item is already in Trash, preventing accidental permanent deletion.
+
+### Validation
+
+- Expanded the dependency-free regression suite from 34 to 51 cases.
+- Revalidated endpoints, shapes and operators against Raindrop REST v1 and KOReader 2026.07 sources.
+
+### Known limitations
+
+- Network calls remain synchronous while online and can block until the bounded timeout.
+- Direct raw-HTML opening still needs smoke testing on physical Kindle/Kobo/PocketBook devices.
+- Uploaded-file downloading and bookmark creation remain gated for a later release.
+
+---
+
 ## v2.2.0 - Architecture and Compatibility (August 14, 2026)
 
 ### Security

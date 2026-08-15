@@ -1,10 +1,10 @@
 # Arquitectura de Gota
 
-Este documento describe la arquitectura vigente de Gota 2.2.0. La versión de referencia es KOReader 2026.07 o posterior. El código se contrastó con KOReader 2026.07.1/master y con la API REST v1 de Raindrop.io el 14 de agosto de 2026.
+Este documento describe la arquitectura vigente de Gota 2.3.0. La versión de referencia es KOReader 2026.07 o posterior. El código se contrastó con KOReader 2026.07/master y con la API REST v1 de Raindrop.io el 15 de agosto de 2026.
 
 ## Alcance
 
-Gota es un plugin de KOReader para una cuenta personal de Raindrop.io. Permite navegar colecciones, buscar marcadores, consultar notas y resaltados, descargar la copia permanente de un artículo y abrir un HTML local en `ReaderUI`.
+Gota es un plugin de KOReader para una cuenta personal de Raindrop.io. Permite navegar grupos y colecciones, buscar por alcance, revisar resaltados globales, consultar metadatos, editar campos reversibles y abrir o exportar la copia permanente de un artículo.
 
 La autenticación implementada es mediante un token pegado por el usuario. No existe flujo OAuth ni renovación de tokens. La copia permanente de artículos requiere Raindrop PRO; las notas y los resaltados no.
 
@@ -60,7 +60,8 @@ sequenceDiagram
     participant RU as ReaderUI
 
     UI->>AM: openInReader(raindrop)
-    AM->>AM: genera HTML local
+    AM->>AM: comprueba cache.size y límite de archivo
+    AM->>AM: transmite /cache a un .part acotado
     AM->>GR: show(path, callback)
     GR->>GR: DocumentRegistry:getProvider(path)
     alt ReaderUI ya existe
@@ -98,7 +99,7 @@ Cada llamada inicial incluye `Authorization: Bearer <token>`. Se solicita `Accep
 
 `JSON.decode` está protegido con `pcall`. Los bodies JSON de error aportan `errorMessage`, `message` o `error.message` cuando existen. Los timeouts de `socketutil` se restauran incluso si LuaSec lanza una excepción.
 
-Se reintentan errores de transporte, 429 y 5xx, hasta tres intentos. El retraso es exponencial y, para 429, calcula `Retry-After` o las variantes documentadas de la cabecera de reset. Como este bucle corre en el hilo de UI, Gota solo duerme hasta tres segundos; si el servidor pide una espera mayor, devuelve el control y solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
+Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `Retry-After` o las variantes documentadas de la cabecera de reset. Como este bucle corre en el hilo de UI, Gota solo duerme hasta tres segundos; si el servidor pide una espera mayor, devuelve el control y solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
 
 La caché de respuestas GET vive en memoria durante cinco minutos. `getRaindrop(id, true)` significa recarga forzada: invalida y omite la entrada almacenada.
 
@@ -107,16 +108,20 @@ La caché de respuestas GET vive en memoria durante cinco minutos. `getRaindrop(
 | Caso de uso | Endpoint |
 |---|---|
 | Usuario autenticado | `GET /user` |
+| Estadísticas del usuario | `GET /user/stats` |
 | Colecciones raíz | `GET /collections` |
 | Colecciones hijas | `GET /collections/childrens` |
 | Marcadores | `GET /raindrops/{collectionId}` |
 | Marcador completo | `GET /raindrop/{id}` |
 | HTML permanente | `GET /raindrop/{id}/cache` |
 | Filtros | `GET /filters/{collectionId}` |
+| Resaltados globales/por colección | `GET /highlights[/{collectionId}]` |
+| Favorito, nota, tags y colección | `PUT /raindrop/{id}` |
+| Mover a Trash, solo fuera de Trash | `DELETE /raindrop/{id}` |
 | Todos los tags | `GET /tags` |
 | Tags de una colección | `GET /tags/{collectionId}` |
 
-La búsqueda avanzada construye un único parámetro `search`. Por ejemplo, texto `swift`, tag `coffee beans` y tipo `article` producen `swift #"coffee beans" type:article` antes del URL encoding.
+La búsqueda avanzada construye un único parámetro `search`. Por ejemplo, texto `swift`, tag `coffee beans` y tipo `article` producen `swift #"coffee beans" type:article` antes del URL encoding. La búsqueda textual usa `sort=score`; una consulta que solo contiene filtros usa `-created`. El alcance puede ser global, una colección o una colección con `nested=true`. `/filters/{id}?tagsSort=-count` es la única fuente de los filtros populares.
 
 ## Modelo de caché de artículo
 
@@ -124,15 +129,15 @@ Raindrop separa los metadatos de caché del HTML. Gota refleja esa separación:
 
 | Estado local | Significado | Acciones de lectura |
 |---|---|---|
-| `metadata_available` | `cache.status == "ready"` | todavía deshabilitadas |
-| `html_loaded` | existe `cache.text` no vacío descargado desde `/cache` | habilitadas |
-| `download_error` | falló o llegó vacío el HTML | deshabilitadas; se ofrece recarga explícita |
+| `metadata_available` | `cache.status == "ready"` | habilita acciones que descargan bajo demanda |
+| `html_loaded` | existe `cache.text` no vacío y acotado | permite transformar a texto o HTML enriquecido |
+| `download_error` | falló, excedió el límite o llegó vacío | exige recarga/acción explícita |
 
-Una recarga obtiene de nuevo los metadatos y, si están listos, vuelve a llamar al endpoint de caché. El botón para exportar notas/resaltados no depende del HTML PRO. Antes de adjuntar el HTML, `ArticleManager` desacopla el artículo de las tablas que conserva la caché HTTP. Después de abrir el archivo con CREngine libera `cache.text`; volver a Gota exige descargarlo de nuevo. Es un intercambio deliberado de red por memoria en Kindle y Kobo antiguos.
+Abrir el menú o recargar obtiene solo metadatos. La vista de texto descarga en memoria con un preset de 2–16 MiB (4 MiB por defecto). El lector y la exportación sin transformación transmiten directamente a archivo con un preset de 16–128 MiB (32 MiB por defecto). `cache.size` permite rechazo anticipado y el sink LTN12 aborta si el body real cruza el límite. Cada archivo usa `.part` y solo se renombra tras el 2xx final. El botón para exportar notas/resaltados no depende del HTML PRO.
 
 ## Colecciones
 
-`API:getCollections()` combina raíces e hijas, elimina duplicados por `_id` y entrega una lista al `UIBuilder`. El builder usa `parent.$id` para producir un recorrido preorden estable. Los nodos huérfanos o involucrados en ciclos se conservan como raíces de respaldo, de modo que una respuesta parcial no haga desaparecer colecciones. Los grupos definidos en `user.groups` no se representan todavía; la jerarquía padre-hijo sí.
+`API:getCollectionStructure()` conserva por separado `user.groups`, raíces e hijas. El builder ordena grupos por `sort` ascendente, respeta el orden exacto de raíces de cada grupo y ordena hermanos hijos por `sort` descendente. Los nodos no agrupados, huérfanos o involucrados en ciclos se conservan en “Other collections”. El colapso de grupo es local a la sesión. Si usuario o hijos fallan, las raíces siguen disponibles. `/user/stats` añade recuentos de All, Unsorted y Trash e información no accionable de enlaces rotos/duplicados.
 
 Los IDs de sistema usados por la UI son `0` para todos los marcadores, `-1` para Unsorted y `-99` para Trash.
 
@@ -140,7 +145,7 @@ Los IDs de sistema usados por la UI son `0` para todos los marcadores, `-1` para
 
 | Dato | Ubicación | Duración |
 |---|---|---|
-| Token, carpeta y orden | `DataStorage:getSettingsDir()/gota.lua` | persistente |
+| Token, carpeta, orden y límites de caché | `DataStorage:getSettingsDir()/gota.lua` | persistente |
 | HTML exportado | `DataStorage:getDataDir()/<download_path>/` | persistente |
 | HTML usado por ReaderUI | `DataStorage:getDataDir()/cache/gota/` | temporal; al volver mediante Gota se borra junto con su entrada de historial |
 | Respuestas API | tabla de `API.response_cache` | proceso, TTL 5 min |
@@ -158,16 +163,16 @@ luac -p *.lua tests/run.lua
 git diff --check
 ```
 
-Cubre UTF-8 válido e inválido, HTML adversarial, colores de resaltado, búsqueda, paginación, URLs HTTPS, redirects sin fuga del Bearer, envelopes/JSON inválidos, 204/304, reintentos breves, 429 largos sin bloqueo, separación de cachés, colecciones anidadas, exportación sin HTML PRO, rutas manipuladas, firmas de `ReaderUI`, Dispatcher y propiedad del archivo de ajustes.
+Cubre 51 casos: UTF-8/HTML adversarial, búsqueda por alcance, paginación abierta, URLs HTTPS, redirects sin fuga del Bearer, streaming y límites, envelopes/JSON, reintentos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Trash, estadísticas, rutas, firmas de `ReaderUI` y Dispatcher.
 
 Antes de publicar una release se requiere además un smoke test en KOReader 2026.07.1 o posterior y una prueba real contra Raindrop para 200/307/401/429. Esas pruebas verifican la integración real de LuaSec en Kindle, el renderizado e-ink y el servicio externo; no pueden sustituirse por mocks.
 
 ## Deuda conocida
 
 - Las llamadas HTTP siguen siendo síncronas dentro del callback de `NetworkMgr`; una red lenta puede bloquear la UI durante el timeout. `NetworkMgr:runWhenOnline` comprueba conectividad, no crea un hilo.
-- No hay un límite duro para el tamaño de una copia permanente. El HTML se desacopla y libera cuanto antes, pero una página excepcionalmente grande aún puede superar la memoria disponible en un lector de 256 MB.
-- Se muestran colecciones anidadas, pero no los encabezados ni el orden de `user.groups` de Raindrop.
 - El proyecto soporta test tokens personales, no OAuth con refresh.
+- La descarga cruda a CREngine necesita smoke test en Kindle/Kobo reales; si un port no abre el HTML, se mantendrá el límite y se diseñará una transformación acotada a archivo.
+- Raindrop no documenta `count` en el ejemplo de listas; Gota acepta su ausencia y pagina de forma abierta.
 - `main.lua` y `gota_content_processor.lua` siguen concentrando demasiada lógica; separar controladores de pantalla y plantillas HTML reducirá el coste de cambio.
 - CI valida Lua 5.1, la suite local y el catálogo; aún no cubre una instancia real de KOReader ni una cuenta Raindrop.
 - El catálogo español pasa validación gettext, pero varias traducciones heredadas siguen iguales al texto inglés y requieren revisión lingüística.
@@ -201,5 +206,8 @@ Raindrop.io:
 - [colecciones](https://developer.raindrop.io/v1/collections/methods.md)
 - [estructura anidada](https://developer.raindrop.io/v1/collections/nested-structure.md)
 - [tags](https://developer.raindrop.io/v1/tags.md)
+- [filtros agregados](https://developer.raindrop.io/v1/filters.md)
+- [resaltados](https://developer.raindrop.io/v1/highlights.md)
+- [modelo de raindrop](https://developer.raindrop.io/v1/raindrops.md)
 - [operadores de búsqueda](https://help.raindrop.io/filters#need-more-precise-filtering)
 - [errores y rate limits](https://developer.raindrop.io/readme.md)

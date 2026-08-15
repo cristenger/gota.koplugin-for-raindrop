@@ -47,3 +47,6 @@ __pycache__/
 # Temporary files
 *.tmp
 *.temp
+
+# Local implementation plans
+*-dev-plan-*.md
