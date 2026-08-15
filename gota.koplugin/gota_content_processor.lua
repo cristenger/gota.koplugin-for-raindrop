@@ -1,5 +1,5 @@
 --[[
-    Content Processor Module for Gota Plugin
+    Gota Content Processor Module
     Handles HTML processing, cleaning, and conversion
 ]]
 
@@ -8,6 +8,189 @@ local util = require("util")
 local _ = require("gettext")
 
 local ContentProcessor = {}
+
+local UTF8_REPLACEMENT = "\239\191\189"
+
+local function isContinuationByte(byte)
+    return byte and byte >= 0x80 and byte <= 0xBF
+end
+
+-- Validate complete UTF-8 sequences without depending on Lua 5.3's utf8 module.
+-- KOReader uses LuaJIT/Lua 5.1, so this intentionally works at the byte level.
+local function validSequenceLength(str, index)
+    local first = str:byte(index)
+    if not first then
+        return nil
+    end
+
+    if first <= 0x7F then
+        return 1
+    end
+
+    local second = str:byte(index + 1)
+    if first >= 0xC2 and first <= 0xDF then
+        return isContinuationByte(second) and 2 or nil
+    end
+
+    local third = str:byte(index + 2)
+    if first == 0xE0 then
+        return second and second >= 0xA0 and second <= 0xBF
+            and isContinuationByte(third) and 3 or nil
+    elseif (first >= 0xE1 and first <= 0xEC) or
+           (first >= 0xEE and first <= 0xEF) then
+        return isContinuationByte(second) and isContinuationByte(third) and 3 or nil
+    elseif first == 0xED then
+        -- UTF-16 surrogate code points (U+D800-U+DFFF) are not valid UTF-8.
+        return second and second >= 0x80 and second <= 0x9F
+            and isContinuationByte(third) and 3 or nil
+    end
+
+    local fourth = str:byte(index + 3)
+    if first == 0xF0 then
+        return second and second >= 0x90 and second <= 0xBF
+            and isContinuationByte(third) and isContinuationByte(fourth) and 4 or nil
+    elseif first >= 0xF1 and first <= 0xF3 then
+        return isContinuationByte(second) and isContinuationByte(third)
+            and isContinuationByte(fourth) and 4 or nil
+    elseif first == 0xF4 then
+        -- Unicode ends at U+10FFFF.
+        return second and second >= 0x80 and second <= 0x8F
+            and isContinuationByte(third) and isContinuationByte(fourth) and 4 or nil
+    end
+
+    return nil
+end
+
+local function invalidSequenceLength(str, index)
+    local first = str:byte(index)
+    local expected = 1
+
+    if first and first >= 0xC0 and first <= 0xDF then
+        expected = 2
+    elseif first and first >= 0xE0 and first <= 0xEF then
+        expected = 3
+    elseif first and first >= 0xF0 and first <= 0xF7 then
+        expected = 4
+    elseif isContinuationByte(first) then
+        -- Treat a run of orphaned continuation bytes as one malformed sequence.
+        local length = 1
+        while isContinuationByte(str:byte(index + length)) do
+            length = length + 1
+        end
+        return length
+    end
+
+    local length = 1
+    while length < expected and isContinuationByte(str:byte(index + length)) do
+        length = length + 1
+    end
+    return length
+end
+
+-- Pure helper kept public for lightweight tests that do not load KOReader.
+local function sanitizeUTF8(str)
+    if str == nil then
+        return "", false, false
+    end
+    if type(str) ~= "string" then
+        str = tostring(str)
+    end
+
+    local had_bom = str:sub(1, 3) == "\239\187\191"
+    if had_bom then
+        str = str:sub(4)
+    end
+
+    local parts = {}
+    local index = 1
+    local replaced = false
+    while index <= #str do
+        local length = validSequenceLength(str, index)
+        if length then
+            parts[#parts + 1] = str:sub(index, index + length - 1)
+            index = index + length
+        else
+            parts[#parts + 1] = UTF8_REPLACEMENT
+            index = index + invalidSequenceLength(str, index)
+            replaced = true
+        end
+    end
+
+    return table.concat(parts), replaced, had_bom
+end
+
+ContentProcessor.sanitizeUTF8 = sanitizeUTF8
+
+local function escapeHTMLValue(value)
+    local cleaned = sanitizeUTF8(value == nil and "" or tostring(value))
+    return util.htmlEscape(cleaned)
+end
+
+local function escapeHTMLMultiline(value)
+    local escaped = escapeHTMLValue(value):gsub("\r\n", "\n"):gsub("\r", "\n")
+    return escaped:gsub("\n", "<br/>")
+end
+
+local function caseInsensitiveTag(tag)
+    return (tag:gsub("%a", function(letter)
+        return "[" .. letter:lower() .. letter:upper() .. "]"
+    end))
+end
+
+local function removePairedElement(content, tag)
+    local pattern = caseInsensitiveTag(tag)
+    return (content:gsub("<%s*" .. pattern .. "[^>]*>.-</%s*" .. pattern .. "%s*>", ""))
+end
+
+local function removeOpenTag(content, tag)
+    local pattern = caseInsensitiveTag(tag)
+    return (content:gsub("<%s*/?%s*" .. pattern .. "[^>]*>", ""))
+end
+
+local function extractHTMLBody(content)
+    return content:match("<[Bb][Oo][Dd][Yy][^>]*>(.-)</%s*[Bb][Oo][Dd][Yy]%s*>") or content
+end
+
+local HIGHLIGHT_COLORS = {
+    blue = true,
+    brown = true,
+    cyan = true,
+    gray = true,
+    green = true,
+    indigo = true,
+    orange = true,
+    pink = true,
+    purple = true,
+    red = true,
+    teal = true,
+    yellow = true,
+}
+
+local HIGHLIGHT_COLOR_NAMES = {
+    blue = _("Blue"),
+    brown = _("Brown"),
+    cyan = _("Cyan"),
+    gray = _("Gray"),
+    green = _("Green"),
+    indigo = _("Indigo"),
+    orange = _("Orange"),
+    pink = _("Pink"),
+    purple = _("Purple"),
+    red = _("Red"),
+    teal = _("Teal"),
+    yellow = _("Yellow"),
+}
+
+local function highlightColorText(highlight)
+    local name = type(highlight) == "table" and
+        HIGHLIGHT_COLOR_NAMES[highlight.color] or nil
+    return name and ("[" .. name .. "] ") or ""
+end
+
+local function hasHighlights(raindrop)
+    return raindrop and type(raindrop.highlights) == "table" and
+        #raindrop.highlights > 0
+end
 
 function ContentProcessor:new()
     local o = {}
@@ -18,15 +201,19 @@ end
 
 -- Limpia y convierte HTML a texto plano mejorado
 function ContentProcessor:htmlToText(html_content)
+    if type(html_content) ~= "string" or html_content == "" then
+        return ""
+    end
+    html_content = self:ensureUTF8(html_content)
     local content = html_content
     local original_length = #content
     logger.dbg("Gota ContentProcessor: Procesando contenido HTML, longitud original:", original_length)
-    
+
     -- Remover elementos no deseados
-    content = content:gsub("<nav[^>]*>.-</nav>", "")
-    content = content:gsub("<header[^>]*>.-</header>", "")
-    content = content:gsub("<footer[^>]*>.-</footer>", "")
-    
+    content = removePairedElement(content, "nav")
+    content = removePairedElement(content, "header")
+    content = removePairedElement(content, "footer")
+
     -- Remover patrones de navegación y publicidad
     local non_content_patterns = {
         "<div[^>]*class=['\"]nav['\"].->.-(</div>)",
@@ -41,25 +228,25 @@ function ContentProcessor:htmlToText(html_content)
         "<div[^>]*id=['\"]ad['\"].->.-(</div>)",
         "<div[^>]*id=['\"]ads['\"].->.-(</div>)",
     }
-    
+
     for _, pattern in ipairs(non_content_patterns) do
-        local success, result = pcall(function() 
-            return content:gsub(pattern, "") 
+        local success, result = pcall(function()
+            return content:gsub(pattern, "")
         end)
         if success then
             content = result
         end
     end
-    
+
     -- Intentar identificar el contenido principal
     local main_content = self:extractMainContent(content, original_length)
     if main_content then
         content = main_content
     end
-    
+
     -- Convertir HTML a texto
     content = self:convertHtmlTags(content)
-    
+
     -- Limpiar entidades HTML
     content = self:decodeHtmlEntities(content)
 
@@ -79,16 +266,16 @@ function ContentProcessor:htmlToText(html_content)
     -- 5. Trim inicio y final
     content = content:gsub("^%s+", "")
     content = content:gsub("%s+$", "")
-    
+
     -- Verificación de seguridad
     if #content < original_length * 0.3 then
         logger.dbg("Gota ContentProcessor: La limpieza eliminó demasiado contenido, usando conversión más simple")
         return self:simpleHtmlToText(html_content)
     end
-    
-    logger.dbg("Gota ContentProcessor: Contenido final procesado, longitud:", #content, 
+
+    logger.dbg("Gota ContentProcessor: Contenido final procesado, longitud:", #content,
                "Proporción retenida:", math.floor(#content/original_length*100), "%")
-    
+
     return content
 end
 
@@ -100,27 +287,27 @@ function ContentProcessor:extractMainContent(content, original_length)
         logger.dbg("Gota ContentProcessor: Encontrada etiqueta <article> con contenido significativo")
         return article_match
     end
-    
+
     -- Buscar etiqueta main
     local main_match = content:match("<main[^>]*>(.-)</main>")
     if main_match and #main_match > original_length * 0.4 then
         logger.dbg("Gota ContentProcessor: Encontrada etiqueta <main> con contenido significativo")
         return main_match
     end
-    
+
     return nil
 end
 
 -- Convierte etiquetas HTML a formato de texto
 function ContentProcessor:convertHtmlTags(content)
     content = content:gsub("\n%s*\n%s*\n", "\n\n")
-    content = content:gsub("<br[^>]*>", "\n")
-    content = content:gsub("<p[^>]*>", "\n")
-    content = content:gsub("</p>", "\n")
-    content = content:gsub("<h%d[^>]*>", "\n\n")
-    content = content:gsub("</h%d>", "\n")
-    content = content:gsub("<div[^>]*>", "\n")
-    content = content:gsub("</div>", "\n")
+    content = content:gsub("<[Bb][Rr][^>]*>", "\n")
+    content = content:gsub("<[Pp][^>]*>", "\n")
+    content = content:gsub("</[Pp]%s*>", "\n")
+    content = content:gsub("<[Hh]%d[^>]*>", "\n\n")
+    content = content:gsub("</[Hh]%d%s*>", "\n")
+    content = content:gsub("<[Dd][Ii][Vv][^>]*>", "\n")
+    content = content:gsub("</[Dd][Ii][Vv]%s*>", "\n")
     content = content:gsub("<[^>]+>", "")
     return content
 end
@@ -139,13 +326,13 @@ end
 -- Conversión simple de HTML a texto (fallback)
 function ContentProcessor:simpleHtmlToText(html_content)
     local content = html_content
-    content = content:gsub("<script[^>]*>.-</script>", "")
-    content = content:gsub("<style[^>]*>.-</style>", "")
-    content = content:gsub("<br[^>]*>", "\n")
-    content = content:gsub("<p[^>]*>", "\n")
-    content = content:gsub("</p>", "\n")
-    content = content:gsub("<div[^>]*>", "\n")
-    content = content:gsub("</div>", "\n")
+    content = removePairedElement(content, "script")
+    content = removePairedElement(content, "style")
+    content = content:gsub("<[Bb][Rr][^>]*>", "\n")
+    content = content:gsub("<[Pp][^>]*>", "\n")
+    content = content:gsub("</[Pp]%s*>", "\n")
+    content = content:gsub("<[Dd][Ii][Vv][^>]*>", "\n")
+    content = content:gsub("</[Dd][Ii][Vv]%s*>", "\n")
     content = content:gsub("<[^>]+>", "")
     content = self:decodeHtmlEntities(content)
     content = content:gsub("\n\n+", "\n\n")
@@ -158,38 +345,28 @@ end
 function ContentProcessor:formatArticleText(raindrop)
     local formatted_content = (raindrop.title or _("Untitled")) .. "\n"
     formatted_content = formatted_content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    
+
     if raindrop.domain then
         formatted_content = formatted_content .. _("Source: ") .. raindrop.domain .. "\n"
     end
-    
+
     if raindrop.cache and raindrop.cache.text then
         local content = self:htmlToText(raindrop.cache.text)
         content = content:gsub("^%s+", "")
         formatted_content = formatted_content .. content
     end
-    
+
     return formatted_content
 end
 
 -- Asegura que el string sea UTF-8 válido
 function ContentProcessor:ensureUTF8(str)
-    if not str then return "" end
+    local cleaned, replaced, had_bom = sanitizeUTF8(str)
 
-    -- Detectar y remover BOM si existe
-    if str:sub(1, 3) == "\239\187\191" then  -- UTF-8 BOM (EF BB BF)
+    if had_bom then
         logger.dbg("ContentProcessor: Removed UTF-8 BOM")
-        str = str:sub(4)
     end
-
-    -- Reemplazar secuencias inválidas con carácter de reemplazo
-    -- Patrón simple: bytes fuera del rango UTF-8 válido
-    local cleaned = str:gsub(
-        "[^\9\10\13\32-\126\194-\244][\128-\191]*",
-        "�"  -- Carácter de reemplazo Unicode
-    )
-
-    if cleaned ~= str then
+    if replaced then
         logger.warn("ContentProcessor: Invalid UTF-8 sequences replaced with �")
     end
 
@@ -198,58 +375,71 @@ end
 
 -- Limpia HTML eliminando elementos no renderizables en e-ink
 function ContentProcessor:cleanHTMLForEink(html_content)
+    if type(html_content) ~= "string" or html_content == "" then
+        return ""
+    end
     local content = html_content
     local original_size = #content
 
     -- 1. Remover elementos no renderizables en e-ink
-    content = content:gsub("<script[^>]*>.-</script>", "")
-    content = content:gsub("<noscript[^>]*>.-</noscript>", "")
-    content = content:gsub("<style[^>]*>.-</style>", "")
+    content = removePairedElement(content, "script")
+    content = removePairedElement(content, "style")
+    -- Keep useful fallback content from <noscript>, only remove its wrapper.
+    content = removeOpenTag(content, "noscript")
 
     -- 2. Remover elementos multimedia no soportados
-    content = content:gsub("<video[^>]*>.-</video>", "")
-    content = content:gsub("<audio[^>]*>.-</audio>", "")
-    content = content:gsub("<iframe[^>]*>.-</iframe>", "")
-    content = content:gsub("<embed[^>]*>", "")
-    content = content:gsub("<object[^>]*>.-</object>", "")
+    content = removePairedElement(content, "video")
+    content = removePairedElement(content, "audio")
+    content = removePairedElement(content, "iframe")
+    content = removeOpenTag(content, "embed")
+    content = removePairedElement(content, "object")
 
     -- 3. Remover formularios (no funcionales)
-    content = content:gsub("<form[^>]*>.-</form>", "")
-    content = content:gsub("<input[^>]*>", "")
-    content = content:gsub("<button[^>]*>.-</button>", "")
-    content = content:gsub("<select[^>]*>.-</select>", "")
-    content = content:gsub("<textarea[^>]*>.-</textarea>", "")
+    content = removePairedElement(content, "form")
+    content = removeOpenTag(content, "input")
+    content = removePairedElement(content, "button")
+    content = removePairedElement(content, "select")
+    content = removePairedElement(content, "textarea")
 
     -- 4. Remover CSS externo (no se carga en archivos locales)
-    content = content:gsub('<link[^>]*rel=["\']stylesheet["\'][^>]*>', "")
+    content = removeOpenTag(content, "link")
 
     -- 5. Remover atributos style inline (conflicto con CSS del reader)
-    content = content:gsub(' style="[^"]*"', "")
-    content = content:gsub(" style='[^']*'", "")
+    content = content:gsub('%s+[Ss][Tt][Yy][Ll][Ee]%s*=%s*"[^"]*"', "")
+    content = content:gsub("%s+[Ss][Tt][Yy][Ll][Ee]%s*=%s*'[^']*'", "")
 
     -- 6. Remover comentarios HTML (innecesarios)
     content = content:gsub("<!%-%-.-%-%->", "")
 
-    -- 7. Normalizar whitespace (reducir tamaño)
-    content = content:gsub("%s+", " ")     -- Múltiples espacios → uno
-    content = content:gsub(" ?<", "<")     -- Espacio antes de tag
-    content = content:gsub("> ?", ">")     -- Espacio después de tag
-    content = content:gsub("\n+", "\n")    -- Múltiples saltos → uno
+    -- 7. Remove whitespace only between tags. Global %s+ collapsing corrupts
+    -- preformatted code, poetry, and other whitespace-sensitive content.
+    content = content:gsub(">%s+<", "><")
 
     -- 8. Limpiar data URLs muy grandes (>10KB)
     content = content:gsub(
-        'src="(data:image/[^"]+)"',
-        function(data_url)
+        '([Ss][Rr][Cc]%s*=%s*)"([Dd][Aa][Tt][Aa]:[Ii][Mm][Aa][Gg][Ee]/[^"]+)"',
+        function(prefix, data_url)
             if #data_url > 10000 then
                 logger.dbg("ContentProcessor: Removed large data URL (", #data_url, "bytes)")
-                return 'src="" alt="[Image too large]"'
+                return prefix .. '"" alt="[Image too large]"'
             end
-            return 'src="' .. data_url .. '"'
+            return prefix .. '"' .. data_url .. '"'
+        end
+    )
+    content = content:gsub(
+        "([Ss][Rr][Cc]%s*=%s*)'([Dd][Aa][Tt][Aa]:[Ii][Mm][Aa][Gg][Ee]/[^']+)'",
+        function(prefix, data_url)
+            if #data_url > 10000 then
+                logger.dbg("ContentProcessor: Removed large data URL (", #data_url, "bytes)")
+                return prefix .. "'' alt='[Image too large]'"
+            end
+            return prefix .. "'" .. data_url .. "'"
         end
     )
 
     local final_size = #content
-    local reduction = math.floor((1 - final_size/original_size) * 100)
+    local reduction = original_size > 0 and
+        math.floor((1 - final_size/original_size) * 100) or 0
 
     logger.dbg("ContentProcessor: HTML cleaned for e-ink")
     logger.dbg("  Original size:", original_size, "bytes")
@@ -267,15 +457,15 @@ function ContentProcessor:createReaderHTML(raindrop)
     content = self:ensureUTF8(content)
 
     -- Extraer body si existe
-    local body = content:match("<body[^>]*>(.-)</body>") or content
+    local body = extractHTMLBody(content)
 
     -- Limpiar HTML para e-ink
     body = self:cleanHTMLForEink(body)
-    
+
     -- Escapar metadatos (MEJORADO: ahora escapa todo)
-    local safe_title = util.htmlEscape(raindrop.title or "")
-    local safe_domain = util.htmlEscape(raindrop.domain or "")
-    local safe_date = util.htmlEscape(raindrop.created and raindrop.created:sub(1,10) or "")
+    local safe_title = escapeHTMLValue(raindrop.title)
+    local safe_domain = escapeHTMLValue(raindrop.domain)
+    local safe_date = escapeHTMLValue(raindrop.created and raindrop.created:sub(1,10) or "")
 
     return string.format([[
 <!DOCTYPE html>
@@ -290,15 +480,13 @@ function ContentProcessor:createReaderHTML(raindrop)
 
         /* Base optimizada para e-ink */
         body {
-            font-family: Georgia, "Palatino Linotype", "Book Antiqua", Palatino, serif;
+            font-family: serif;
             font-size: 1em;
             line-height: 1.7;
             margin: 0;
             padding: 0.5em;
             color: #000;
             background: #fff;
-            text-rendering: optimizeLegibility;
-            -webkit-font-smoothing: antialiased;
         }
 
         /* Headings con contraste alto */
@@ -336,7 +524,6 @@ function ContentProcessor:createReaderHTML(raindrop)
             margin-bottom: 1em;
             text-align: justify;
             hyphens: auto;
-            page-break-inside: avoid;
         }
 
         /* Imágenes optimizadas para e-ink */
@@ -345,8 +532,6 @@ function ContentProcessor:createReaderHTML(raindrop)
             height: auto;
             display: block;
             margin: 1.5em auto;
-            image-rendering: crisp-edges;
-            filter: grayscale(100%%) contrast(1.2);
             page-break-before: auto;
             page-break-after: auto;
             page-break-inside: avoid;
@@ -378,10 +563,10 @@ function ContentProcessor:createReaderHTML(raindrop)
         pre {
             background: #f0f0f0;
             padding: 1em;
-            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
             margin: 1.5em 0;
             border: 2px solid #000;
-            page-break-inside: avoid;
         }
 
         code {
@@ -456,65 +641,73 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
         content = self:ensureUTF8(content)
 
         -- Extraer body si existe
-        body = content:match("<body[^>]*>(.-)</body>") or content
+        body = extractHTMLBody(content)
 
         -- Limpiar HTML para e-ink
         body = self:cleanHTMLForEink(body)
     else
         -- Si no hay contenido del artículo, mostrar mensaje traducido
-        local util = require("util")
-        local msg = util.htmlEscape(_("Article content not yet available. The full article cache is still being generated or is not available."))
+        local msg = escapeHTMLValue(_("Article content not yet available. The full article cache is still being generated or is not available."))
         body = '<div style="padding: 1.5em; background: #f0f0f0; border: 2px solid #999; margin: 2em 0;">' ..
                '<p style="font-style: italic; color: #333;">' .. msg .. '</p></div>'
     end
 
     -- Escapar metadatos
-    local safe_title = util.htmlEscape(raindrop.title or "")
-    local safe_domain = util.htmlEscape(raindrop.domain or "")
-    local safe_date = util.htmlEscape(raindrop.created and raindrop.created:sub(1,10) or "")
+    local safe_title = escapeHTMLValue(raindrop.title)
+    local safe_domain = escapeHTMLValue(raindrop.domain)
+    local safe_date = escapeHTMLValue(raindrop.created and raindrop.created:sub(1,10) or "")
 
     -- Generar sección de Notes (si existen)
     local notes_section = ""
     if raindrop.note and raindrop.note ~= "" then
-        local safe_note = util.htmlEscape(raindrop.note)
+        local safe_note = escapeHTMLMultiline(raindrop.note)
         notes_section = string.format([[
     <div class="notes-section">
-        <h2>📝 Notes</h2>
+        <h2>%s</h2>
         <div class="note-content">%s</div>
     </div>
-]], safe_note)
+]], escapeHTMLValue(_("Notes:")), safe_note)
     end
 
     -- Generar sección de Highlights (si existen)
     local highlights_section = ""
-    if raindrop.highlights and #raindrop.highlights > 0 then
-        highlights_section = '<div class="highlights-section">\n'
-        highlights_section = highlights_section .. string.format('        <h2>✨ Highlights (%d)</h2>\n', #raindrop.highlights)
-        highlights_section = highlights_section .. '        <div class="highlights-list">\n'
+    if hasHighlights(raindrop) then
+        local highlights_parts = {
+            '<div class="highlights-section">\n',
+            string.format('        <h2>%s (%d)</h2>\n',
+                escapeHTMLValue(_("Highlights:")), #raindrop.highlights),
+            '        <div class="highlights-list">\n',
+        }
 
         for i, highlight in ipairs(raindrop.highlights) do
-            local safe_text = util.htmlEscape(highlight.text or "")
-            local safe_note_h = highlight.note and highlight.note ~= "" and util.htmlEscape(highlight.note) or nil
+            if type(highlight) == "table" then
+                local safe_text = escapeHTMLMultiline(highlight.text)
+                local safe_note_h = highlight.note and highlight.note ~= "" and
+                    escapeHTMLMultiline(highlight.note) or nil
 
-            -- Color class
-            local color_class = highlight.color or "yellow"
+                -- Raindrop documents a closed enum; never interpolate an
+                -- unexpected remote value into an HTML attribute.
+                local color_class = HIGHLIGHT_COLORS[highlight.color] and
+                    highlight.color or "yellow"
 
-            highlights_section = highlights_section .. string.format(
-                '            <div class="highlight highlight-%s">\n                <div class="highlight-number">[%d]</div>\n                <div class="highlight-text">%s</div>\n',
-                color_class, i, safe_text
-            )
-
-            if safe_note_h then
-                highlights_section = highlights_section .. string.format(
-                    '                <div class="highlight-note">Note: %s</div>\n',
-                    safe_note_h
+                highlights_parts[#highlights_parts + 1] = string.format(
+                    '            <div class="highlight highlight-%s">\n                <div class="highlight-number">[%d]</div>\n                <div class="highlight-text">%s</div>\n',
+                    color_class, i, safe_text
                 )
-            end
 
-            highlights_section = highlights_section .. '            </div>\n'
+                if safe_note_h then
+                    highlights_parts[#highlights_parts + 1] = string.format(
+                        '                <div class="highlight-note">%s %s</div>\n',
+                        escapeHTMLValue(_("Notes:")), safe_note_h
+                    )
+                end
+
+                highlights_parts[#highlights_parts + 1] = '            </div>\n'
+            end
         end
 
-        highlights_section = highlights_section .. '        </div>\n    </div>\n'
+        highlights_parts[#highlights_parts + 1] = '        </div>\n    </div>\n'
+        highlights_section = table.concat(highlights_parts)
     end
 
     return string.format([[
@@ -530,15 +723,13 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
 
         /* Base optimizada para e-ink */
         body {
-            font-family: Georgia, "Palatino Linotype", "Book Antiqua", Palatino, serif;
+            font-family: serif;
             font-size: 1em;
             line-height: 1.7;
             margin: 0;
             padding: 0.5em;
             color: #000;
             background: #fff;
-            text-rendering: optimizeLegibility;
-            -webkit-font-smoothing: antialiased;
         }
 
         /* Headings con contraste alto */
@@ -576,7 +767,6 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
             margin-bottom: 1em;
             text-align: justify;
             hyphens: auto;
-            page-break-inside: avoid;
         }
 
         /* Imágenes optimizadas para e-ink */
@@ -585,8 +775,6 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
             height: auto;
             display: block;
             margin: 1.5em auto;
-            image-rendering: crisp-edges;
-            filter: grayscale(100%%) contrast(1.2);
             page-break-before: auto;
             page-break-after: auto;
             page-break-inside: avoid;
@@ -618,10 +806,10 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
         pre {
             background: #f0f0f0;
             padding: 1em;
-            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
             margin: 1.5em 0;
             border: 2px solid #000;
-            page-break-inside: avoid;
         }
 
         code {
@@ -800,44 +988,22 @@ function ContentProcessor:formatHighlights(raindrop)
     content = content .. (raindrop.title or _("Untitled")) .. "\n"
     content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    if raindrop.highlights and #raindrop.highlights > 0 then
+    if hasHighlights(raindrop) then
         content = content .. _("Highlights:") .. " (" .. #raindrop.highlights .. ")\n"
         content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         for i, highlight in ipairs(raindrop.highlights) do
-            -- Color indicator as text
-            local color_text = ""
-            if highlight.color == "yellow" then
-                color_text = "[Yellow] "
-            elseif highlight.color == "blue" then
-                color_text = "[Blue] "
-            elseif highlight.color == "red" then
-                color_text = "[Red] "
-            elseif highlight.color == "green" then
-                color_text = "[Green] "
-            elseif highlight.color == "cyan" then
-                color_text = "[Cyan] "
-            elseif highlight.color == "pink" then
-                color_text = "[Pink] "
-            elseif highlight.color == "purple" then
-                color_text = "[Purple] "
-            elseif highlight.color == "orange" then
-                color_text = "[Orange] "
+            if type(highlight) == "table" then
+                content = content .. highlightColorText(highlight) .. "[" .. i .. "] "
+                if highlight.text ~= nil then
+                    content = content .. tostring(highlight.text) .. "\n"
+                end
+                if highlight.note and highlight.note ~= "" then
+                    content = content .. "   " .. _("Note: ") ..
+                        tostring(highlight.note) .. "\n"
+                end
+                content = content .. "\n"
             end
-
-            -- Highlight number and text
-            content = content .. color_text .. "[" .. i .. "] "
-            if highlight.text then
-                content = content .. highlight.text .. "\n"
-            end
-
-            -- Highlight-specific note (if exists)
-            if highlight.note and highlight.note ~= "" then
-                content = content .. "   Note: " .. highlight.note .. "\n"
-            end
-
-            -- Add spacing between highlights
-            content = content .. "\n"
         end
     else
         content = content .. _("This article has no highlights") .. "\n\n"
@@ -860,24 +1026,24 @@ end
 -- Genera información formateada del artículo
 function ContentProcessor:formatArticleInfo(raindrop)
     local content = ""
-    
+
     content = content .. (raindrop.title or _("Untitled")) .. "\n"
     content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    
+
     if raindrop.link then
         content = content .. _("URL: ") .. raindrop.link .. "\n\n"
     end
-    
+
     if raindrop.domain then
         content = content .. _("Domain: ") .. raindrop.domain .. "\n"
     end
-    
+
     if raindrop.created then
         local date = raindrop.created:sub(1, 10)
         local time = raindrop.created:sub(12, 19)
         content = content .. _("Saved: ") .. date .. " " .. time .. "\n\n"
     end
-    
+
     if raindrop.type then
         local type_names = {
             link = _("Link"),
@@ -889,54 +1055,40 @@ function ContentProcessor:formatArticleInfo(raindrop)
         }
         content = content .. _("Type: ") .. (type_names[raindrop.type] or raindrop.type) .. "\n\n"
     end
-    
+
     if raindrop.excerpt and raindrop.excerpt ~= "" then
         content = content .. _("Excerpt:") .. "\n"
         content = content .. raindrop.excerpt .. "\n\n"
     end
-    
+
     if raindrop.note and raindrop.note ~= "" then
         content = content .. _("Notes:") .. "\n"
         content = content .. raindrop.note .. "\n\n"
     end
-    
-    if raindrop.highlights and #raindrop.highlights > 0 then
+
+    if hasHighlights(raindrop) then
         content = content .. _("Highlights:") .. " (" .. #raindrop.highlights .. ")\n"
         content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        
+
         for i, highlight in ipairs(raindrop.highlights) do
-            -- Color indicator as text
-            local color_text = ""
-            if highlight.color == "yellow" then
-                color_text = "[Yellow] "
-            elseif highlight.color == "blue" then
-                color_text = "[Blue] "
-            elseif highlight.color == "red" then
-                color_text = "[Red] "
-            elseif highlight.color == "green" then
-                color_text = "[Green] "
+            if type(highlight) == "table" then
+                content = content .. highlightColorText(highlight) .. "[" .. i .. "] "
+                if highlight.text ~= nil then
+                    content = content .. tostring(highlight.text) .. "\n"
+                end
+                if highlight.note and highlight.note ~= "" then
+                    content = content .. "   " .. _("Note: ") ..
+                        tostring(highlight.note) .. "\n"
+                end
+                content = content .. "\n"
             end
-            
-            -- Highlight number and text
-            content = content .. color_text .. "[" .. i .. "] "
-            if highlight.text then
-                content = content .. highlight.text .. "\n"
-            end
-            
-            -- Highlight-specific note (if exists)
-            if highlight.note and highlight.note ~= "" then
-                content = content .. "   Note: " .. highlight.note .. "\n"
-            end
-            
-            -- Add spacing between highlights
-            content = content .. "\n"
         end
     end
-    
+
     if raindrop.tags and #raindrop.tags > 0 then
         content = content .. _("Tags: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
     end
-    
+
     if raindrop.cache then
         if raindrop.cache.status == "ready" then
             content = content .. _("Cache: ") .. _("Available") .. "\n"
@@ -956,7 +1108,7 @@ function ContentProcessor:formatArticleInfo(raindrop)
         end
         content = content .. "\n"
     end
-    
+
     return content
 end
 

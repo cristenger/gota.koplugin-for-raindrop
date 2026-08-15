@@ -10,6 +10,7 @@ local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local _ = require("gettext")
+local Version = require("gota_version")
 
 local Dialogs = {}
 
@@ -29,13 +30,14 @@ function Dialogs:showTokenDialog(current_token, callbacks)
     local token_dialog  -- Declarar antes para que los callbacks puedan acceder
     token_dialog = InputDialog:new{
         title = _("Raindrop.io Access Token"),
-        description = _("OPTION 1 - Test Token (Recommended):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nOPTION 2 - Personal Token:\n• Use a personal access token\n\nPaste the token here:"),
+        description = _("TEST TOKEN (Recommended and currently supported):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nGota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n\nPaste the token here:"),
         input = current_token,
-        input_type = "text",
+        text_type = "password",
         buttons = {
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(token_dialog)
                     end,
@@ -76,12 +78,11 @@ function Dialogs:showTokenDialog(current_token, callbacks)
                             end
                             
                             local success, err = callbacks.save(new_token)
-                            UIManager:close(token_dialog)
-                            
                             if success then
-                                callbacks.notify(_("Token saved successfully\nUse 'Test' to verify functionality"), 3)
+                                UIManager:close(token_dialog)
+                                callbacks.notify(_("Token saved successfully"), 3)
                             else
-                                callbacks.notify("Error: No se pudo guardar la configuración - " .. (err or "desconocido"))
+                                callbacks.notify(_("Error saving configuration: ") .. (err or _("Unknown error")))
                             end
                         else
                             callbacks.notify(_("Please enter a valid token"), 2)
@@ -132,6 +133,7 @@ function Dialogs:showDownloadPathDialog(current_path, callbacks)
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(button_dialog)
                     end,
@@ -145,8 +147,10 @@ function Dialogs:showDownloadPathDialog(current_path, callbacks)
 end
 
 function Dialogs:showFolderPicker(callbacks)
+    local ffiUtil = require("ffi/util")
     local PathChooser = require("ui/widget/pathchooser")
-    local data_dir = callbacks.get_data_dir()
+    local configured_data_dir = callbacks.get_data_dir():gsub("/+$", "")
+    local data_dir = ffiUtil.realpath(configured_data_dir) or configured_data_dir
     
     local path_chooser
     path_chooser = PathChooser:new{
@@ -156,23 +160,24 @@ function Dialogs:showFolderPicker(callbacks)
         select_file = false,
         show_hidden = false,
         onConfirm = function(folder_path)
-            -- Convertir ruta absoluta a relativa
-            local relative_path = folder_path:gsub("^" .. data_dir .. "/?", "")
-            
-            if relative_path == "" or relative_path == folder_path then
-                -- Si no es relativa al data_dir, usar el nombre de la carpeta
-                relative_path = folder_path:match("([^/]+)/?$") or "gota_articles"
-            end
-            
-            local success, err = callbacks.save(relative_path)
-            
-            if success then
-                callbacks.notify(_("Folder configured: ") .. relative_path, 3)
+            local canonical_folder = ffiUtil.realpath(folder_path) or folder_path
+            local relative_path
+            if canonical_folder == data_dir then
+                relative_path = "gota_articles"
+            elseif canonical_folder:sub(1, #data_dir + 1) == data_dir .. "/" then
+                relative_path = canonical_folder:sub(#data_dir + 2):gsub("/+$", "")
             else
-                callbacks.notify(_("Error saving: ") .. (err or "unknown"))
+                callbacks.notify(_("Please select a folder inside the KOReader data folder"), 3)
+                return
             end
-            
-            UIManager:close(path_chooser)
+
+            local success, err, stored_path = callbacks.save(relative_path)
+
+            if success then
+                callbacks.notify(_("Folder configured: ") .. (stored_path or relative_path), 3)
+            else
+                callbacks.notify(_("Error saving: ") .. (err or _("Unknown error")))
+            end
         end,
     }
     
@@ -187,11 +192,11 @@ function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
         description = _("Enter the folder name where downloaded articles will be saved") .. "\n\n" ..
                      _("Full path") .. ": " .. (callbacks.get_data_dir() .. "/" .. current_path .. "/"),
         input = current_path,
-        input_type = "text",
         buttons = {
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(path_dialog)
                     end,
@@ -210,13 +215,12 @@ function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
                                 return
                             end
                             
-                            local success, err = callbacks.save(new_path)
-                            UIManager:close(path_dialog)
-                            
+                            local success, err, stored_path = callbacks.save(new_path)
                             if success then
-                                callbacks.notify(_("Folder configured: ") .. new_path, 3)
+                                UIManager:close(path_dialog)
+                                callbacks.notify(_("Folder configured: ") .. (stored_path or new_path), 3)
                             else
-                                callbacks.notify(_("Error saving: ") .. (err or "unknown"))
+                                callbacks.notify(_("Error saving: ") .. (err or _("Unknown error")))
                             end
                         else
                             callbacks.notify(_("Please enter a folder name"), 2)
@@ -244,6 +248,7 @@ function Dialogs:showSearchDialog(on_search_callback, on_cancel_callback)
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(search_dialog)
                         if on_cancel_callback then
@@ -256,6 +261,9 @@ function Dialogs:showSearchDialog(on_search_callback, on_cancel_callback)
                     is_enter_default = true,
                     callback = function()
                         local search_term = search_dialog:getInputText()
+                        if search_term then
+                            search_term = search_term:gsub("^%s*(.-)%s*$", "%1")
+                        end
                         if search_term and search_term ~= "" then
                             UIManager:close(search_dialog)
                             NetworkMgr:runWhenOnline(function()
@@ -281,7 +289,7 @@ end
 -- ========== DEBUG INFO VIEWER ==========
 
 function Dialogs:showDebugInfo(debug_info_table, server_url)
-    local debug_info = "DEBUG GOTA PLUGIN v1.8\n"
+    local debug_info = "DEBUG GOTA PLUGIN v" .. Version.version .. "\n"
     debug_info = debug_info .. "══════════════════════\n\n"
     debug_info = debug_info .. "Token status: " .. debug_info_table.token_status .. "\n"
     debug_info = debug_info .. "Config file: " .. debug_info_table.settings_file .. "\n\n"
@@ -295,7 +303,7 @@ function Dialogs:showDebugInfo(debug_info_table, server_url)
     end
     
     debug_info = debug_info .. "\nServer URL: " .. server_url
-    debug_info = debug_info .. "\nSystem: REFACTORED v1.8"
+    debug_info = debug_info .. "\nKOReader target: " .. Version.target_koreader
     debug_info = debug_info .. "\nModules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
     
     local text_viewer = TextViewer:new{
@@ -320,7 +328,7 @@ function Dialogs:showLinkInfo(raindrop)
     local content = _("Article URL:") .. "\n\n"
     content = content .. raindrop.link .. "\n\n"
     content = content .. _("Cannot be opened directly in KOReader.") .. "\n"
-    content = content .. _("You can copy this URL to open it on another device.")
+    content = content .. _("Use this URL to open the article on another device.")
     
     local text_viewer = TextViewer:new{
         title = _("Article link"),
@@ -375,7 +383,11 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
     if filters_data and filters_data.tags and #filters_data.tags > 0 then
         for i, tag in ipairs(filters_data.tags) do
             if i <= 10 then  -- Mostrar solo los 10 más populares
-                tags_text = tags_text .. string.format("• %s (%d)\n", tag._id, tag.count)
+                tags_text = tags_text .. string.format(
+                    "• %s (%d)\n",
+                    tostring(tag._id or ""),
+                    tonumber(tag.count) or 0
+                )
             end
         end
     else
@@ -388,13 +400,19 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
         article = _("Article"),
         image = _("Image"),
         video = _("Video"),
+        audio = _("Audio"),
         document = _("Document"),
-        link = _("Link")
     }
     if filters_data and filters_data.types and #filters_data.types > 0 then
         for _, type_info in ipairs(filters_data.types) do
-            local display_name = type_names[type_info._id] or type_info._id
-            types_text = types_text .. string.format("• %s (%d)\n", display_name, type_info.count)
+            local display_name = type_names[type_info._id]
+            if display_name then
+                types_text = types_text .. string.format(
+                    "• %s (%d)\n",
+                    display_name,
+                    tonumber(type_info.count) or 0
+                )
+            end
         end
     end
     
@@ -406,25 +424,24 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
         title = _("Advanced Search"),
         fields = {
             {
+                description = description,
                 text = "",
                 hint = _("Search term (optional)"),
-                input_type = "string",
             },
             {
                 text = "",
                 hint = _("Tag (e.g., 'guides')"),
-                input_type = "string",
             },
             {
                 text = "",
-                hint = _("Type (article/image/video/document)"),
-                input_type = "string",
+                hint = _("Type (article/image/video/audio/document)"),
             },
         },
         buttons = {
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(advanced_dialog)
                     end,
@@ -434,9 +451,12 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                     is_enter_default = true,
                     callback = function()
                         local fields = advanced_dialog:getFields()
-                        local search_term = fields[1]
-                        local tag = fields[2]
-                        local type_filter = fields[3]
+                        local function trim(value)
+                            return (value or ""):gsub("^%s*(.-)%s*$", "%1")
+                        end
+                        local search_term = trim(fields[1])
+                        local tag = trim(fields[2])
+                        local type_filter = trim(fields[3]):lower()
                         
                         -- Validar que al menos haya un criterio
                         if (not search_term or search_term == "") and 
@@ -448,12 +468,22 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                         
                         -- Construir objeto de filtros
                         local filters = {}
-                        if tag and tag ~= "" then
-                            -- Convertir a minúsculas y quitar espacios
-                            filters.tag = tag:lower():gsub("^%s*(.-)%s*$", "%1")
+                        if tag ~= "" then
+                            filters.tag = tag:lower()
                         end
-                        if type_filter and type_filter ~= "" then
-                            filters.type = type_filter:lower()
+                        if type_filter ~= "" then
+                            local allowed_types = {
+                                article = true,
+                                image = true,
+                                video = true,
+                                audio = true,
+                                document = true,
+                            }
+                            if not allowed_types[type_filter] then
+                                callbacks.notify(_("Unsupported type filter"), 2)
+                                return
+                            end
+                            filters.type = type_filter
                         end
                         
                         UIManager:close(advanced_dialog)

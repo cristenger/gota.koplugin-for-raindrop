@@ -1,7 +1,7 @@
 --[[
     Gota: Raindrop.io reader for KOReader
     Read and manage your Raindrop.io bookmarks on e-ink devices.
-    Version: 2.2
+    Version: 2.2.0
 ]]
 
 local Dispatcher = require("dispatcher")
@@ -15,22 +15,27 @@ local logger = require("logger")
 local _ = require("gettext")
 
 local Settings = require("gota_settings")
-local API = require("api")
-local ContentProcessor = require("content_processor")
+local API = require("gota_api")
+local ContentProcessor = require("gota_content_processor")
 local GotaReader = require("gota_reader")
 local UIBuilder = require("gota_ui_builder")
 local Dialogs = require("gota_dialogs")
-local ArticleManager = require("article_manager")
+local ArticleManager = require("gota_article_manager")
+local Version = require("gota_version")
 
 local Gota = WidgetContainer:extend{
     name = "gota",
     is_doc_only = false,
+    version = Version.version,
 }
 
 -- ========== INITIALIZATION ==========
 
 function Gota:init()
+    self:onDispatcherRegisterActions()
     self.settings = Settings:new()
+    -- Lets KOReader's plugin manager offer "disable and delete settings".
+    self.settings_file = self.settings:getSettingsPath()
     self.api = API:new(self.settings)
     self.content_processor = ContentProcessor:new()
     self.ui_builder = UIBuilder:new()
@@ -121,7 +126,9 @@ function Gota:showProgress(text)
     if self.widgets.progress then
         UIManager:close(self.widgets.progress)
     end
-    self.widgets.progress = InfoMessage:new{text = text, timeout = 1}
+    self.widgets.progress = InfoMessage:new{
+        text = text,
+    }
     UIManager:show(self.widgets.progress)
     UIManager:forceRePaint()
 end
@@ -163,7 +170,7 @@ function Gota:getSubMenuItems()
         return self.settings and self.settings:isTokenValid()
     end
 
-    return {
+    local items = {
         {
             text = _("All articles"),
             enabled_func = token_valid,
@@ -228,15 +235,34 @@ function Gota:getSubMenuItems()
             },
         },
     }
+
+    if GotaReader:canReturn() then
+        table.insert(items, 1, {
+            text = _("< Back to Gota"),
+            callback = function()
+                GotaReader:onReturn()
+            end,
+        })
+    end
+
+    return items
 end
 
 function Gota:addToMainMenu(menu_items)
     menu_items.gota = {
         text = _("Gota"),
+        sorting_hint = "more_tools",
         sub_item_table_func = function()
             return self:getSubMenuItems()
         end,
     }
+end
+
+-- ReaderUI emits CloseDocument before releasing the active document. Keep the
+-- singleton return state in sync without coupling GotaReader to ReaderUI internals.
+function Gota:onCloseDocument()
+    local path = self.ui and self.ui.document and self.ui.document.file
+    GotaReader:onReaderUIClose(path)
 end
 
 -- ========== DIALOGS ==========
@@ -265,7 +291,7 @@ end
 function Gota:showAdvancedSearchDialog()
     -- Primero obtener los tags disponibles (más confiable que filters)
     self:showProgress(_("Loading filters..."))
-    local tags_data, tags_err = self.api:getTags(0)
+    local tags_data, tags_err = self.api:getTags()
     local filters_data, filters_err = self.api:getFilters(0)
     self:hideProgress()
     
@@ -303,14 +329,12 @@ function Gota:showDownloadPathDialog()
         self.settings:getDownloadPath(),
         {
             save = function(new_path)
-                self.settings:setDownloadPath(new_path)
+                local stored_path = self.settings:setDownloadPath(new_path)
                 local success = self.settings:save()
-                if success then
-                    self:toast(_("Download folder updated: ") .. new_path)
-                else
+                if not success then
                     self:notify(_("Error saving configuration"))
                 end
-                return success
+                return success, nil, stored_path
             end,
             notify = function(...) self:notify(...) end,
             get_data_dir = function() return DataStorage:getDataDir() end,
@@ -348,14 +372,22 @@ function Gota:showCollections()
     end
 
     -- Trash at the bottom
-    table.insert(items, { text = "──────────────────", enabled = false })
+    table.insert(items, {
+        text = "──────────────────",
+        enabled = false,
+        select_enabled = false,
+    })
     table.insert(items, {
         text = _("Trash"),
         callback = function() self:showRaindrops(-99, _("Trash")) end,
     })
 
     -- Reload option
-    table.insert(items, { text = "──────────────────", enabled = false })
+    table.insert(items, {
+        text = "──────────────────",
+        enabled = false,
+        select_enabled = false,
+    })
     table.insert(items, {
         text = _("Reload collections"),
         callback = function()
@@ -470,6 +502,7 @@ function Gota:showSortPicker()
             {
                 {
                     text = _("Cancel"),
+                    id = "close",
                     callback = function()
                         UIManager:close(self.widgets.sort_dialog)
                         self.widgets.sort_dialog = nil
@@ -484,9 +517,19 @@ end
 -- ========== ARTICLE CONTENT ==========
 
 function Gota:showRaindropContent(raindrop)
+    if not raindrop then
+        self:notify(_("Error loading article: ") .. _("Unknown error"), 4)
+        return
+    end
+
     -- Cargar datos completos
     local err
     raindrop, err = self.article_manager:loadFullArticle(raindrop)
+
+    if not raindrop then
+        self:notify(_("Error loading article: ") .. (err or _("Unknown error")), 4)
+        return
+    end
     
     -- Verificar si el caché está disponible (status == "ready")
     local cache_available = raindrop.cache and raindrop.cache.status == "ready"
@@ -529,11 +572,9 @@ function Gota:showRaindropContent(raindrop)
             self:showRaindropHighlights(raindrop)
         end,
         save_html_with_notes = function()
-            -- Cerrar menús antes de descargar
-            self:closeAllWidgets()
-
             local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
             if filename then
+                self:closeAllWidgets()
                 -- Extraer el directorio del archivo
                 local directory = filename:match("(.*/)")
                 if directory then
@@ -596,7 +637,6 @@ function Gota:showRaindropCachedContent(raindrop)
             self:closeWidget("text_viewer")
         end,
         open_reader = function()
-            self:closeWidget("text_viewer")
             self.article_manager:openInReader(
                 raindrop,
                 function() self:closeAllWidgets() end,
@@ -608,19 +648,17 @@ function Gota:showRaindropCachedContent(raindrop)
             self.dialogs:showLinkInfo(raindrop)
         end,
         save_html = function()
-            self:closeWidget("text_viewer")
             local filename = self.article_manager:downloadHTML(raindrop)
             if filename then
+                self:closeWidget("text_viewer")
                 local display_name = filename:match("([^/]+)$") or filename
                 self:toast(_("Article saved: ") .. display_name)
             end
         end,
         save_html_with_notes = function()
-            self:closeWidget("text_viewer")
-            self:closeAllWidgets()
-
             local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
             if filename then
+                self:closeAllWidgets()
                 -- Extraer el directorio del archivo
                 local directory = filename:match("(.*/)")
                 if directory then

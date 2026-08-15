@@ -3,6 +3,51 @@ local LuaSettings = require("luasettings")
 local logger = require("logger")
 
 local Settings = {}
+local DEFAULT_DOWNLOAD_PATH = "gota_articles"
+local DEFAULT_SORT_ORDER = "-created"
+local ALLOWED_SORT_ORDERS = {
+    ["-created"] = true,
+    created = true,
+    title = true,
+    ["-title"] = true,
+    ["-sort"] = true,
+}
+
+local function normalizeSortOrder(value)
+    return ALLOWED_SORT_ORDERS[value] and value or DEFAULT_SORT_ORDER
+end
+
+local function pathIsInside(base_path, candidate_path)
+    base_path = base_path:gsub("/+$", "")
+    candidate_path = candidate_path:gsub("/+$", "")
+    return candidate_path == base_path or
+        candidate_path:sub(1, #base_path + 1) == base_path .. "/"
+end
+
+local function normalizeDownloadPath(path)
+    if type(path) ~= "string" then
+        return DEFAULT_DOWNLOAD_PATH
+    end
+
+    path = path:gsub("\\", "/"):gsub("^%s+", ""):gsub("%s+$", "")
+    if path == "" or path:sub(1, 1) == "/" or path:find("%c") then
+        return DEFAULT_DOWNLOAD_PATH
+    end
+
+    local parts = {}
+    for part in path:gmatch("[^/]+") do
+        if part == ".." then
+            return DEFAULT_DOWNLOAD_PATH
+        elseif part ~= "." and part ~= "" then
+            table.insert(parts, part)
+        end
+    end
+
+    if #parts == 0 then
+        return DEFAULT_DOWNLOAD_PATH
+    end
+    return table.concat(parts, "/")
+end
 
 function Settings:new()
     local o = {}
@@ -18,17 +63,18 @@ function Settings:new()
     end
 
     local settings_path = settings_dir .. "/gota.lua"
+    o.settings_path = settings_path
     o.config = LuaSettings:open(settings_path)
 
     if o.config then
         o.token = o.config:readSetting("token") or ""
-        o.download_path = o.config:readSetting("download_path") or "gota_articles"
-        o.sort_order = o.config:readSetting("sort_order") or "-created"
+        o.download_path = normalizeDownloadPath(o.config:readSetting("download_path"))
+        o.sort_order = normalizeSortOrder(o.config:readSetting("sort_order"))
     else
         logger.warn("Gota Settings: could not open config, using defaults")
         o.token = ""
-        o.download_path = "gota_articles"
-        o.sort_order = "-created"
+        o.download_path = DEFAULT_DOWNLOAD_PATH
+        o.sort_order = DEFAULT_SORT_ORDER
     end
 
     logger.dbg("Gota Settings: loaded, token:", o.token ~= "" and "present" or "empty")
@@ -41,8 +87,10 @@ function Settings:save()
         return false
     end
 
+    self.download_path = normalizeDownloadPath(self.download_path)
     self.config:saveSetting("token", self.token)
     self.config:saveSetting("download_path", self.download_path)
+    self.sort_order = normalizeSortOrder(self.sort_order)
     self.config:saveSetting("sort_order", self.sort_order)
     self.config:flush()
     return true
@@ -61,27 +109,56 @@ function Settings:isTokenValid()
 end
 
 function Settings:getDownloadPath()
-    return self.download_path or "gota_articles"
+    return normalizeDownloadPath(self.download_path)
 end
 
 function Settings:setDownloadPath(path)
-    self.download_path = path or "gota_articles"
+    self.download_path = normalizeDownloadPath(path)
+    return self.download_path
 end
 
 function Settings:getFullDownloadPath()
-    return DataStorage:getDataDir() .. "/" .. self:getDownloadPath() .. "/"
+    local data_dir = DataStorage:getDataDir():gsub("/+$", "")
+    local candidate = data_dir .. "/" .. self:getDownloadPath()
+    local ffi_ok, ffiUtil = pcall(require, "ffi/util")
+
+    if ffi_ok and ffiUtil and ffiUtil.realpath then
+        local canonical_data = ffiUtil.realpath(data_dir)
+        local probe = candidate
+        local canonical_probe = ffiUtil.realpath(probe)
+        while not canonical_probe and probe ~= data_dir do
+            local parent = probe:match("^(.*)/[^/]+$")
+            if not parent or parent == "" or parent == probe then break end
+            probe = parent
+            canonical_probe = ffiUtil.realpath(probe)
+        end
+
+        -- A pre-existing symlink must not redirect downloads outside DataStorage.
+        if canonical_data and canonical_probe and
+            not pathIsInside(canonical_data, canonical_probe) then
+            logger.warn("Gota Settings: download path escapes DataStorage through a symlink")
+            self.download_path = DEFAULT_DOWNLOAD_PATH
+            candidate = data_dir .. "/" .. DEFAULT_DOWNLOAD_PATH
+        end
+    end
+
+    return candidate .. "/"
+end
+
+function Settings:getSettingsPath()
+    return self.settings_path
 end
 
 function Settings:getSortOrder()
-    return self.sort_order or "-created"
+    return normalizeSortOrder(self.sort_order)
 end
 
 function Settings:setSortOrder(sort)
-    self.sort_order = sort or "-created"
+    self.sort_order = normalizeSortOrder(sort)
 end
 
 function Settings:getDebugInfo()
-    local settings_path = DataStorage:getSettingsDir() .. "/gota.lua"
+    local settings_path = self.settings_path
     local lfs = require("libs/libkoreader-lfs")
     local attr = lfs.attributes(settings_path)
     return {

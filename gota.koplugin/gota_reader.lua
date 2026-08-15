@@ -1,157 +1,148 @@
--- gota_reader.lua
+local DocumentRegistry = require("document/documentregistry")
+local InfoMessage = require("ui/widget/infomessage")
 local ReaderUI = require("apps/reader/readerui")
 local UIManager = require("ui/uimanager")
-local DocumentRegistry = require("document/documentregistry")
+local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local _ = require("gettext")
 
--- Singleton para manejar el ciclo de vida del lector
+-- This module is shared by the FileManager and ReaderUI plugin instances. It
+-- only keeps the state needed to offer a canonical "Back to Gota" menu item.
 local GotaReader = {
-    on_return_callback = nil,
+    current_path = nil,
     is_showing = false,
-    original_raindrop = nil,
+    on_return_callback = nil,
 }
 
+local function showError(text)
+    UIManager:show(InfoMessage:new{
+        text = text,
+        timeout = 3,
+    })
+end
+
+function GotaReader:reset()
+    self.current_path = nil
+    self.is_showing = false
+    self.on_return_callback = nil
+end
+
 function GotaReader:show(options)
-    self.on_return_callback = options.on_return_callback
-    self.original_raindrop = options.raindrop
-    logger.dbg("GotaReader: Mostrando documento:", options.path)
-    
-    -- Verificar que el archivo existe
-    local lfs = require("libs/libkoreader-lfs")
-    local file_mode = lfs.attributes(options.path, "mode")
-    if not file_mode or file_mode ~= "file" then
-        logger.err("GotaReader: El archivo no existe o no es válido:", options.path)
-        UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("Error: Could not find HTML file"),
-            timeout = 3,
-        })
-        return
+    if type(options) ~= "table" or type(options.path) ~= "string" then
+        logger.err("GotaReader: missing document path")
+        showError(_("Error: Could not find HTML file"))
+        return false
     end
-    
-    -- Verificar que DocumentRegistry puede manejar HTML
-    local provider = DocumentRegistry:getProvider(options.path)
+
+    if lfs.attributes(options.path, "mode") ~= "file" then
+        logger.err("GotaReader: file does not exist:", options.path)
+        showError(_("Error: Could not find HTML file"))
+        return false
+    end
+
+    -- Querying the registry is sufficient. ReaderUI owns opening and closing
+    -- the document, so no DocumentRegistry:openDocument reference is leaked.
+    local provider, is_provider_forced = DocumentRegistry:getProvider(options.path)
     if not provider then
-        logger.err("GotaReader: No hay proveedor para archivos HTML")
-        -- Intentar forzar el uso de CREngine para HTML
-        provider = DocumentRegistry:getProvider("dummy.epub") -- CREngine maneja HTML
+        logger.err("GotaReader: no document provider for:", options.path)
+        showError(_("Error: Could not open HTML file"))
+        return false
     end
-    
-    logger.dbg("GotaReader: Provider para el documento:", provider and provider.provider_name or "ninguno")
 
-    -- Si ya hay una instancia del reader, cambiar documento
-    if self.is_showing and ReaderUI.instance then
-        ReaderUI.instance:switchDocument(options.path, { delete_on_close = true })
-    else
-        -- Broadcast del evento antes de abrir el reader
-        local Event = require("ui/event")
-        UIManager:broadcastEvent(Event:new("SetupShowReader"))
-        
-        -- Usar el enfoque documentado de FileManager para abrir archivos
-        UIManager:nextTick(function()
-            local FileManager = require("apps/filemanager/filemanager")
-            
-            -- Si hay una instancia de FileManager, cerrarla primero
-            if FileManager.instance then
-                FileManager.instance:onClose()
-            end
-            
-            -- Abrir el documento usando el método apropiado
-            local document = DocumentRegistry:openDocument(options.path, provider)
-            if document then
-                ReaderUI:showReader(options.path, { delete_on_close = true })
-                self.is_showing = true
-                
-                -- Esperar a que el reader esté listo y añadir nuestro menú
-                UIManager:scheduleIn(0.5, function()
-                    if ReaderUI.instance and ReaderUI.instance.menu then
-                        self:addGotaMenu(ReaderUI.instance)
-                    end
-                end)
-            else
-                logger.err("GotaReader: No se pudo abrir el documento")
-                UIManager:show(require("ui/widget/infomessage"):new{
-                    text = _("Error: Could not open HTML file"),
-                    timeout = 3,
-                })
-            end
-        end)
-    end
-end
-
--- Añadir menú de Gota al reader
-function GotaReader:addGotaMenu(reader_instance)
-    if not reader_instance or not reader_instance.menu then
-        logger.warn("GotaReader: No se pudo acceder al menú del reader")
-        return
-    end
-    
-    -- Añadir entrada al menú principal del reader
-    local menu_items = reader_instance.menu.menu_table
-    
-    -- Buscar la sección de herramientas o crear una nueva entrada
-    local gota_menu = {
-        text = _("Gota"),
-        sub_item_table = {
-            {
-                text = _("< Back to Gota"),
-                callback = function()
-                    self:onReturn()
-                end,
-            },
-        }
-    }
-    
-    -- Si tenemos información del artículo original, añadir más opciones
-    if self.original_raindrop then
-        if self.original_raindrop.link then
-            table.insert(gota_menu.sub_item_table, {
-                text = _("Copy article URL"),
-                callback = function()
-                    -- Aquí podrías implementar la copia al portapapeles
-                    -- o mostrar la URL en un diálogo
-                    UIManager:show(require("ui/widget/infomessage"):new{
-                        text = self.original_raindrop.link,
-                        timeout = 5,
-                    })
-                end,
-            })
+    if options.before_open_callback then
+        local before_ok, before_error = pcall(options.before_open_callback)
+        if not before_ok then
+            logger.err("GotaReader: could not close Gota navigation:", before_error)
+            showError(_("Error: Could not open HTML file"))
+            return false
         end
     end
-    
-    -- Insertar en el menú
-    table.insert(menu_items, gota_menu)
-    reader_instance.menu:updateItems()
-    
-    logger.dbg("GotaReader: Menú de Gota añadido al reader")
-end
 
--- Manejar el retorno desde el reader a Gota
-function GotaReader:onReturn()
-    logger.dbg("GotaReader: Cerrando reader y volviendo a Gota")
-    self:closeReader(self.on_return_callback)
-end
+    self.current_path = options.path
+    self.is_showing = false
+    self.on_return_callback = options.on_return_callback
 
-function GotaReader:closeReader(done_callback)
-    UIManager:nextTick(function()
+    local function after_open_callback()
+        self.is_showing = true
+        logger.dbg("GotaReader: document opened:", options.path)
+    end
+
+    local ok, err = pcall(function()
         if ReaderUI.instance then
-            ReaderUI.instance:onClose()
-        end
-        
-        -- Resetear estado
-        self.is_showing = false
-        self.original_raindrop = nil
-        
-        -- Ejecutar callback si existe
-        if done_callback then
-            UIManager:scheduleIn(0.1, done_callback)
+            ReaderUI.instance:switchDocument(
+                options.path,
+                nil,
+                after_open_callback,
+                provider,
+                is_provider_forced
+            )
+        else
+            ReaderUI:showReader(
+                options.path,
+                provider,
+                nil,
+                is_provider_forced,
+                after_open_callback
+            )
         end
     end)
+
+    if not ok then
+        logger.err("GotaReader: could not open document:", err)
+        self:reset()
+        showError(_("Error: Could not open HTML file"))
+        return false
+    end
+
+    return true
 end
 
-function GotaReader:onReaderUIClose()
-    self.is_showing = false
-    self.original_raindrop = nil
+function GotaReader:canReturn()
+    local reader = ReaderUI.instance
+    return self.is_showing
+        and self.on_return_callback ~= nil
+        and self.current_path ~= nil
+        and reader ~= nil
+        and reader.document ~= nil
+        and reader.document.file == self.current_path
+end
+
+function GotaReader:onReturn()
+    if not self:canReturn() then
+        return false
+    end
+
+    local reader = ReaderUI.instance
+    local done_callback = self.on_return_callback
+    self:reset()
+
+    -- onHome is ReaderUI's supported path for closing the document and
+    -- restoring FileManager. Run the Gota callback on the following UI tick,
+    -- once the FileManager plugin instance has been restored.
+    UIManager:nextTick(function()
+        local ok, err = pcall(function()
+            reader:onHome()
+        end)
+        if not ok then
+            logger.err("GotaReader: could not return to FileManager:", err)
+            return
+        end
+
+        UIManager:nextTick(function()
+            local callback_ok, callback_err = pcall(done_callback)
+            if not callback_ok then
+                logger.err("GotaReader: return callback failed:", callback_err)
+            end
+        end)
+    end)
+
+    return true
+end
+
+function GotaReader:onReaderUIClose(path)
+    if path and path == self.current_path then
+        self:reset()
+    end
 end
 
 return GotaReader

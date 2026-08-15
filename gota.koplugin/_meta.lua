@@ -1,7 +1,6 @@
 local _ = require("gettext")
 
 return {
-  name        = "gota",                                  
-  fullname    = _("Gota"),                            
-  description = _("Read and manage your Raindrop.io bookmarks with Gota from KOReader!")
+    fullname = _("Gota"),
+    description = _("Read and manage your Raindrop.io bookmarks with Gota from KOReader!"),
 }
