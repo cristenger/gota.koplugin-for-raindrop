@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 POT_PATH = ROOT / "l10n" / "templates" / "gota.pot"
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 
 def require_tool(name: str) -> str:

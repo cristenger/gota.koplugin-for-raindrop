@@ -19,6 +19,9 @@ package.preload["util"] = function()
                 :gsub('"', "&quot;")
         end,
         htmlToPlainTextIfHtml = function(value) return value end,
+        stringLower = function(value)
+            return value:gsub("É", "é"):lower()
+        end,
     }
 end
 package.preload["datastorage"] = function()
@@ -26,6 +29,9 @@ package.preload["datastorage"] = function()
         getDataDir = function() return "/tmp" end,
         getSettingsDir = function() return "/tmp" end,
     }
+end
+package.preload["libs/libkoreader-lfs"] = function()
+    return { attributes = function() return nil end }
 end
 package.preload["ui/uimanager"] = function()
     return {
@@ -38,6 +44,11 @@ package.preload["ui/uimanager"] = function()
 end
 package.preload["ui/widget/menu"] = function()
     return { new = function(_, options) return options end }
+end
+package.preload["ui/widget/inputdialog"] = function() return { new = function(_, value) return value end } end
+package.preload["ui/widget/textviewer"] = function() return { new = function(_, value) return value end } end
+package.preload["ui/network/manager"] = function()
+    return { runWhenOnline = function(_, callback) callback() end }
 end
 package.preload["device"] = function() return {} end
 package.preload["ssl.https"] = function() return { request = noop } end
@@ -59,10 +70,33 @@ package.preload["socketutil"] = function()
                 return 1
             end
         end,
+        file_sink = function(file)
+            return function(chunk)
+                if chunk then return file:write(chunk) end
+                return 1
+            end
+        end,
     }
 end
 package.preload["json"] = function()
+    local function encode(value)
+        if type(value) == "boolean" or type(value) == "number" then return tostring(value) end
+        if type(value) == "string" then return '"' .. value:gsub('\\', '\\\\'):gsub('"', '\\"') .. '"' end
+        if type(value) == "table" then
+            local is_array = #value > 0 or next(value) == nil
+            local parts = {}
+            if is_array then
+                for _, item in ipairs(value) do parts[#parts + 1] = encode(item) end
+                return "[" .. table.concat(parts, ",") .. "]"
+            end
+            for key, item in pairs(value) do parts[#parts + 1] = encode(key) .. ":" .. encode(item) end
+            table.sort(parts)
+            return "{" .. table.concat(parts, ",") .. "}"
+        end
+        error("unsupported JSON value")
+    end
     return {
+        encode = encode,
         decode = function(payload)
             if payload == '{"ok":true}' then return { ok = true } end
             if payload == '{"errorMessage":"bad token"}' then
@@ -180,6 +214,22 @@ test("Raindrop search expression quotes tags and embeds type", function()
         'swift #"coffee beans" type:article'
     )
     equal(API.buildSearchExpression("", { tag = 'a"b\\c' }), [=[#"a\"b\\c"]=])
+end)
+
+test("structured search operators are allowlisted and deterministic", function()
+    equal(API.buildSearchExpression("", {
+        match_or = true,
+        important = true,
+        exclude_tag = "later",
+        exclude_type = "video",
+        notag = true,
+        file = true,
+        reminder = true,
+        cache_ready = true,
+        created = ">2026-08",
+        last_update = "<2026-08-15",
+    }), "match:OR -#later -type:video ❤️ notag:true file:true reminder:true " ..
+        "cache.status:ready created:>2026-08 lastUpdate:<2026-08-15")
 end)
 
 test("Raindrop pagination enforces documented zero-based limits", function()
@@ -316,6 +366,65 @@ test("long rate-limit windows do not freeze the UI thread", function()
     contains(err, "retry later", "retry guidance")
 end)
 
+test("bounded sink aborts only after crossing the configured limit", function()
+    local chunks = {}
+    local sink, state = API.boundedSink(function(chunk)
+        if chunk then chunks[#chunks + 1] = chunk end
+        return 1
+    end, 5)
+    equal(sink("12"), 1, "first chunk")
+    equal(sink("345"), 1, "exact limit")
+    local ok, err = sink("6")
+    equal(ok, nil, "oversized result")
+    equal(err, API.RESPONSE_TOO_LARGE, "oversized error")
+    equal(state.received, 6, "received bytes")
+    equal(table.concat(chunks), "12345", "forwarded content")
+end)
+
+test("permanent copy file mode streams atomically and cleans oversized parts", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local target = "/tmp/gota_test_cache_download.html"
+    os.remove(target)
+    os.remove(target .. ".part")
+    https.request = function(request)
+        request.sink("12")
+        request.sink("345")
+        request.sink(nil)
+        return 1, 200, { ["Content-Encoding"] = "identity" }, "HTTP/1.1 200 OK"
+    end
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:downloadRaindropCache(7, target, 5)
+    equal(err, nil, "download error")
+    equal(result, target, "download path")
+    local file = assert(io.open(target, "rb"))
+    equal(file:read("*a"), "12345", "download contents")
+    file:close()
+    os.remove(target)
+
+    https.request = function(request)
+        local ok, sink_error = request.sink("123456")
+        return ok, sink_error, {}, ""
+    end
+    local oversized, oversized_error = api:downloadRaindropCache(7, target, 5)
+    https.request = original_request
+    equal(oversized, nil, "oversized result")
+    contains(oversized_error, "size limit", "oversized error")
+    equal(io.open(target .. ".part", "rb"), nil, "temporary cleanup")
+end)
+
+test("mutating requests never retry automatically", function()
+    local api = API:new({ getToken = function() return "secret" end })
+    local attempts = 0
+    function api:makeRequest()
+        attempts = attempts + 1
+        return nil, "temporary", 503, {}
+    end
+    local result = api:makeRequestWithRetry("/raindrop/7", "PUT", "{}", 3)
+    equal(result, nil, "result")
+    equal(attempts, 1, "attempt count")
+end)
+
 test("forced raindrop reload bypasses the response cache", function()
     local api = API:new({ getToken = function() return "secret" end })
     local observed = {}
@@ -358,14 +467,90 @@ test("root and child collection envelopes merge without duplicate IDs", function
     equal(collections.items[3]._id, 3, "child ID")
 end)
 
-test("raindrop list rejects a structurally incomplete envelope", function()
+test("collection structure degrades optional sources without mutating roots", function()
+    local root_items = { { _id = 1 } }
+    local api = API:new({ getToken = function() return "secret" end })
+    function api:getRootCollections() return { items = root_items } end
+    function api:getUser() return nil, "user unavailable" end
+    function api:getChildCollections() return nil, "children unavailable" end
+    local structure, err = api:getCollectionStructure()
+    equal(err, nil, "error")
+    equal(structure.roots, root_items, "root array")
+    equal(#structure.groups, 0, "groups")
+    equal(#structure.children, 0, "children")
+    equal(#structure.warnings, 2, "warnings")
+end)
+
+test("search scopes collection and ranks only textual queries", function()
+    local api = API:new({ getToken = function() return "secret" end })
+    local endpoints = {}
+    function api:cachedRequest(endpoint)
+        endpoints[#endpoints + 1] = endpoint
+        return { items = {} }
+    end
+    api:searchRaindrops("kindle", 0, 25, nil, nil,
+        { collection_id = 42, nested = true })
+    contains(endpoints[1], "/raindrops/42?", "collection endpoint")
+    contains(endpoints[1], "nested=true", "nested")
+    contains(endpoints[1], "sort=score", "relevance")
+    api:searchRaindrops("", 0, 25, { notag = true })
+    contains(endpoints[2], "search=notag%3Atrue", "filter expression")
+    contains(endpoints[2], "sort=-created", "filter sort")
+    equal(endpoints[2]:find("sort=score", 1, true), nil, "no relevance sort")
+end)
+
+test("filters use one popularity-sorted endpoint", function()
+    local api = API:new({ getToken = function() return "secret" end })
+    local endpoint
+    function api:cachedRequest(value) endpoint = value return { tags = {}, types = {} } end
+    local response = api:getFilters(12)
+    truthy(response, "response")
+    equal(endpoint, "/filters/12?tagsSort=-count", "filters endpoint")
+end)
+
+test("highlights use open pagination endpoints without count", function()
+    local api = API:new({ getToken = function() return "secret" end })
+    local endpoint
+    function api:cachedRequest(value) endpoint = value return { items = {} } end
+    truthy(api:getHighlights(nil, 0, 25), "global highlights")
+    equal(endpoint, "/highlights?perpage=25&page=0", "global endpoint")
+    truthy(api:getHighlights(42, 1, 25), "collection highlights")
+    equal(endpoint, "/highlights/42?perpage=25&page=1", "collection endpoint")
+end)
+
+test("bookmark updates are allowlisted and Trash refuses permanent deletion", function()
+    local api = API:new({ getToken = function() return "secret" end })
+    local calls = {}
+    function api:makeRequestWithRetry(endpoint, method, body)
+        calls[#calls + 1] = { endpoint = endpoint, method = method, body = body }
+        if method == "DELETE" then return { result = true } end
+        return { result = true, item = { _id = 7, important = true } }
+    end
+    local updated = api:updateRaindrop(7, { important = true })
+    truthy(updated and updated.item, "updated item")
+    equal(calls[1].method, "PUT", "update method")
+    contains(calls[1].body, '"important":true', "update body")
+    truthy(api:updateRaindrop(7, { tags = {} }), "clear tags")
+    contains(calls[2].body, '"tags":[]', "empty tags array")
+    local rejected = api:updateRaindrop(7, { title = "not allowed" })
+    equal(rejected, nil, "unknown field")
+    equal(api:updateRaindrop(7, { tags = { unexpected = "tag" } }), nil, "non-list tags")
+    equal(#calls, 2, "no rejected request")
+    equal(api:trashRaindrop(7, -99), nil, "Trash safety")
+    equal(#calls, 2, "no permanent DELETE")
+    truthy(api:trashRaindrop(7, 42), "move to Trash")
+    equal(calls[3].method, "DELETE", "Trash method")
+end)
+
+test("raindrop list accepts an undocumented missing count", function()
     local api = API:new({ getToken = function() return "secret" end })
     function api:cachedRequest()
         return { result = true, items = {} }
     end
     local result, err = api:getRaindrops(0, 0, 25, "-created")
-    equal(result, nil, "result")
-    contains(err, "Invalid API response envelope", "envelope error")
+    equal(err, nil, "error")
+    truthy(result and result.items, "result")
+    equal(result.count, nil, "optional count")
 end)
 
 local ArticleManager = require("gota_article_manager")
@@ -381,16 +566,29 @@ test("article cache state requires downloaded HTML", function()
     equal(manager:hasValidCache({ cache = { status = "ready", text = "<p>x</p>" } }), true)
 end)
 
+test("cache metadata preflight prevents oversized memory requests", function()
+    local calls = 0
+    local manager = ArticleManager:new({
+        getRaindropCache = function() calls = calls + 1 return "unexpected" end,
+    }, {}, {}, { showProgress = noop, hideProgress = noop, notify = noop })
+    manager:setSettings({ getMaxCacheMemoryBytes = function() return 1024 end })
+    local item = manager:loadCacheContent({ _id = 7, cache = { status = "ready", size = 1025 } })
+    equal(calls, 0, "network calls")
+    equal(item.cache.text, nil, "HTML")
+end)
+
 test("reader precondition failure keeps the current menu open", function()
     local closed = false
     local notifications = 0
-    local manager = ArticleManager:new({}, {}, {}, {
+    local manager = ArticleManager:new({
+        downloadRaindropCache = function() return nil, "download failed" end,
+    }, {}, {}, {
         showProgress = noop,
         hideProgress = noop,
         notify = function() notifications = notifications + 1 end,
     })
     local opened = manager:openInReader(
-        { cache = { status = "ready", size = 42 } },
+        { _id = 7, cache = { status = "ready", size = 42 } },
         function() closed = true end,
         noop
     )
@@ -408,7 +606,7 @@ test("reader cache files are isolated from permanent exports", function()
     equal(manager:getReaderCachePath(42), "/tmp/cache/gota/raindrop_42.html")
 end)
 
-test("article reload forces metadata and downloads cache endpoint", function()
+test("article reload forces metadata without downloading permanent HTML", function()
     local force_refresh
     local cache_calls = 0
     local api = {
@@ -431,8 +629,8 @@ test("article reload forces metadata and downloads cache endpoint", function()
     local reloaded
     manager:reloadArticle(9, function(item) reloaded = item end)
     equal(force_refresh, true, "force refresh")
-    equal(cache_calls, 1, "cache calls")
-    equal(reloaded.cache.text, "<html>ready</html>", "downloaded HTML")
+    equal(cache_calls, 0, "cache calls")
+    equal(reloaded.cache.text, nil, "deferred HTML")
 end)
 
 test("article loading detaches downloaded HTML from the API response cache", function()
@@ -485,6 +683,53 @@ test("nested collections flatten in stable parent-first order", function()
     equal(flattened[3].collection.title, "Root B")
 end)
 
+test("collection structure follows group roots and descending child sort", function()
+    local flattened = UIBuilder.flattenCollectionStructure({
+        groups = {
+            { _id = 2, title = "Later", sort = 20, collections = { 2 } },
+            { _id = 1, title = "First", sort = 10, collections = { 1 } },
+        },
+        roots = { { _id = 1, title = "Root A" }, { _id = 2, title = "Root B" },
+            { _id = 9, title = "Ungrouped" } },
+        children = {
+            { _id = 12, title = "Low", sort = 1, parent = { ["$id"] = 1 } },
+            { _id = 11, title = "High", sort = 9, parent = { ["$id"] = 1 } },
+        },
+    }, {})
+    equal(flattened[1].title, "First", "first group")
+    equal(flattened[2].collection.title, "Root A", "first root")
+    equal(flattened[3].collection.title, "High", "high child")
+    equal(flattened[4].collection.title, "Low", "low child")
+    equal(flattened[5].title, "Later", "second group")
+    equal(flattened[#flattened].collection.title, "Ungrouped", "ungrouped root")
+end)
+
+test("collection destination mode expands remotely hidden groups", function()
+    local structure = {
+        groups = { { _id = 1, title = "Hidden", hidden = true, collections = { 10 } } },
+        roots = { { _id = 10, title = "Destination" } }, children = {},
+    }
+    local collapsed = UIBuilder.flattenCollectionStructure(structure, {})
+    equal(#collapsed, 1, "collapsed entries")
+    local expanded = UIBuilder.flattenCollectionStructure(structure, {}, true)
+    equal(expanded[2].collection.title, "Destination", "expanded destination")
+end)
+
+test("open pagination works without a documented total", function()
+    local builder = UIBuilder:new()
+    local items = {}
+    local page_items = {}
+    for index = 1, 25 do page_items[index] = { _id = index } end
+    builder:addPagination(items, { items = page_items }, 0, 25, noop)
+    local found_next, found_last = false, false
+    for _, item in ipairs(items) do
+        if item.text == "Next page →" then found_next = true end
+        if item.text == "» Last page" then found_last = true end
+    end
+    equal(found_next, true, "next page")
+    equal(found_last, false, "no last page")
+end)
+
 test("article excerpts remain valid UTF-8 and only show ellipsis when truncated", function()
     local builder = UIBuilder:new()
     local short = builder:buildRaindropItems({ items = {
@@ -509,6 +754,44 @@ test("notes export remains enabled without Raindrop PRO HTML", function()
     end
     truthy(export_item, "export item")
     equal(export_item.enabled, true, "export enabled")
+end)
+
+test("ready cache keeps an explicit metadata reload after a bounded-download error", function()
+    local menu = UIBuilder:new():buildArticleMenu(
+        { cache = { status = "ready" } }, true, { reload = noop })
+    local reload_item
+    for _, item in ipairs(menu) do
+        if item.text == "Reload article metadata" then reload_item = item end
+    end
+    truthy(reload_item and reload_item.callback, "reload action")
+end)
+
+local Dialogs = require("gota_dialogs")
+
+test("tag editing trims and de-duplicates Unicode tags case-insensitively", function()
+    local tags = Dialogs.normalizeTagsInput("  Lectura  \nlectura\nCAFÉ\ncafé\n漢字\n\n")
+    equal(#tags, 3, "tag count")
+    equal(tags[1], "Lectura", "first spelling")
+    equal(tags[2], "CAFÉ", "Unicode spelling")
+    equal(tags[3], "漢字", "CJK tag")
+end)
+
+test("article information exposes documented e-reader metadata safely", function()
+    local info = ContentProcessor:new():formatArticleInfo({
+        title = "Metadata", important = true, broken = true,
+        lastUpdate = "2026-08-15T12:34:56.000Z",
+        reminder = { data = "2026-08-16T10:00:00.000Z" },
+        file = { name = "book.epub", type = "application/epub+zip", size = 0 },
+        creatorRef = { fullName = "Reader" },
+        cache = { status = "ready", created = "2026-08-14T01:02:03.000Z" },
+    })
+    contains(info, "Warning: this link is marked as broken", "broken")
+    contains(info, "Favorite: Yes", "favorite")
+    contains(info, "Updated: 2026-08-15 12:34:56", "updated")
+    contains(info, "Reminder: 2026-08-16 10:00:00", "reminder")
+    contains(info, "File: book.epub", "file")
+    contains(info, "File size: 0 B", "zero size")
+    contains(info, "Permanent copy created: 2026-08-14 01:02:03", "cache date")
 end)
 
 test("settings normalize manipulated paths and unsupported sort values", function()
@@ -545,6 +828,11 @@ test("settings normalize manipulated paths and unsupported sort values", functio
     equal(saved.sort_order, "title", "saved sort")
     settings:setSortOrder("score")
     equal(settings:getSortOrder(), "-created", "rejected search-only sort")
+    settings:setSortOrder("domain")
+    equal(settings:getSortOrder(), "domain", "domain sort")
+    equal(settings:getMaxCacheMemoryBytes(), 4 * 1024 * 1024, "memory default")
+    equal(settings:getMaxCacheFileBytes(), 32 * 1024 * 1024, "file default")
+    equal(settings:setMaxCacheMemoryBytes(3 * 1024 * 1024), nil, "invalid memory preset")
 
     package.loaded["ffi/util"] = {
         realpath = function(path)
@@ -672,7 +960,7 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     Gota:init()
     equal(registered, Gota, "menu registration")
     equal(Gota.settings_file, "/settings/gota.lua", "settings path")
-    equal(Gota.version, "2.2.0", "plugin version")
+    equal(Gota.version, "2.3.0", "plugin version")
     truthy(actions.gota_show_articles, "all articles action")
     truthy(actions.gota_search, "search action")
     truthy(actions.gota_collections, "collections action")
@@ -680,6 +968,33 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     local menu = {}
     Gota:addToMainMenu(menu)
     equal(menu.gota.sorting_hint, "more_tools", "sorting hint")
+end)
+
+test("collection screen reads documented nested user statistics counts", function()
+    local Gota = require("main")
+    local rendered
+    local fake = {
+        widgets = {}, collapsed_collection_groups = {},
+        closeWidget = noop, notify = noop,
+        ui_builder = {
+            buildCollectionItems = function() return {} end,
+            createMenu = function(_, title, items)
+                rendered = { title = title, item_table = items }
+                return rendered
+            end,
+        },
+    }
+    Gota.renderCollections(fake, { roots = {}, children = {}, groups = {}, warnings = {} }, {
+        items = { { _id = 0, count = 10 }, { _id = -1, count = 1 }, { _id = -99, count = 4 } },
+        meta = { broken = { count = 3 }, duplicates = { count = 2 } },
+    })
+    equal(rendered.item_table[1].text, "All articles (10)", "All count")
+    equal(rendered.item_table[2].text, "Unsorted (inbox) (1)", "Unsorted count")
+    local combined = ""
+    for _, item in ipairs(rendered.item_table) do combined = combined .. tostring(item.text) .. "\n" end
+    contains(combined, "Broken links: 3", "broken count")
+    contains(combined, "Duplicate links: 2", "duplicate count")
+    contains(combined, "Trash (4)", "Trash count")
 end)
 
 io.write(string.format("1..%d\n", total))

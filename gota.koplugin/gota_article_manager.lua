@@ -104,6 +104,23 @@ end
 
 ArticleManager.copyRaindrop = copyRaindrop
 
+local function cacheFitsLimit(raindrop, limit)
+    local size = raindrop and raindrop.cache and tonumber(raindrop.cache.size) or nil
+    if size and limit and size > limit then
+        return nil, string.format(_("Permanent copy is %.1f MiB; configured limit is %.1f MiB"),
+            size / 1048576, limit / 1048576)
+    end
+    return true, nil
+end
+
+ArticleManager.cacheFitsLimit = cacheFitsLimit
+
+function ArticleManager:adoptFullArticle(source)
+    local detached = copyRaindrop(source)
+    if type(detached) == "table" then detached[FULL_ITEM_FIELD] = true end
+    return detached
+end
+
 function ArticleManager:new(api, content_processor, gota_reader, callbacks)
     local o = {}
     setmetatable(o, self)
@@ -203,8 +220,16 @@ function ArticleManager:loadCacheContent(raindrop)
         return raindrop
     end
 
+    local max_bytes = self.settings and self.settings:getMaxCacheMemoryBytes() or 4 * 1024 * 1024
+    local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
+    if not fits then
+        self:setCacheDownloadState(raindrop, size_error)
+        self.callbacks.notify(size_error)
+        return raindrop
+    end
+
     self.callbacks.showProgress(_("Loading cached content..."))
-    local cache_content, err = self.api:getRaindropCache(raindrop._id)
+    local cache_content, err = self.api:getRaindropCache(raindrop._id, max_bytes)
     self.callbacks.hideProgress()
 
     if hasContent(cache_content) then
@@ -235,37 +260,17 @@ function ArticleManager:reloadArticle(raindrop_id, on_success_callback)
 
     local raindrop = full_raindrop and full_raindrop.item and
         copyRaindrop(full_raindrop.item) or nil
-    local cache_err
     if raindrop then
         raindrop[FULL_ITEM_FIELD] = true
         self:setCacheDownloadState(raindrop, nil)
-        if self:getCacheState(raindrop).metadata_available then
-            local cache_content
-            cache_content, cache_err = self.api:getRaindropCache(raindrop_id)
-            if hasContent(cache_content) then
-                raindrop.cache.text = cache_content
-                self:setCacheDownloadState(raindrop, nil)
-            else
-                cache_err = cache_err or _("empty cached content")
-                raindrop.cache.text = nil
-                self:setCacheDownloadState(raindrop, cache_err)
-            end
-        end
     end
     self.callbacks.hideProgress()
 
     if raindrop then
-        local state = self:getCacheState(raindrop)
-        if state.html_loaded then
-            on_success_callback(raindrop)
-        elseif state.metadata_available then
-            self.callbacks.notify(_("Cached content could not be downloaded: ") ..
-                (cache_err or _("Unknown error")))
-            on_success_callback(raindrop)
-        else
+        if not self:getCacheState(raindrop).metadata_available then
             self.callbacks.notify(_("The article does not yet have cached content available"))
-            on_success_callback(raindrop)
         end
+        on_success_callback(raindrop)
     else
         self.callbacks.notify(_("Error reloading article: ") .. (err or _("Unknown error")))
     end
@@ -274,7 +279,7 @@ end
 -- ========== OPEN IN READER ==========
 
 function ArticleManager:openInReader(raindrop, close_all_callback, on_return_callback)
-    if not self:hasValidCache(raindrop) then
+    if not self:getCacheState(raindrop).metadata_available then
         self.callbacks.notify(_("No content available"))
         return false
     end
@@ -291,11 +296,20 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     end
 
     local filename = self:getReaderCachePath(raindrop._id)
-    local html = self.content_processor:createReaderHTML(raindrop)
-
-    local write_ok, write_error = writeFileAtomically(filename, html)
-    if not write_ok then
-        self.callbacks.notify(_("Error writing file: ") .. (write_error or _("unknown error")))
+    local max_bytes = self.settings and self.settings:getMaxCacheFileBytes() or 32 * 1024 * 1024
+    local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
+    if not fits then
+        self.callbacks.notify(size_error)
+        return false
+    end
+    os.remove(filename)
+    self.callbacks.showProgress(_("Downloading article for reader..."))
+    local downloaded_path, download_error = self.api:downloadRaindropCache(
+        raindrop._id, filename, max_bytes)
+    self.callbacks.hideProgress()
+    if not downloaded_path then
+        self.callbacks.notify(_("Could not download article for reader: ") ..
+            (download_error or _("unknown error")))
         return false
     end
 
@@ -327,9 +341,9 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     }) == true
 
     if opened then
-        -- CREngine reads from disk. Keeping the multi-megabyte source HTML in a
-        -- return callback wastes scarce RAM on older Kindle/Kobo devices.
-        raindrop.cache.text = nil
+        -- CREngine reads from disk; do not retain a second multi-megabyte copy
+        -- in callbacks while the reader is active on memory-constrained devices.
+        if raindrop.cache then raindrop.cache.text = nil end
     else
         os.remove(filename)
     end
@@ -446,7 +460,7 @@ end
 -- ========== DOWNLOAD HTML ==========
 
 function ArticleManager:downloadHTML(raindrop)
-    if not self:hasValidCache(raindrop) then
+    if not self:getCacheState(raindrop).metadata_available then
         self.callbacks.notify(_("No content available to download"))
         return nil
     end
@@ -469,12 +483,13 @@ function ArticleManager:downloadHTML(raindrop)
     -- Generar nombre único para evitar colisiones (NUEVO)
     local filename = self:getUniqueFilename(html_dir, safe_id, safe_title, ".html")
 
-    -- Generar HTML usando el mismo procesador que openInReader
-    local html = self.content_processor:createReaderHTML(raindrop)
-
-    -- Guardar archivo sin dejar una copia parcial ante un error de escritura
-    local write_ok, write_err = writeFileAtomically(filename, html)
-    if not write_ok then
+    local max_bytes = self.settings:getMaxCacheFileBytes()
+    local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
+    if not fits then self.callbacks.notify(size_error) return nil end
+    self.callbacks.showProgress(_("Saving permanent copy..."))
+    local downloaded, write_err = self.api:downloadRaindropCache(raindrop._id, filename, max_bytes)
+    self.callbacks.hideProgress()
+    if not downloaded then
         self.callbacks.notify(_("Error writing file: ") .. (write_err or _("unknown error")))
         return nil
     end
@@ -494,6 +509,10 @@ function ArticleManager:downloadHTMLWithNotes(raindrop)
     if not raindrop or (not has_notes and not has_highlights) then
         self.callbacks.notify(_("No notes or highlights available to download"))
         return nil
+    end
+
+    if self:getCacheState(raindrop).metadata_available and not self:hasValidCache(raindrop) then
+        raindrop = self:loadCacheContent(raindrop)
     end
 
     -- Usar el mismo directorio configurado

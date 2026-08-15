@@ -5,16 +5,28 @@ local logger = require("logger")
 local Settings = {}
 local DEFAULT_DOWNLOAD_PATH = "gota_articles"
 local DEFAULT_SORT_ORDER = "-created"
+local MIB = 1024 * 1024
+local DEFAULT_CACHE_MEMORY_BYTES = 4 * MIB
+local DEFAULT_CACHE_FILE_BYTES = 32 * MIB
+local CACHE_MEMORY_PRESETS = { [2 * MIB] = true, [4 * MIB] = true, [8 * MIB] = true, [16 * MIB] = true }
+local CACHE_FILE_PRESETS = { [16 * MIB] = true, [32 * MIB] = true, [64 * MIB] = true, [128 * MIB] = true }
 local ALLOWED_SORT_ORDERS = {
     ["-created"] = true,
     created = true,
     title = true,
     ["-title"] = true,
     ["-sort"] = true,
+    domain = true,
+    ["-domain"] = true,
 }
 
 local function normalizeSortOrder(value)
     return ALLOWED_SORT_ORDERS[value] and value or DEFAULT_SORT_ORDER
+end
+
+local function normalizePreset(value, allowed, default_value)
+    value = tonumber(value)
+    return value and allowed[value] and value or default_value
 end
 
 local function pathIsInside(base_path, candidate_path)
@@ -70,11 +82,17 @@ function Settings:new()
         o.token = o.config:readSetting("token") or ""
         o.download_path = normalizeDownloadPath(o.config:readSetting("download_path"))
         o.sort_order = normalizeSortOrder(o.config:readSetting("sort_order"))
+        o.max_cache_memory_bytes = normalizePreset(o.config:readSetting("max_cache_memory_bytes"),
+            CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
+        o.max_cache_file_bytes = normalizePreset(o.config:readSetting("max_cache_file_bytes"),
+            CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
     else
         logger.warn("Gota Settings: could not open config, using defaults")
         o.token = ""
         o.download_path = DEFAULT_DOWNLOAD_PATH
         o.sort_order = DEFAULT_SORT_ORDER
+        o.max_cache_memory_bytes = DEFAULT_CACHE_MEMORY_BYTES
+        o.max_cache_file_bytes = DEFAULT_CACHE_FILE_BYTES
     end
 
     logger.dbg("Gota Settings: loaded, token:", o.token ~= "" and "present" or "empty")
@@ -92,6 +110,12 @@ function Settings:save()
     self.config:saveSetting("download_path", self.download_path)
     self.sort_order = normalizeSortOrder(self.sort_order)
     self.config:saveSetting("sort_order", self.sort_order)
+    self.max_cache_memory_bytes = normalizePreset(self.max_cache_memory_bytes,
+        CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
+    self.max_cache_file_bytes = normalizePreset(self.max_cache_file_bytes,
+        CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
+    self.config:saveSetting("max_cache_memory_bytes", self.max_cache_memory_bytes)
+    self.config:saveSetting("max_cache_file_bytes", self.max_cache_file_bytes)
     self.config:flush()
     return true
 end
@@ -157,6 +181,29 @@ function Settings:setSortOrder(sort)
     self.sort_order = normalizeSortOrder(sort)
 end
 
+function Settings:getMaxCacheMemoryBytes()
+    return normalizePreset(self.max_cache_memory_bytes, CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
+end
+
+function Settings:setMaxCacheMemoryBytes(value)
+    local normalized = normalizePreset(value, CACHE_MEMORY_PRESETS, nil)
+    if not normalized then return nil end
+    self.max_cache_memory_bytes = normalized
+    return normalized
+end
+
+
+function Settings:getMaxCacheFileBytes()
+    return normalizePreset(self.max_cache_file_bytes, CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
+end
+
+function Settings:setMaxCacheFileBytes(value)
+    local normalized = normalizePreset(value, CACHE_FILE_PRESETS, nil)
+    if not normalized then return nil end
+    self.max_cache_file_bytes = normalized
+    return normalized
+end
+
 function Settings:getDebugInfo()
     local settings_path = self.settings_path
     local lfs = require("libs/libkoreader-lfs")
@@ -168,6 +215,10 @@ function Settings:getDebugInfo()
         file_size = attr and attr.size or 0,
         sort_order = self.sort_order,
         download_path = self.download_path,
+        max_cache_memory_bytes = self:getMaxCacheMemoryBytes(),
+        max_cache_file_bytes = self:getMaxCacheFileBytes(),
+        max_cache_memory_mib = self:getMaxCacheMemoryBytes() / MIB,
+        max_cache_file_mib = self:getMaxCacheFileBytes() / MIB,
     }
 end
 

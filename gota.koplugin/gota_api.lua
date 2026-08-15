@@ -18,6 +18,33 @@ local MAX_REDIRECTS = 3
 local MAX_RETRY_DELAY = 30
 local MAX_BLOCKING_RETRY_DELAY = 3
 local MAX_PER_PAGE = 50
+local RESPONSE_TOO_LARGE = "gota_response_too_large"
+
+local CONTENT_TYPES = {
+    article = true,
+    image = true,
+    video = true,
+    audio = true,
+    document = true,
+}
+
+local RAINDROP_SORTS = {
+    ["-created"] = true,
+    created = true,
+    score = true,
+    ["-sort"] = true,
+    title = true,
+    ["-title"] = true,
+    domain = true,
+    ["-domain"] = true,
+}
+
+local MUTABLE_RAINDROP_FIELDS = {
+    important = true,
+    note = true,
+    tags = true,
+    collection = true,
+}
 
 local REDIRECT_STATUSES = {
     [301] = true,
@@ -70,22 +97,68 @@ local function appendSearchPart(parts, value)
     end
 end
 
+local function normalizedTag(value)
+    local tag = trim(value):gsub("^%-?#", "")
+    return tag ~= "" and tag or nil
+end
+
+local function normalizedContentType(value)
+    local content_type = trim(value):lower()
+    if content_type == "" then return nil end
+    return CONTENT_TYPES[content_type] and content_type or nil
+end
+
+local function normalizeDateExpression(value)
+    value = trim(value)
+    if value == "" then return nil end
+    local operator = value:sub(1, 1)
+    local date = value
+    if operator == "<" or operator == ">" then
+        date = value:sub(2)
+    else
+        operator = ""
+    end
+    if date:match("^%d%d%d%d$") or
+       date:match("^%d%d%d%d%-%d%d$") or
+       date:match("^%d%d%d%d%-%d%d%-%d%d$") then
+        return operator .. date
+    end
+    return nil
+end
+
 local function buildSearchExpression(search_term, filters)
     local parts = {}
+    if filters and filters.match_or == true then
+        parts[#parts + 1] = "match:OR"
+    end
     appendSearchPart(parts, search_term)
 
     if filters then
         if filters.tag ~= nil then
-            local tag = trim(filters.tag):gsub("^#", "")
-            if tag ~= "" then
+            local tag = normalizedTag(filters.tag)
+            if tag then
                 parts[#parts + 1] = "#" .. searchValue(tag)
             end
         end
 
+        if filters.exclude_tag ~= nil then
+            local tag = normalizedTag(filters.exclude_tag)
+            if tag then
+                parts[#parts + 1] = "-#" .. searchValue(tag)
+            end
+        end
+
         if filters.type ~= nil then
-            local content_type = trim(filters.type):lower()
-            if content_type ~= "" then
+            local content_type = normalizedContentType(filters.type)
+            if content_type then
                 parts[#parts + 1] = "type:" .. searchValue(content_type)
+            end
+        end
+
+        if filters.exclude_type ~= nil then
+            local content_type = normalizedContentType(filters.exclude_type)
+            if content_type then
+                parts[#parts + 1] = "-type:" .. searchValue(content_type)
             end
         end
 
@@ -94,6 +167,16 @@ local function buildSearchExpression(search_term, filters)
         if filters.important ~= nil then
             parts[#parts + 1] = filters.important and "❤️" or "-❤️"
         end
+
+        if filters.notag == true then parts[#parts + 1] = "notag:true" end
+        if filters.file == true then parts[#parts + 1] = "file:true" end
+        if filters.reminder == true then parts[#parts + 1] = "reminder:true" end
+        if filters.cache_ready == true then parts[#parts + 1] = "cache.status:ready" end
+
+        local created = normalizeDateExpression(filters.created)
+        if created then parts[#parts + 1] = "created:" .. created end
+        local last_update = normalizeDateExpression(filters.last_update)
+        if last_update then parts[#parts + 1] = "lastUpdate:" .. last_update end
     end
 
     return table.concat(parts, " ")
@@ -140,6 +223,53 @@ local function normalizeRaindropId(raindrop_id)
     return tostring(id), nil
 end
 
+local function normalizeSort(sort, allow_score)
+    sort = trim(sort)
+    if sort == "" then return nil, nil end
+    if not RAINDROP_SORTS[sort] or (sort == "score" and not allow_score) then
+        return nil, _("Invalid sort order")
+    end
+    return sort, nil
+end
+
+local function validateOptionalCount(data, endpoint)
+    if data and data.count ~= nil and normalizeInteger(data.count, nil, 0) == nil then
+        return nil, _("Invalid API response envelope for ") .. endpoint
+    end
+    return data, nil
+end
+
+local function validateSearchFilters(filters)
+    if filters == nil then return true, nil end
+    if type(filters) ~= "table" then return nil, _("Invalid search filters") end
+    for _, key in ipairs({ "type", "exclude_type" }) do
+        if filters[key] ~= nil and trim(filters[key]) ~= "" and
+           not normalizedContentType(filters[key]) then
+            return nil, _("Invalid content type")
+        end
+    end
+    for _, key in ipairs({ "created", "last_update" }) do
+        if filters[key] ~= nil and trim(filters[key]) ~= "" and
+           not normalizeDateExpression(filters[key]) then
+            return nil, _("Invalid date filter; use YYYY, YYYY-MM, or YYYY-MM-DD")
+        end
+    end
+    return true, nil
+end
+
+local function utf8CharacterCount(value)
+    local count, index = 0, 1
+    while index <= #value do
+        local byte = value:byte(index)
+        if byte and byte >= 0xF0 and byte <= 0xF4 then index = index + 4
+        elseif byte and byte >= 0xE0 and byte <= 0xEF then index = index + 3
+        elseif byte and byte >= 0xC2 and byte <= 0xDF then index = index + 2
+        else index = index + 1 end
+        count = count + 1
+    end
+    return count
+end
+
 local function isSafeHttpsUrl(url)
     if type(url) ~= "string" or url:find("[%c%s\\]") then
         return false
@@ -168,6 +298,37 @@ local function safeJsonDecode(payload)
         return nil, tostring(decode_error or "unknown JSON error")
     end
     return data, nil
+end
+
+local function safeJsonEncode(value)
+    local ok, encoded = pcall(JSON.encode, value)
+    if not ok or type(encoded) ~= "string" then
+        return nil, tostring(encoded or "JSON encode failed")
+    end
+    return encoded, nil
+end
+
+local function boundedSink(inner_sink, max_bytes, state)
+    state = state or {}
+    state.received = 0
+    return function(chunk, err)
+        if chunk then
+            state.received = state.received + #chunk
+            if max_bytes and state.received > max_bytes then
+                state.too_large = true
+                return nil, RESPONSE_TOO_LARGE
+            end
+        end
+        return inner_sink(chunk, err)
+    end, state
+end
+
+local function fileHasGzipSignature(path)
+    local file = io.open(path, "rb")
+    if not file then return false end
+    local signature = file:read(2)
+    file:close()
+    return signature and signature:byte(1) == 31 and signature:byte(2) == 139 or false
 end
 
 local function compactText(value, max_length)
@@ -239,6 +400,9 @@ API.isSafeHttpsUrl = isSafeHttpsUrl
 API.getHeader = getHeader
 API.retryDelay = retryDelay
 API.normalizePagination = normalizePagination
+API.normalizeDateExpression = normalizeDateExpression
+API.boundedSink = boundedSink
+API.RESPONSE_TOO_LARGE = RESPONSE_TOO_LARGE
 
 function API:new(settings, server_url)
     local o = {}
@@ -260,8 +424,13 @@ function API:new(settings, server_url)
     return o
 end
 
-function API:_performRequest(url, method, body, include_authorization, is_file_download)
-    local sink = {}
+function API:_performRequest(url, method, body, include_authorization, is_file_download, request_options)
+    request_options = request_options or {}
+    local response_mode = request_options.response_mode or
+        (is_file_download and "text" or "json")
+    local max_response_bytes = request_options.max_response_bytes
+    local chunks = {}
+    local transfer = { response_mode = response_mode }
     local headers = {
         ["Content-Type"] = "application/json",
         ["User-Agent"] = Version.user_agent,
@@ -276,11 +445,34 @@ function API:_performRequest(url, method, body, include_authorization, is_file_d
         headers["Authorization"] = "Bearer " .. token
     end
 
+    local inner_sink
+    local file_handle
+    if response_mode == "file" then
+        local target_path = request_options.target_path
+        if type(target_path) ~= "string" or target_path == "" or target_path:find("%c") then
+            return nil, _("Invalid download target"), nil, nil, nil, false
+        end
+        transfer.target_path = target_path
+        transfer.temporary_path = target_path .. ".part"
+        os.remove(transfer.temporary_path)
+        local open_error
+        file_handle, open_error = io.open(transfer.temporary_path, "wb")
+        if not file_handle then
+            return nil, _("Could not create temporary download file: ") ..
+                tostring(open_error), nil, nil, nil, false
+        end
+        inner_sink = socketutil.file_sink(file_handle)
+    else
+        inner_sink = socketutil.table_sink(chunks)
+    end
+
+    local sink_state = {}
+    local request_sink = boundedSink(inner_sink, max_response_bytes, sink_state)
     local request = {
         url = url,
         method = method,
         headers = headers,
-        sink = socketutil.table_sink(sink),
+        sink = request_sink,
         protocol = "any",
         -- Redirects are followed explicitly so Authorization never crosses hosts.
         redirect = false,
@@ -306,23 +498,54 @@ function API:_performRequest(url, method, body, include_authorization, is_file_d
         logger.err("Gota API: failed to reset socket timeout:", reset_error)
     end
 
+    if file_handle then
+        -- socketutil.file_sink closes on the final nil chunk. If the transfer
+        -- aborted before that, this closes the still-open handle.
+        pcall(function() file_handle:close() end)
+    end
+    transfer.received = sink_state.received or 0
+
+    if sink_state.too_large then
+        return nil, _("Response exceeds the configured size limit"),
+            nil, nil, nil, false, transfer
+    end
     if not wrapper_ok then
         logger.err("Gota API: request setup error:", wrapper_error)
-        return nil, _("HTTP error: ") .. tostring(wrapper_error), nil, nil, nil, true
+        return nil, _("HTTP error: ") .. tostring(wrapper_error),
+            nil, nil, nil, true, transfer
     end
     if not call_ok then
         logger.err("Gota API: request exception:", request_result)
-        return nil, _("HTTP error: ") .. tostring(request_result), nil, nil, nil, true
+        return nil, _("HTTP error: ") .. tostring(request_result),
+            nil, nil, nil, true, transfer
     end
     if not request_result then
         logger.err("Gota API: HTTP transport error:", actual_status)
-        return nil, _("HTTP error: ") .. tostring(actual_status), nil, nil, nil, true
+        return nil, _("HTTP error: ") .. tostring(actual_status),
+            nil, nil, nil, true, transfer
     end
 
-    return table.concat(sink), nil, tonumber(actual_status), response_headers or {}, status_line
+    local payload = response_mode == "file" and true or table.concat(chunks)
+    return payload, nil, tonumber(actual_status), response_headers or {},
+        status_line, nil, transfer
 end
 
-function API:makeRequest(endpoint, method, body)
+local function cleanupTransfer(transfer)
+    if transfer and transfer.temporary_path then
+        os.remove(transfer.temporary_path)
+    end
+end
+
+local function readFilePrefix(path, max_bytes)
+    if not path then return nil end
+    local file = io.open(path, "rb")
+    if not file then return nil end
+    local content = file:read(max_bytes or 4096)
+    file:close()
+    return content
+end
+
+function API:makeRequest(endpoint, method, body, request_options)
     if type(endpoint) ~= "string" or endpoint:sub(1, 1) ~= "/"
         or endpoint:find("[%c%s\\]") then
         return nil, _("Invalid API endpoint")
@@ -332,8 +555,22 @@ function API:makeRequest(endpoint, method, body)
     if not HTTP_METHODS[method] then
         return nil, _("Unsupported HTTP method: ") .. method
     end
+    request_options = request_options or {}
+    local response_mode = request_options.response_mode
+    if response_mode ~= nil and response_mode ~= "json" and
+       response_mode ~= "text" and response_mode ~= "file" then
+        return nil, _("Unsupported response mode")
+    end
+    if request_options.max_response_bytes ~= nil then
+        local normalized_limit = normalizeInteger(request_options.max_response_bytes, nil, 1)
+        if not normalized_limit then return nil, _("Invalid response size limit") end
+        request_options.max_response_bytes = normalized_limit
+    end
     local is_file_download = endpoint:match("/cache$") ~= nil
         or endpoint:match("/cache%?[^/]*$") ~= nil
+    if response_mode == "file" and not is_file_download then
+        return nil, _("File response mode is only supported for permanent copies")
+    end
     local url = self.server_url .. endpoint
     local include_authorization = true
     local redirect_count = 0
@@ -341,13 +578,22 @@ function API:makeRequest(endpoint, method, body)
     logger.dbg("Gota API: request", method, endpoint)
 
     while true do
-        local payload, transport_error, status, headers, status_line, transient_transport_error =
-            self:_performRequest(url, method, body, include_authorization, is_file_download)
+        local payload, transport_error, status, headers, status_line,
+            transient_transport_error, transfer = self:_performRequest(
+                url,
+                method,
+                body,
+                include_authorization,
+                is_file_download,
+                request_options
+            )
         if not payload then
+            cleanupTransfer(transfer)
             return nil, transport_error, status, headers, transient_transport_error
         end
 
         if status and status >= 300 and status < 400 then
+            cleanupTransfer(transfer)
             local location = getHeader(headers, "Location")
             if not REDIRECT_STATUSES[status] or not is_file_download or not location then
                 return nil, _("Unexpected redirect from server: ") .. tostring(status), status, headers
@@ -369,24 +615,52 @@ function API:makeRequest(endpoint, method, body)
             logger.dbg("Gota API: following safe cache redirect", redirect_count)
         else
             if not status then
+                cleanupTransfer(transfer)
                 return nil, _("HTTP response did not include a status code"), nil, headers
             end
 
             if status >= 200 and status < 300 then
+                local declared_length = tonumber(getHeader(headers, "Content-Length"))
+                if request_options.max_response_bytes and declared_length and
+                   declared_length > request_options.max_response_bytes then
+                    cleanupTransfer(transfer)
+                    return nil, _("Response exceeds the configured size limit"), status, headers, false
+                end
                 if status == 204 and not is_file_download then
+                    cleanupTransfer(transfer)
                     return true, nil, status, headers
                 end
-                if #payload == 0 then
+                local payload_size = transfer and transfer.received or #payload
+                if payload_size == 0 then
+                    cleanupTransfer(transfer)
                     return nil, _("Empty server response"), status, headers
                 end
 
                 local content_encoding = trim(getHeader(headers, "Content-Encoding")):lower()
-                local has_gzip_signature = payload:byte(1) == 31 and payload:byte(2) == 139
+                local has_gzip_signature
+                if transfer and transfer.response_mode == "file" then
+                    has_gzip_signature = fileHasGzipSignature(transfer.temporary_path)
+                else
+                    has_gzip_signature = payload:byte(1) == 31 and payload:byte(2) == 139
+                end
                 if (content_encoding ~= "" and content_encoding ~= "identity") or has_gzip_signature then
+                    cleanupTransfer(transfer)
                     return nil, _("Server ignored the requested identity content encoding"), status, headers
                 end
 
                 if is_file_download then
+                    if transfer and transfer.response_mode == "file" then
+                        local renamed, rename_error = os.rename(
+                            transfer.temporary_path,
+                            transfer.target_path
+                        )
+                        if not renamed then
+                            cleanupTransfer(transfer)
+                            return nil, _("Could not finalize downloaded file: ") ..
+                                tostring(rename_error), status, headers
+                        end
+                        return transfer.target_path, nil, status, headers
+                    end
                     return payload, nil, status, headers
                 end
 
@@ -403,8 +677,13 @@ function API:makeRequest(endpoint, method, body)
                 return nil, _("Invalid JSON response: ") .. compactText(parse_error), status, headers
             end
 
+            local error_payload = payload
+            if transfer and transfer.response_mode == "file" then
+                error_payload = readFilePrefix(transfer.temporary_path)
+                cleanupTransfer(transfer)
+            end
             local message = _("Server error: ") .. tostring(status)
-            local detail = responseErrorMessage(payload)
+            local detail = responseErrorMessage(error_payload)
             if detail then
                 message = message .. " - " .. detail
             elseif status_line and status_line ~= "" then
@@ -423,8 +702,15 @@ function API:makeRequest(endpoint, method, body)
     end
 end
 
-function API:makeRequestWithRetry(endpoint, method, body, max_retries)
-    max_retries = math.max(1, math.floor(tonumber(max_retries) or 3))
+function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
+    method = tostring(method or "GET"):upper()
+    request_options = request_options or {}
+    local is_read = method == "GET" or method == "HEAD"
+    if request_options.retry_policy == "none" or not is_read then
+        max_retries = 1
+    else
+        max_retries = math.max(1, math.floor(tonumber(max_retries) or 3))
+    end
     local last_error
 
     for attempt = 1, max_retries do
@@ -433,7 +719,7 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries)
         end
 
         local result, err, status, headers, transient_transport_error =
-            self:makeRequest(endpoint, method, body)
+            self:makeRequest(endpoint, method, body, request_options)
         if result ~= nil then
             return result, nil
         end
@@ -570,6 +856,8 @@ function API:getChildCollections(use_cache)
     return self:_cachedEnvelope("/collections/childrens", use_cache, "items", "table")
 end
 
+-- Deprecated compatibility envelope. New UI code must use
+-- getCollectionStructure() to preserve groups and source ordering.
 function API:getCollections(include_children, use_cache)
     if include_children == false then
         return self:getRootCollections(use_cache)
@@ -607,6 +895,45 @@ function API:getCollections(include_children, use_cache)
     return combined, nil
 end
 
+-- Returns a normalized, read-only view of the three sources Raindrop requires
+-- to reproduce its collection sidebar. Roots are required; user/groups and
+-- children degrade independently so an e-reader never loses all navigation.
+function API:getCollectionStructure(use_cache)
+    local roots, roots_error = self:getRootCollections(use_cache)
+    if not roots then return nil, roots_error end
+
+    local structure = {
+        groups = {},
+        roots = roots.items,
+        children = {},
+        warnings = {},
+    }
+
+    local user, user_error = self:getUser(use_cache)
+    if user and type(user.user) == "table" and type(user.user.groups) == "table" then
+        for _, group in ipairs(user.user.groups) do
+            if type(group) == "table" then
+                structure.groups[#structure.groups + 1] = group
+            end
+        end
+    else
+        structure.warnings[#structure.warnings + 1] =
+            user_error or _("Collection groups are unavailable")
+    end
+
+    local children, children_error = self:getChildCollections(use_cache)
+    if children and type(children.items) == "table" then
+        for _, child in ipairs(children.items) do
+            structure.children[#structure.children + 1] = child
+        end
+    else
+        structure.warnings[#structure.warnings + 1] =
+            children_error or _("Child collections are unavailable")
+    end
+
+    return structure, nil
+end
+
 function API:getRaindrops(collection_id, page, perpage, sort, use_cache)
     local id, id_error = normalizeCollectionId(collection_id)
     if not id then return nil, id_error end
@@ -619,10 +946,14 @@ function API:getRaindrops(collection_id, page, perpage, sort, use_cache)
         normalized_perpage,
         normalized_page
     )
-    if sort and sort ~= "" then
-        endpoint = endpoint .. "&sort=" .. urlEncode(sort)
+    local normalized_sort, sort_error = normalizeSort(sort, false)
+    if sort_error then return nil, sort_error end
+    if normalized_sort then
+        endpoint = endpoint .. "&sort=" .. urlEncode(normalized_sort)
     end
-    return self:_cachedEnvelope(endpoint, use_cache, "items", "table", "count", "number")
+    local data, err = self:_cachedEnvelope(endpoint, use_cache, "items", "table")
+    if not data then return nil, err end
+    return validateOptionalCount(data, endpoint)
 end
 
 function API:getRaindrop(raindrop_id, force_refresh)
@@ -633,35 +964,85 @@ function API:getRaindrop(raindrop_id, force_refresh)
     return self:_cachedEnvelope("/raindrop/" .. id, use_cache, "item", "table")
 end
 
-function API:getRaindropCache(raindrop_id)
+function API:getRaindropCache(raindrop_id, max_bytes)
     local id, id_error = normalizeRaindropId(raindrop_id)
     if not id then return nil, id_error end
-    return self:makeRequestWithRetry("/raindrop/" .. id .. "/cache")
+    return self:makeRequestWithRetry(
+        "/raindrop/" .. id .. "/cache",
+        "GET",
+        nil,
+        3,
+        { response_mode = "text", max_response_bytes = max_bytes }
+    )
 end
 
-function API:searchRaindrops(search_term, page, perpage, filters, use_cache)
+function API:downloadRaindropCache(raindrop_id, target_path, max_bytes)
+    local id, id_error = normalizeRaindropId(raindrop_id)
+    if not id then return nil, id_error end
+    return self:makeRequestWithRetry(
+        "/raindrop/" .. id .. "/cache",
+        "GET",
+        nil,
+        3,
+        {
+            response_mode = "file",
+            target_path = target_path,
+            max_response_bytes = max_bytes,
+        }
+    )
+end
+
+function API:searchRaindrops(search_term, page, perpage, filters, use_cache, options)
     local normalized_page, normalized_perpage, pagination_error = normalizePagination(page, perpage)
     if not normalized_page then return nil, pagination_error end
 
+    local filters_ok, filters_error = validateSearchFilters(filters)
+    if not filters_ok then return nil, filters_error end
+    options = options or {}
+    if type(options) ~= "table" then return nil, _("Invalid search options") end
+    local collection_id, id_error = normalizeCollectionId(options.collection_id, 0)
+    if not collection_id then return nil, id_error end
+
     local params = string.format("perpage=%d&page=%d", normalized_perpage, normalized_page)
     local combined_search = buildSearchExpression(search_term, filters)
+    local has_text = trim(search_term) ~= ""
     if combined_search ~= "" then
         params = params .. "&search=" .. urlEncode(combined_search)
     end
 
-    local endpoint = "/raindrops/0?" .. params
-    return self:_cachedEnvelope(endpoint, use_cache, "items", "table", "count", "number")
+    if options.nested == true then params = params .. "&nested=true" end
+    local requested_sort = options.sort
+    if trim(requested_sort) == "" then
+        requested_sort = has_text and "score" or "-created"
+    end
+    local normalized_sort, sort_error = normalizeSort(requested_sort, has_text)
+    if sort_error then return nil, sort_error end
+    if normalized_sort then params = params .. "&sort=" .. urlEncode(normalized_sort) end
+
+    local endpoint = "/raindrops/" .. collection_id .. "?" .. params
+    local data, err = self:_cachedEnvelope(endpoint, use_cache, "items", "table")
+    if not data then return nil, err end
+    return validateOptionalCount(data, endpoint)
 end
 
-function API:getFilters(collection_id, search_term, use_cache)
+function API:getFilters(collection_id, search_term, use_cache, options)
     local id, id_error = normalizeCollectionId(collection_id, 0)
     if not id then return nil, id_error end
-    local params = ""
-    if search_term and search_term ~= "" then
-        params = "?search=" .. urlEncode(search_term)
+    options = options or {}
+    if type(options) ~= "table" then return nil, _("Invalid filter options") end
+    local tags_sort = options.tags_sort or "-count"
+    if tags_sort ~= "-count" and tags_sort ~= "_id" then
+        return nil, _("Invalid tag sort order")
     end
-    local endpoint = string.format("/filters/%s%s", id, params)
-    return self:_cachedEnvelope(endpoint, use_cache)
+    local params = { "tagsSort=" .. urlEncode(tags_sort) }
+    if trim(search_term) ~= "" then
+        params[#params + 1] = "search=" .. urlEncode(trim(search_term))
+    end
+    local endpoint = string.format("/filters/%s?%s", id, table.concat(params, "&"))
+    local data, err = self:_cachedEnvelope(endpoint, use_cache)
+    if not data then return nil, err end
+    if type(data) ~= "table" then return nil, _("Invalid filters response") end
+    return data, nil
 end
 
 function API:getTags(collection_id, use_cache)
@@ -672,6 +1053,123 @@ function API:getTags(collection_id, use_cache)
         endpoint = endpoint .. "/" .. id
     end
     return self:_cachedEnvelope(endpoint, use_cache, "items", "table")
+end
+
+function API:getHighlights(collection_id, page, perpage, use_cache)
+    local normalized_page, normalized_perpage, pagination_error = normalizePagination(page, perpage)
+    if not normalized_page then return nil, pagination_error end
+    local endpoint = "/highlights"
+    if collection_id ~= nil then
+        local id, id_error = normalizeCollectionId(collection_id)
+        if not id then return nil, id_error end
+        endpoint = endpoint .. "/" .. id
+    end
+    endpoint = endpoint .. string.format("?perpage=%d&page=%d", normalized_perpage, normalized_page)
+    return self:_cachedEnvelope(endpoint, use_cache, "items", "table")
+end
+
+function API:getUserStats(use_cache)
+    local data, err = self:_cachedEnvelope("/user/stats", use_cache, "items", "table")
+    if not data then return nil, err end
+    if data.meta ~= nil and type(data.meta) ~= "table" then
+        self.response_cache["/user/stats"] = nil
+        return nil, _("Invalid user statistics response")
+    end
+    return data, nil
+end
+
+local function normalizedRaindropPatch(patch)
+    if type(patch) ~= "table" then return nil, _("Invalid bookmark update") end
+    local normalized = {}
+    local field_count = 0
+    for key, value in pairs(patch) do
+        if not MUTABLE_RAINDROP_FIELDS[key] then
+            return nil, _("Unsupported bookmark field: ") .. tostring(key)
+        end
+        field_count = field_count + 1
+        if key == "important" then
+            if type(value) ~= "boolean" then return nil, _("Favorite must be true or false") end
+            normalized.important = value
+        elseif key == "note" then
+            if type(value) ~= "string" or utf8CharacterCount(value) > 10000 then
+                return nil, _("Note must contain at most 10,000 characters")
+            end
+            normalized.note = value
+        elseif key == "tags" then
+            if type(value) ~= "table" then return nil, _("Tags must be a list") end
+            normalized.tags = {}
+            local tag_count = 0
+            for tag_index in pairs(value) do
+                if type(tag_index) ~= "number" or tag_index < 1 or
+                   tag_index ~= math.floor(tag_index) then
+                    return nil, _("Tags must be a list")
+                end
+                tag_count = tag_count + 1
+            end
+            if tag_count ~= #value then return nil, _("Tags must be a list") end
+            for index, tag in ipairs(value) do
+                if type(tag) ~= "string" or trim(tag) == "" then
+                    return nil, _("Tags must be non-empty text values")
+                end
+                normalized.tags[index] = trim(tag)
+            end
+        elseif key == "collection" then
+            local collection_id = type(value) == "table" and value["$id"] or value
+            local id, id_error = normalizeCollectionId(collection_id)
+            if not id then return nil, id_error end
+            normalized.collection = { ["$id"] = tonumber(id) }
+        end
+    end
+    if field_count == 0 then return nil, _("Bookmark update cannot be empty") end
+    return normalized, nil
+end
+
+function API:updateRaindrop(raindrop_id, patch)
+    local id, id_error = normalizeRaindropId(raindrop_id)
+    if not id then return nil, id_error end
+    local normalized, patch_error = normalizedRaindropPatch(patch)
+    if not normalized then return nil, patch_error end
+    local body, encode_error = safeJsonEncode(normalized)
+    if not body then return nil, _("Could not encode bookmark update: ") .. encode_error end
+    local data, err = self:makeRequestWithRetry(
+        "/raindrop/" .. id,
+        "PUT",
+        body,
+        1,
+        { retry_policy = "none" }
+    )
+    if not data then return nil, err end
+    if type(data) ~= "table" or data.result ~= true or type(data.item) ~= "table" then
+        return nil, _("Invalid bookmark update response")
+    end
+    self:clearCache()
+    return data, nil
+end
+
+function API:trashRaindrop(raindrop_id, current_collection_id)
+    local id, id_error = normalizeRaindropId(raindrop_id)
+    if not id then return nil, id_error end
+    if current_collection_id == nil then
+        return nil, _("Current collection is required before moving to Trash")
+    end
+    local collection_id, collection_error = normalizeCollectionId(current_collection_id)
+    if not collection_id then return nil, collection_error end
+    if tonumber(collection_id) == -99 then
+        return nil, _("Refusing to permanently delete an item already in Trash")
+    end
+    local data, err = self:makeRequestWithRetry(
+        "/raindrop/" .. id,
+        "DELETE",
+        nil,
+        1,
+        { retry_policy = "none" }
+    )
+    if not data then return nil, err end
+    if type(data) ~= "table" or data.result ~= true then
+        return nil, _("Invalid Trash response")
+    end
+    self:clearCache()
+    return data, nil
 end
 
 function API:testToken(token)

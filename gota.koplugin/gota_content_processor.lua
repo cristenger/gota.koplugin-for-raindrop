@@ -1023,12 +1023,55 @@ function ContentProcessor:formatHighlights(raindrop)
     return content
 end
 
+local function compactDate(value)
+    if type(value) ~= "string" then return nil end
+    local date = value:match("^(%d%d%d%d%-%d%d%-%d%d)")
+    local time = value:match("^%d%d%d%d%-%d%d%-%d%d[T ](%d%d:%d%d:%d%d)")
+    return date and (date .. (time and (" " .. time) or "")) or nil
+end
+
+local function humanFileSize(value)
+    local size = tonumber(value)
+    if not size or size < 0 then return nil end
+    if size >= 1048576 then return string.format("%.1f MiB", size / 1048576) end
+    if size >= 1024 then return string.format("%d KiB", math.floor(size / 1024 + 0.5)) end
+    return string.format("%d B", math.floor(size))
+end
+
+function ContentProcessor:formatHighlightInfo(highlight)
+    highlight = type(highlight) == "table" and highlight or {}
+    local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or {}
+    local parts = {
+        tostring(highlight.title or reference.title or _("Highlight")),
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        tostring(highlight.text or _("Highlight without text")),
+    }
+    if highlight.note and highlight.note ~= "" then
+        parts[#parts + 1] = ""
+        parts[#parts + 1] = _("Note: ") .. tostring(highlight.note)
+    end
+    if HIGHLIGHT_COLORS[highlight.color] then
+        parts[#parts + 1] = _("Color: ") .. HIGHLIGHT_COLOR_NAMES[highlight.color]
+    end
+    local created = compactDate(highlight.created)
+    if created then parts[#parts + 1] = _("Created: ") .. created end
+    local link = highlight.link or reference.link
+    if link then parts[#parts + 1] = _("URL: ") .. tostring(link) end
+    return table.concat(parts, "\n")
+end
+
 -- Genera información formateada del artículo
 function ContentProcessor:formatArticleInfo(raindrop)
     local content = ""
 
     content = content .. (raindrop.title or _("Untitled")) .. "\n"
     content = content .. "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if raindrop.broken then
+        content = content .. _("Warning: this link is marked as broken") .. "\n\n"
+    end
+    content = content .. _("Favorite: ") .. (raindrop.important and _("Yes") or _("No")) .. "\n"
 
     if raindrop.link then
         content = content .. _("URL: ") .. raindrop.link .. "\n\n"
@@ -1038,11 +1081,13 @@ function ContentProcessor:formatArticleInfo(raindrop)
         content = content .. _("Domain: ") .. raindrop.domain .. "\n"
     end
 
-    if raindrop.created then
-        local date = raindrop.created:sub(1, 10)
-        local time = raindrop.created:sub(12, 19)
-        content = content .. _("Saved: ") .. date .. " " .. time .. "\n\n"
-    end
+    local created = compactDate(raindrop.created)
+    if created then content = content .. _("Saved: ") .. created .. "\n" end
+    local updated = compactDate(raindrop.lastUpdate)
+    if updated then content = content .. _("Updated: ") .. updated .. "\n" end
+    local reminder = type(raindrop.reminder) == "table" and compactDate(raindrop.reminder.data) or nil
+    if reminder then content = content .. _("Reminder: ") .. reminder .. "\n" end
+    if created or updated or reminder then content = content .. "\n" end
 
     if raindrop.type then
         local type_names = {
@@ -1089,12 +1134,28 @@ function ContentProcessor:formatArticleInfo(raindrop)
         content = content .. _("Tags: ") .. table.concat(raindrop.tags, ", ") .. "\n\n"
     end
 
+    if type(raindrop.file) == "table" then
+        if raindrop.file.name then content = content .. _("File: ") .. tostring(raindrop.file.name) .. "\n" end
+        if raindrop.file.type then content = content .. _("File type: ") .. tostring(raindrop.file.type) .. "\n" end
+        local file_size = humanFileSize(raindrop.file.size)
+        if file_size then content = content .. _("File size: ") .. file_size .. "\n" end
+        content = content .. "\n"
+    end
+
+    if type(raindrop.creatorRef) == "table" then
+        local creator = raindrop.creatorRef.fullName or raindrop.creatorRef._id
+        if creator then content = content .. _("Creator: ") .. tostring(creator) .. "\n\n" end
+    end
+
     if raindrop.cache then
         if raindrop.cache.status == "ready" then
             content = content .. _("Cache: ") .. _("Available") .. "\n"
             if raindrop.cache.size then
-                content = content .. _("Size: ") .. math.floor(raindrop.cache.size/1024) .. " KB\n"
+                local cache_size = humanFileSize(raindrop.cache.size)
+                if cache_size then content = content .. _("Size: ") .. cache_size .. "\n" end
             end
+            local cache_created = compactDate(raindrop.cache.created)
+            if cache_created then content = content .. _("Permanent copy created: ") .. cache_created .. "\n" end
         elseif raindrop.cache.status then
             local status_names = {
                 ready = _("Ready"),

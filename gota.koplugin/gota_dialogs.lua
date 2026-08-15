@@ -9,6 +9,7 @@ local Device = require("device")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
+local util = require("util")
 local _ = require("gettext")
 local Version = require("gota_version")
 
@@ -304,6 +305,14 @@ function Dialogs:showDebugInfo(debug_info_table, server_url)
     
     debug_info = debug_info .. "\nServer URL: " .. server_url
     debug_info = debug_info .. "\nKOReader target: " .. Version.target_koreader
+    if debug_info_table.max_cache_memory_mib then
+        debug_info = debug_info .. "\nText cache limit: " ..
+            tostring(debug_info_table.max_cache_memory_mib) .. " MiB"
+    end
+    if debug_info_table.max_cache_file_mib then
+        debug_info = debug_info .. "\nReader cache limit: " ..
+            tostring(debug_info_table.max_cache_file_mib) .. " MiB"
+    end
     debug_info = debug_info .. "\nModules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
     
     local text_viewer = TextViewer:new{
@@ -377,6 +386,7 @@ end
 
 function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
     local MultiInputDialog = require("ui/widget/multiinputdialog")
+    local ButtonDialog = require("ui/widget/buttondialog")
     
     -- Construir lista de tags para mostrar
     local tags_text = _("Available tags") .. " (" .. _("case-insensitive") .. "):\n"
@@ -419,7 +429,80 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
     local description = tags_text .. types_text .. "\n" .. 
                        _("Enter search criteria") .. ":"
     
+    local selected = {}
+    local more_filters = {}
     local advanced_dialog
+    local function showQuickFilters()
+        local quick_dialog
+        local choices = {
+            { "important", _("Favorites") },
+            { "notag", _("No tags") },
+            { "file", _("Uploaded files") },
+            { "reminder", _("Has reminder") },
+            { "cache_ready", _("Web archive ready") },
+            { "match_or", _("Match any selected filter") },
+        }
+        local buttons = {}
+        for _, choice in ipairs(choices) do
+            local key, label = choice[1], choice[2]
+            buttons[#buttons + 1] = {{
+                text = label .. (selected[key] and " [x]" or " [ ]"),
+                callback = function()
+                    selected[key] = not selected[key]
+                    UIManager:close(quick_dialog)
+                    showQuickFilters()
+                end,
+            }}
+        end
+        buttons[#buttons + 1] = {{ text = _("Close"), id = "close", callback = function()
+            UIManager:close(quick_dialog)
+        end }}
+        quick_dialog = ButtonDialog:new{ title = _("Quick filters"), buttons = buttons }
+        UIManager:show(quick_dialog)
+    end
+
+    local function showMoreFilters()
+        local more_dialog
+        more_dialog = MultiInputDialog:new{
+            title = _("More filters"),
+            fields = {
+                { text = more_filters.exclude_tag or "", hint = _("Exclude tag") },
+                { text = more_filters.exclude_type or "", hint = _("Exclude type") },
+                { text = more_filters.created or "", hint = _("Created date: >YYYY-MM-DD") },
+                { text = more_filters.last_update or "", hint = _("Updated date: <YYYY-MM-DD") },
+            },
+            buttons = {{
+                { text = _("Cancel"), id = "close", callback = function() UIManager:close(more_dialog) end },
+                { text = _("Save"), callback = function()
+                    local values = more_dialog:getFields()
+                    local candidate = {
+                        exclude_tag = (values[1] or ""):gsub("^%s*(.-)%s*$", "%1"),
+                        exclude_type = (values[2] or ""):gsub("^%s*(.-)%s*$", "%1"):lower(),
+                        created = (values[3] or ""):gsub("^%s*(.-)%s*$", "%1"),
+                        last_update = (values[4] or ""):gsub("^%s*(.-)%s*$", "%1"),
+                    }
+                    local allowed = { article=true, image=true, video=true, audio=true, document=true }
+                    if candidate.exclude_type ~= "" and not allowed[candidate.exclude_type] then
+                        callbacks.notify(_("Unsupported type filter"), 2) return
+                    end
+                    local function validDate(value)
+                        if value == "" then return true end
+                        value = value:gsub("^[<>]", "")
+                        return value:match("^%d%d%d%d$") or value:match("^%d%d%d%d%-%d%d$") or
+                            value:match("^%d%d%d%d%-%d%d%-%d%d$")
+                    end
+                    if not validDate(candidate.created) or not validDate(candidate.last_update) then
+                        callbacks.notify(_("Invalid date filter; use YYYY, YYYY-MM, or YYYY-MM-DD"), 3) return
+                    end
+                    more_filters = candidate
+                    UIManager:close(more_dialog)
+                end },
+            }},
+        }
+        UIManager:show(more_dialog)
+        more_dialog:onShowKeyboard()
+    end
+
     advanced_dialog = MultiInputDialog:new{
         title = _("Advanced Search"),
         fields = {
@@ -438,6 +521,10 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
             },
         },
         buttons = {
+            {
+                { text = _("Quick filters"), callback = showQuickFilters },
+                { text = _("More filters"), callback = showMoreFilters },
+            },
             {
                 {
                     text = _("Cancel"),
@@ -459,9 +546,15 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                         local type_filter = trim(fields[3]):lower()
                         
                         -- Validar que al menos haya un criterio
+                        local has_quick = false
+                        for key, value in pairs(selected) do
+                            if key ~= "match_or" and value then has_quick = true break end
+                        end
+                        local has_more = false
+                        for _, value in pairs(more_filters) do if value ~= "" then has_more = true break end end
                         if (not search_term or search_term == "") and 
                            (not tag or tag == "") and 
-                           (not type_filter or type_filter == "") then
+                           (not type_filter or type_filter == "") and not has_quick and not has_more then
                             callbacks.notify(_("Please enter at least one search criterion"), 2)
                             return
                         end
@@ -485,6 +578,8 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                             end
                             filters.type = type_filter
                         end
+                        for key, value in pairs(selected) do if value then filters[key] = true end end
+                        for key, value in pairs(more_filters) do if value ~= "" then filters[key] = value end end
                         
                         UIManager:close(advanced_dialog)
                         callbacks.on_search(search_term, filters)
@@ -498,6 +593,91 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
     advanced_dialog:onShowKeyboard()
     
     return advanced_dialog
+end
+
+local function utf8CharacterCount(value)
+    local count, index = 0, 1
+    while index <= #value do
+        local byte = value:byte(index)
+        if byte and byte >= 0xF0 then index = index + 4
+        elseif byte and byte >= 0xE0 then index = index + 3
+        elseif byte and byte >= 0xC2 then index = index + 2
+        else index = index + 1 end
+        count = count + 1
+    end
+    return count
+end
+
+local function normalizeTagsInput(value)
+    local tags, seen = {}, {}
+    for line in tostring(value or ""):gmatch("[^\r\n]+") do
+        local tag = line:gsub("^%s+", ""):gsub("%s+$", "")
+        local key = util.stringLower and util.stringLower(tag) or tag:lower()
+        if tag ~= "" and not seen[key] then
+            seen[key] = true
+            tags[#tags + 1] = tag
+        end
+    end
+    return tags
+end
+
+Dialogs.normalizeTagsInput = normalizeTagsInput
+
+function Dialogs:showEditNoteDialog(current_note, callbacks)
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Edit note"), input = current_note or "", allow_newline = true,
+        use_available_height = true,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), callback = function()
+                local note = dialog:getInputText() or ""
+                if utf8CharacterCount(note) > 10000 then
+                    callbacks.notify(_("Note must contain at most 10,000 characters"), 3) return
+                end
+                callbacks.save(note, dialog)
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+    return dialog
+end
+
+function Dialogs:showEditTagsDialog(tags, callbacks)
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Edit tags"),
+        description = _("Enter one tag per line"),
+        input = table.concat(type(tags) == "table" and tags or {}, "\n"), allow_newline = true,
+        use_available_height = true,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), callback = function()
+                callbacks.save(normalizeTagsInput(dialog:getInputText()), dialog)
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+    return dialog
+end
+
+function Dialogs:confirmMoveToTrash(title, callback)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    dialog = ButtonDialog:new{
+        title = _("Move to Trash?") .. "\n\n" .. tostring(title or _("Untitled")),
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dialog) end },
+            { text = _("Move to Trash"), callback = function()
+                UIManager:close(dialog)
+                callback()
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    return dialog
 end
 
 return Dialogs
