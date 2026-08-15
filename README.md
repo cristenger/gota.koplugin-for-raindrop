@@ -4,7 +4,7 @@ A KOReader plugin to access and read your [Raindrop.io](https://raindrop.io) boo
 
 <p align="center">
   <img src="https://img.shields.io/badge/KOReader-Plugin-blue" alt="KOReader Plugin">
-  <img src="https://img.shields.io/badge/version-2.1.0-green" alt="Version 2.1.0">
+  <img src="https://img.shields.io/badge/version-2.2.0-green" alt="Version 2.2.0">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT License">
 </p>
 
@@ -12,16 +12,16 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 
 ## Features
 
-- **Browse Collections**: Navigate your Raindrop collections with full pagination
+- **Browse Collections**: Navigate root and nested Raindrop collections
 - **Simple Search**: Quick text-based article search
-- **Advanced Search**: Filter by tags and content types (article/image/video/document)
+- **Advanced Search**: Filter by tags and content types (article/image/video/audio/document)
 - **Read Articles**: View content as plain text or open in full HTML reader
 - **Personal Notes**: View your personal notes attached to bookmarks
 - **Highlights**: Access your article highlights
 - **Save Offline**: Download HTML articles for offline reading
-- **Internationalization**: Automatic language detection (English/Spanish supported)
+- **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
 - **Configurable**: Customizable download folder with visual folder picker
-- **Multi-Device**: Works on any device that supports KOReader
+- **KOReader Compatibility**: Targets KOReader 2026.07 and later
 
 ## Installation
 
@@ -48,9 +48,9 @@ cp -r gota.koplugin /path/to/koreader/plugins/
 3. Give it a name (e.g., "KOReader")
 4. Copy the **"Test token"** from your app settings
 
-**Why Test Tokens?** No setup required, never expires, secure, and perfect for e-readers.
+**Why Test Tokens?** They need no OAuth callback flow and do not expire. Treat them as long-lived passwords.
 
-**Note:** OAuth tokens are not supported (require web browser).
+**Note:** The OAuth access/refresh flow is not implemented. Gota currently supports the personal test-token workflow above.
 
 ### 2. Configure the Plugin
 
@@ -77,7 +77,7 @@ Once configured, you can:
 ```
 Menu → Gota → View collections
 ```
-Shows all your Raindrop collections with article counts and pagination.
+Shows root and nested Raindrop collections with article counts.
 
 ### Search Articles
 
@@ -93,7 +93,7 @@ Tap any article to see options:
 - **Open in full reader**: HTML with formatting (requires Raindrop PRO)
 - **View as plain text**: Simple text view (requires Raindrop PRO)
 - **View information**: Metadata, tags, URL, cache status, notes, and highlights
-- **Copy URL**: Copy article link
+- **Show article URL**: Display the article link for manual use
 
 ### Notes and Highlights
 
@@ -115,7 +115,7 @@ Choose between visual folder picker or manual folder name entry.
 
 The plugin auto-detects your KOReader language:
 - **English** (default)
-- **Spanish** (Español)
+- **Spanish** (Español; legacy entries still need linguistic review)
 
 Change language in: `KOReader Settings → Language`
 
@@ -140,13 +140,13 @@ This means the article's permanent cache is not available. This can happen if:
 - The article hasn't been cached yet (PRO users: wait a moment and try "reload")
 - The article source doesn't allow caching
 
-### SSL Certificate Issues
+### TLS Certificate Limitation on Kindle
 
-**Important:** SSL verification is disabled by default to prevent certificate errors on e-ink devices.
+Raindrop only provides an HTTPS API. On the supported Kindle runtime, however, remote certificate authentication is not implemented in this flow. Gota inherits KOReader's LuaSec behavior (`verify = "none"` in LuaSec 1.3.2) and does not mutate process-wide TLS state.
 
-This is necessary because many e-readers have outdated certificate stores and cannot verify modern SSL certificates. The plugin disables SSL verification to ensure reliable connections to Raindrop.io API.
+Traffic is encrypted but the server is not authenticated, so an active attacker could intercept the Bearer token. Use Gota only on a trusted network. HTTPS URLs remain mandatory, and cache redirects never receive the Raindrop token.
 
-**Security note:** While this reduces security slightly, it's a necessary compromise for e-reader compatibility. Your access token is still transmitted over HTTPS encryption.
+The token field is masked, but the credential is stored as plaintext in KOReader's `settings/gota.lua`. Treat that file as sensitive and do not attach it to public bug reports.
 
 ## Development
 
@@ -156,7 +156,10 @@ git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
 cd gota.koplugin-for-raindrop/gota.koplugin
 
 # Check syntax
-luac -p *.lua
+luac -p *.lua tests/run.lua
+
+# Run the dependency-free regression suite
+lua tests/run.lua
 
 # Update translations
 python3 extract_strings.py
@@ -168,18 +171,23 @@ python3 extract_strings.py
 ```
 gota.koplugin/
 ├── main.lua                  # Plugin coordinator
-├── api.lua                   # Raindrop.io API client
-├── settings.lua              # Configuration management
-├── dialogs.lua               # UI dialogs
-├── ui_builder.lua            # Menu construction
-├── content_processor.lua     # HTML processing
-├── article_manager.lua       # Article operations
+├── gota_api.lua              # Raindrop.io API client
+├── gota_settings.lua         # Configuration management
+├── gota_dialogs.lua          # UI dialogs
+├── gota_ui_builder.lua       # Menu construction
+├── gota_content_processor.lua # HTML processing
+├── gota_article_manager.lua  # Article operations
 ├── gota_reader.lua           # Reader integration
+├── gota_version.lua          # Version and compatibility metadata
+├── ARCHITECTURE.md           # Maintained architecture and contracts
+├── tests/run.lua             # Dependency-free regression tests
 ├── l10n/                     # Translations
 │   ├── templates/gota.pot    # Translation template
 │   └── es/gota.po           # Spanish translation
 └── _meta.lua                 # Plugin metadata
 ```
+
+See [ARCHITECTURE.md](gota.koplugin/ARCHITECTURE.md) for lifecycle, data flows, security boundaries, Raindrop contracts, validation and known limitations.
 
 ## Disclaimer
 

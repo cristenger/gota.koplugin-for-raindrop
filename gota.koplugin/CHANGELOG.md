@@ -1,5 +1,52 @@
 # Changelog - Gota Plugin for KOReader
 
+## v2.2.0 - Architecture and Compatibility (August 14, 2026)
+
+### Security
+
+- Preserved Kindle-compatible LuaSec HTTPS behavior while removing the ineffective process-wide `cert_verify` assignment; certificate authentication remains unavailable and is documented as an accepted risk.
+- API base URLs and permanent-cache redirects now require HTTPS.
+- Cache redirects are followed explicitly without forwarding the Raindrop Bearer token to storage hosts.
+- The access-token field now uses KOReader's password input mode. The token is still stored as plaintext in `settings/gota.lua`.
+
+### Fixed
+
+- Preserved valid UTF-8, including accented text, CJK, emoji and combining marks; malformed sequences are replaced safely.
+- Updated `ReaderUI:showReader` and `switchDocument` calls to their current signatures.
+- Removed the leaked `DocumentRegistry:openDocument` preflight and direct reader-menu injection.
+- Registered Dispatcher actions during plugin initialization.
+- Moved type/favorite filters into Raindrop's `search` expression and quoted tags containing spaces.
+- Separated cache metadata, downloaded HTML and download errors; reload now bypasses stale metadata and fetches `/cache` explicitly.
+- Enabled notes/highlights export without Raindrop PRO article HTML.
+- Added nested collections using `/collections` plus `/collections/childrens`.
+- Added explicit 307 handling, safe JSON decoding, remote error details, and retries for transport failures, 429 and 5xx.
+- Replaced external gzip commands with `Accept-Encoding: identity`.
+- Validated pagination, identifiers and response envelopes; rejected empty cache downloads and non-redirect 304 responses.
+- Avoided long 429 sleeps on KOReader's UI thread while retaining short bounded retries.
+- Detached permanent HTML from the API response cache and released it after CREngine opened the local file.
+- Added atomic HTML writes, DataStorage path confinement, UTF-8-safe filenames/excerpts and preserved `<pre>` whitespace.
+- Separated transient ReaderUI files under `DataStorage/cache/gota` so opening an article cannot overwrite an exported HTML.
+- Added D-pad-safe disabled rows, Cancel controls and long-press handling, plus the documented `audio` search type.
+
+### Architecture and Validation
+
+- Added `ARCHITECTURE.md` and implementation status to the architecture review.
+- Centralized version and compatibility metadata in `gota_version.lua`.
+- Prefixed internal module filenames with `gota_` to avoid collisions in KOReader's global `package.loaded` table.
+- Declared KOReader 2026.07+ as the compatibility target.
+- Added `tests/run.lua`, a 34-case suite runnable without a KOReader checkout.
+- Added GitHub Actions validation with Lua 5.1 syntax/tests and gettext catalog checks.
+- Declared `settings_file` for KOReader's plugin-management lifecycle.
+
+### Known Limitations
+
+- Network calls remain synchronous and may block the UI until their timeout or retry delay.
+- OAuth/refresh tokens and real-device testing remain future work.
+- Very large permanent-cache HTML still has no hard memory cap; Raindrop collection groups are not rendered.
+- The Spanish catalog is structurally valid, but legacy entries that still match English need linguistic review.
+
+---
+
 ## v2.1.0 - Highlights Display (November 5, 2025)
 
 ### Added
@@ -182,7 +229,7 @@ msgstr "Configurar token de acceso"  # For Spanish
 **Raindrop API Used**:
 ```
 GET /filters/{collectionId}
-GET /raindrops/0?search=X&tag=Y&type=Z
+GET /raindrops/0?search=X%20%23tag%20type%3AZ
 ```
 
 **Benefits**:
@@ -581,4 +628,3 @@ Original monolithic version with all functionality in `main.lua` (1571 lines).
 **Maintainer**: Christian Stenger
 **License**: MIT
 **Last updated**: October 5, 2025
-
