@@ -87,17 +87,13 @@ This creates the `.mo` binary file that KOReader uses at runtime.
 
 ## Translation Statistics
 
-Total unique strings: **126**
+The Gota 2.2.0 template contains **187 messages**. `msgfmt` recognizes all 187 Spanish entries as non-empty, but this is syntactic coverage, not linguistic QA: several legacy entries still mirror the English source and need review.
 
-Distribution by module:
-- `main.lua`: 37 strings
-- `dialogs.lua`: 27 strings
-- `ui_builder.lua`: 26 strings
-- `content_processor.lua`: 26 strings
-- `article_manager.lua`: 16 strings
-- `api.lua`: 7 strings
-- `gota_reader.lua`: 5 strings
-- `_meta.lua`: 2 strings
+To obtain current statistics instead of maintaining counts by hand:
+
+```bash
+msgfmt --statistics --check -o /dev/null l10n/es/gota.po
+```
 
 ## Testing Translations
 
@@ -128,9 +124,11 @@ If new strings are added to the code:
 ## Developer Tools
 
 ### `extract_strings.py`
-Scans all `.lua` files for translatable strings wrapped in `_("...")` and generates:
+Uses GNU gettext to scan every top-level `.lua` file for translatable strings wrapped in `_("...")`. It generates or updates:
 - `l10n/templates/gota.pot` - Translation template
-- Updates all `l10n/<lang>/gota.po` files with new strings
+- `l10n/<lang>/gota.po` - Merged catalogs that preserve existing translations
+
+The script requires `xgettext` and `msgmerge`.
 
 ### `compile_translations.sh`
 Compiles `.po` → `.mo` files using `msgfmt`.
@@ -190,8 +188,8 @@ msgstr "Token válido!\nUsuario: "
 
 ### Complex Dialog
 ```po
-msgid "OPTION 1 - Test Token (Recommended):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nOPTION 2 - Personal Token:\n• Use a personal access token\n\nPaste the token here:"
-msgstr "OPCIÓN 1 - Test Token (Recomendado):\n• Ve a: https://app.raindrop.io/settings/integrations\n• Crea una nueva aplicación\n• Copia el 'Test token'\n\nOPCIÓN 2 - Token Personal:\n• Usa un token de acceso personal\n\nPega el token aquí:"
+msgid "Cached content could not be downloaded: "
+msgstr "No se pudo descargar el contenido en caché: "
 ```
 
 ## Contributing

@@ -4,10 +4,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Gota Plugin 1.9.0\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-11-05 01:58\n"
-"PO-Revision-Date: 2025-11-05 01:58\n"
+"Project-Id-Version: Gota Plugin 2.2.0\n"
+"Report-Msgid-Bugs-To: https://github.com/cristenger/gota.koplugin-for-raindrop/issues\n"
+"POT-Creation-Date: 2026-08-14 23:57-0400\n"
+"PO-Revision-Date: 2026-08-14 22:42-0400\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
 "Language: es\n"
@@ -16,441 +16,963 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "Empty server response"
-msgstr "Empty server response"
-
-msgid "Error: Could not decompress server response"
-msgstr "Error: Could not decompress server response"
-
-msgid "Error processing server response"
-msgstr "Error processing server response"
-
-msgid "Server error: "
-msgstr "Server error: "
-
-msgid "HTTP error "
-msgstr "HTTP error "
-
-msgid "Failed after "
-msgstr "Failed after "
-
-msgid " attempts"
-msgstr " attempts"
-
-msgid "Loading full content..."
-msgstr "Loading full content..."
-
-msgid "Loading cached content..."
-msgstr "Loading cached content..."
-
-msgid "Reloading article..."
-msgstr "Reloading article..."
-
-msgid "The article does not yet have cached content available"
-msgstr "The article does not yet have cached content available"
-
-msgid "Error reloading article: "
-msgstr "Error reloading article: "
-
-msgid "Unknown error"
-msgstr "Unknown error"
-
-msgid "No content available"
-msgstr "No content available"
-
-msgid "Error creating temporary file"
-msgstr "Error creating temporary file"
-
-msgid "Untitled"
-msgstr "Untitled"
-
-msgid "Source: "
-msgstr "Source: "
-
-msgid "URL: "
-msgstr "URL: "
-
-msgid "Domain: "
-msgstr "Domain: "
-
-msgid "Saved: "
-msgstr "Saved: "
-
-msgid "Link"
-msgstr "Link"
-
-msgid "Article"
-msgstr "Article"
-
-msgid "Image"
-msgstr "Image"
-
-msgid "Video"
-msgstr "Video"
-
-msgid "Document"
-msgstr "Document"
-
-msgid "Audio"
-msgstr "Audio"
-
-msgid "Type: "
-msgstr "Type: "
-
-msgid "Excerpt:"
-msgstr "Extracto:"
-
-msgid "Notes:"
-msgstr "Notas:"
-
-msgid "Highlights:"
-msgstr "Resaltados:"
-
-msgid "Tags: "
-msgstr "Etiquetas: "
-
-msgid "Cache: "
-msgstr "Caché: "
-
-msgid "Available"
-msgstr "Available"
-
-msgid "Size: "
-msgstr "Size: "
-
-msgid "Ready"
-msgstr "Ready"
-
-msgid "Retrying"
-msgstr "Retrying"
-
-msgid "Failed"
-msgstr "Failed"
-
-msgid "Invalid origin"
-msgstr "Invalid origin"
-
-msgid "Timeout"
-msgstr "Timeout"
-
-msgid "Invalid size"
-msgstr "Invalid size"
-
-msgid "Cache status: "
-msgstr "Cache status: "
-
-msgid "Raindrop.io Access Token"
-msgstr "Raindrop.io Access Token"
-
-msgid "Cancel"
-msgstr "Cancel"
-
-msgid "Test"
-msgstr "Test"
-
-msgid "Please enter a token to test"
-msgstr "Please enter a token to test"
-
-msgid "Save"
-msgstr "Save"
-
-msgid "Please enter a valid token"
-msgstr "Please enter a valid token"
-
-msgid "Warning: Token seems very short, but it will be saved anyway"
-msgstr "Warning: Token seems very short, but it will be saved anyway"
-
-msgid "Download folder"
-msgstr "Download folder"
-
-msgid "Current folder"
-msgstr "Current folder"
-
-msgid "Full path"
-msgstr "Full path"
-
-msgid "Browse folders"
-msgstr "Browse folders"
-
-msgid "Enter folder name manually"
-msgstr "Enter folder name manually"
-
-msgid "Select download folder"
-msgstr "Select download folder"
-
-msgid "Folder configured: "
-msgstr "Folder configured: "
-
-msgid "Error saving: "
-msgstr "Error saving: "
-
-msgid "Enter the folder name where downloaded articles will be saved"
-msgstr "Enter the folder name where downloaded articles will be saved"
-
-msgid "Invalid folder name"
-msgstr "Invalid folder name"
-
-msgid "Please enter a folder name"
-msgstr "Please enter a folder name"
-
-msgid "Search articles"
-msgstr "Search articles"
-
-msgid "Search"
-msgstr "Search"
-
-msgid "Please enter a search term"
-msgstr "Please enter a search term"
-
-msgid "Article URL:"
-msgstr "Article URL:"
-
-msgid "Cannot be opened directly in KOReader."
-msgstr "Cannot be opened directly in KOReader."
-
-msgid "You can copy this URL to open it on another device."
-msgstr "You can copy this URL to open it on another device."
-
-msgid "Article link"
-msgstr "Article link"
-
-msgid "Article information"
-msgstr "Article information"
-
-msgid "Available tags"
-msgstr "Available tags"
-
-msgid "case-insensitive"
-msgstr "case-insensitive"
-
-msgid "No tags available"
-msgstr "No tags available"
-
-msgid "Available types"
-msgstr "Available types"
-
-msgid "Enter search criteria"
-msgstr "Enter search criteria"
-
-msgid "Advanced Search"
-msgstr "Advanced Search"
-
-msgid "Search term (optional)"
-msgstr "Search term (optional)"
-
-msgid "Type (article/image/video/document)"
-msgstr "Type (article/image/video/document)"
-
-msgid "Please enter at least one search criterion"
-msgstr "Please enter at least one search criterion"
-
-msgid "Error: Could not find HTML file"
-msgstr "Error: Could not find HTML file"
-
-msgid "Error: Could not open HTML file"
-msgstr "Error: Could not open HTML file"
-
+#: _meta.lua:4 main.lua:253
 msgid "Gota"
 msgstr "Gota"
 
-msgid "< Back to Gota"
-msgstr "< Back to Gota"
-
-msgid "Copy article URL"
-msgstr "Copy article URL"
-
-msgid "All articles"
-msgstr "All articles"
-
-msgid "View collections"
-msgstr "View collections"
-
-msgid "Advanced search"
-msgstr "Advanced search"
-
-msgid "Configuration"
-msgstr "Configuration"
-
-msgid "Configure access token"
-msgstr "Configure access token"
-
-msgid "Configure download folder"
-msgstr "Configure download folder"
-
-msgid "Debug Raindrop API connection"
-msgstr "Debug Raindrop API connection"
-
-msgid "Loading filters..."
-msgstr "Loading filters..."
-
-msgid "Error loading filters: "
-msgstr "Error loading filters: "
-
-msgid "Download folder updated: "
-msgstr "Download folder updated: "
-
-msgid "Error saving configuration"
-msgstr "Error saving configuration"
-
-msgid "Loading collections..."
-msgstr "Loading collections..."
-
-msgid "Error retrieving collections:"
-msgstr "Error retrieving collections:"
-
-msgid "Raindrop Collections"
-msgstr "Raindrop Collections"
-
-msgid "Loading articles..."
-msgstr "Loading articles..."
-
-msgid "Error retrieving articles: "
-msgstr "Error retrieving articles: "
-
-msgid "Articles"
-msgstr "Articles"
-
-msgid "Content is not available yet"
-msgstr "Content is not available yet"
-
-msgid "No cached content available"
-msgstr "No cached content available"
-
-msgid "Cached content"
-msgstr "Cached content"
-
-msgid "Searching articles..."
-msgstr "Searching articles..."
-
-msgid "Search error: "
-msgstr "Search error: "
-
-msgid "Warning: Empty token, cannot test"
-msgstr "Warning: Empty token, cannot test"
-
-msgid "Warning: Token seems very short, but it will be tested anyway"
-msgstr "Warning: Token seems very short, but it will be tested anyway"
-
-msgid "Testing token..."
-msgstr "Testing token..."
-
-msgid " (PRO)"
-msgstr " (PRO)"
-
-msgid "Valid token!\nUser: "
-msgstr "Valid token!\nUser: "
-
-msgid "Error with token:\n"
-msgstr "Error with token:\n"
-
-msgid "No articles available"
-msgstr "No articles available"
-
-msgid "You have no collections created"
-msgstr "You have no collections created"
-
-msgid "Open in full reader"
-msgstr "Open in full reader"
-
-msgid "View content as plain text"
-msgstr "View content as plain text"
-
-msgid "View article information"
-msgstr "View article information"
-
-msgid "Copy URL"
-msgstr "Copy URL"
-
-msgid "Cache is being generated, try again later"
-msgstr "Cache is being generated, try again later"
-
-msgid "Cache generation has failed"
-msgstr "Cache generation has failed"
-
-msgid "Could not generate cache due to invalid origin"
-msgstr "Could not generate cache due to invalid origin"
-
-msgid "Could not generate cache due to timeout"
-msgstr "Could not generate cache due to timeout"
-
-msgid "Could not generate cache due to excessive size"
-msgstr "Could not generate cache due to excessive size"
-
-msgid "Cache is not available"
-msgstr "Cache is not available"
-
-msgid "Try reloading full article"
-msgstr "Try reloading full article"
-
-msgid "This article has no cached content available"
-msgstr "This article has no cached content available"
-
-msgid "« First page"
-msgstr "« First page"
-
-msgid "← Previous page"
-msgstr "← Previous page"
-
-msgid "Next page →"
-msgstr "Next page →"
-
-msgid "» Last page"
-msgstr "» Last page"
-
-msgid "Page %d of %d"
-msgstr "Page %d of %d"
-
-msgid "Close"
-msgstr "Close"
-
-msgid "Open in reader"
-msgstr "Open in reader"
-
-msgid "Share link"
-msgstr "Share link"
-
-msgid "Save HTML"
-msgstr "Save HTML"
-
+#: _meta.lua:5
 msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 msgstr "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 
-msgid "Article content not yet available. The full article cache is still being generated or is not available."
-msgstr "El contenido del artículo no está disponible aún. El caché completo del artículo todavía se está generando o no está disponible."
+#: gota_api.lua:117
+msgid "Page must be a non-negative integer"
+msgstr "La página debe ser un entero no negativo"
 
-msgid "No notes or highlights available to download"
-msgstr "No hay notas o resaltados disponibles para descargar"
+#: gota_api.lua:122
+msgid "Items per page must be between 1 and 50"
+msgstr "Los elementos por página deben estar entre 1 y 50"
 
-msgid "View notes"
-msgstr "Ver notas"
+#: gota_api.lua:130
+msgid "Invalid collection ID"
+msgstr "ID de colección no válido"
 
-msgid "View highlights (%d)"
-msgstr "Ver resaltados (%d)"
+#: gota_api.lua:138
+msgid "Invalid raindrop ID"
+msgstr "ID de marcador no válido"
 
-msgid "Save HTML with notes & highlights"
-msgstr "Guardar HTML con notas y resaltados"
+#: gota_api.lua:274
+msgid "Authentication token is missing"
+msgstr "Falta el token de autenticación"
 
-msgid "Article with notes saved: "
-msgstr "Artículo con notas guardado: "
+#: gota_api.lua:311 gota_api.lua:315 gota_api.lua:319 gota_api.lua:688
+msgid "HTTP error: "
+msgstr "Error HTTP: "
 
-msgid "This article has no notes"
-msgstr "Este artículo no tiene notas"
+#: gota_api.lua:328
+msgid "Invalid API endpoint"
+msgstr "Endpoint de API no válido"
 
-msgid "This article has no highlights"
-msgstr "Este artículo no tiene resaltados"
+#: gota_api.lua:333
+msgid "Unsupported HTTP method: "
+msgstr "Método HTTP no compatible: "
 
-msgid "No content available to download"
-msgstr "No hay contenido disponible para descargar"
+#: gota_api.lua:353
+msgid "Unexpected redirect from server: "
+msgstr "Redirección inesperada del servidor: "
 
-msgid "Error creating download directory"
-msgstr "Error creando directorio de descarga"
+#: gota_api.lua:356
+msgid "Too many redirects while downloading cached article"
+msgstr "Demasiadas redirecciones al descargar el artículo en caché"
 
-msgid "Error saving file: "
-msgstr "Error guardando archivo: "
+#: gota_api.lua:359
+msgid "Refused an unsafe cache redirect"
+msgstr "Se rechazó una redirección de caché no segura"
 
+#: gota_api.lua:372
+msgid "HTTP response did not include a status code"
+msgstr "La respuesta HTTP no incluyó un código de estado"
+
+#: gota_api.lua:380
+msgid "Empty server response"
+msgstr "Empty server response"
+
+#: gota_api.lua:386
+msgid "Server ignored the requested identity content encoding"
+msgstr "El servidor ignoró la codificación de contenido identity solicitada"
+
+#: gota_api.lua:397
+msgid "Raindrop rejected the request"
+msgstr "Raindrop rechazó la solicitud"
+
+#: gota_api.lua:398
+msgid "API error: "
+msgstr "Error de API: "
+
+#: gota_api.lua:403
+msgid "Invalid JSON response: "
+msgstr "Respuesta JSON no válida: "
+
+#: gota_api.lua:406
+msgid "Server error: "
+msgstr "Server error: "
+
+#: gota_api.lua:415
+msgid " (rate limit remaining: "
+msgstr " (límite de solicitudes restante: "
+
+#: gota_api.lua:418
+msgid " (retry after "
+msgstr " (reintentar después de "
+
+#: gota_api.lua:419
+msgid " seconds)"
+msgstr " segundos)"
+
+#: gota_api.lua:456
+msgid "; please retry later"
+msgstr "; inténtalo de nuevo más tarde"
+
+#: gota_api.lua:465
+msgid " attempts: "
+msgstr " intentos: "
+
+#: gota_api.lua:465
+msgid "Failed after "
+msgstr "Failed after "
+
+#: gota_api.lua:534
+msgid "Invalid API response envelope for "
+msgstr "Respuesta de API no válida para "
+
+#: gota_api.lua:585
+msgid "Invalid collections response envelope"
+msgstr "Respuesta de colecciones no válida"
+
+#: gota_article_manager.lua:156
+msgid "Invalid article data"
+msgstr "Datos del artículo no válidos"
+
+#: gota_article_manager.lua:166
+msgid "Loading full content..."
+msgstr "Loading full content..."
+
+#: gota_article_manager.lua:206
+msgid "Loading cached content..."
+msgstr "Loading cached content..."
+
+#: gota_article_manager.lua:232
+msgid "Reloading article..."
+msgstr "Reloading article..."
+
+#: gota_article_manager.lua:249
+msgid "empty cached content"
+msgstr "contenido en caché vacío"
+
+#: gota_article_manager.lua:262
+msgid "Cached content could not be downloaded: "
+msgstr "No se pudo descargar el contenido en caché: "
+
+#: gota_article_manager.lua:263 gota_article_manager.lua:270
+#: gota_dialogs.lua:85 gota_dialogs.lua:179 gota_dialogs.lua:223 main.lua:299
+#: main.lua:353 main.lua:419 main.lua:521 main.lua:530 main.lua:697
+msgid "Unknown error"
+msgstr "Unknown error"
+
+#: gota_article_manager.lua:266
+msgid "The article does not yet have cached content available"
+msgstr "The article does not yet have cached content available"
+
+#: gota_article_manager.lua:270
+msgid "Error reloading article: "
+msgstr "Error reloading article: "
+
+#: gota_article_manager.lua:278
+msgid "No content available"
+msgstr "No content available"
+
+#: gota_article_manager.lua:288
+msgid "Error creating reader cache directory"
+msgstr "Error al crear el directorio de caché del lector"
+
+#: gota_article_manager.lua:298 gota_article_manager.lua:478
+#: gota_article_manager.lua:523
 msgid "Error writing file: "
 msgstr "Error escribiendo archivo: "
 
+#: gota_article_manager.lua:298 gota_article_manager.lua:478
+#: gota_article_manager.lua:523
+msgid "unknown error"
+msgstr "error desconocido"
+
+#: gota_article_manager.lua:450
+msgid "No content available to download"
+msgstr "No hay contenido disponible para descargar"
+
+#: gota_article_manager.lua:461 gota_article_manager.lua:506
+msgid "Error creating download directory"
+msgstr "Error creando directorio de descarga"
+
+#: gota_article_manager.lua:495
+msgid "No notes or highlights available to download"
+msgstr "No hay notas o resaltados disponibles para descargar"
+
+#: gota_content_processor.lua:170
+msgid "Blue"
+msgstr "Azul"
+
+#: gota_content_processor.lua:171
+msgid "Brown"
+msgstr "Marrón"
+
+#: gota_content_processor.lua:172
+msgid "Cyan"
+msgstr "Cian"
+
+#: gota_content_processor.lua:173
+msgid "Gray"
+msgstr "Gris"
+
+#: gota_content_processor.lua:174
+msgid "Green"
+msgstr "Verde"
+
+#: gota_content_processor.lua:175
+msgid "Indigo"
+msgstr "Índigo"
+
+#: gota_content_processor.lua:176
+msgid "Orange"
+msgstr "Naranja"
+
+#: gota_content_processor.lua:177
+msgid "Pink"
+msgstr "Rosa"
+
+#: gota_content_processor.lua:178
+msgid "Purple"
+msgstr "Morado"
+
+#: gota_content_processor.lua:179
+msgid "Red"
+msgstr "Rojo"
+
+#: gota_content_processor.lua:180
+msgid "Teal"
+msgstr "Turquesa"
+
+#: gota_content_processor.lua:181
+msgid "Yellow"
+msgstr "Amarillo"
+
+#: gota_content_processor.lua:346 gota_content_processor.lua:961
+#: gota_content_processor.lua:988 gota_content_processor.lua:1030
+#: gota_ui_builder.lua:184 gota_ui_builder.lua:233 main.lua:428 main.lua:706
+msgid "Untitled"
+msgstr "Untitled"
+
+#: gota_content_processor.lua:350 gota_content_processor.lua:973
+#: gota_content_processor.lua:1015
+msgid "Source: "
+msgstr "Source: "
+
+#: gota_content_processor.lua:650
+msgid "Article content not yet available. The full article cache is still being generated or is not available."
+msgstr "El contenido del artículo no está disponible aún. El caché completo del artículo todavía se está generando o no está disponible."
+
+#: gota_content_processor.lua:669 gota_content_processor.lua:701
+#: gota_content_processor.lua:965 gota_content_processor.lua:1065
+msgid "Notes:"
+msgstr "Notas:"
+
+#: gota_content_processor.lua:678 gota_content_processor.lua:992
+#: gota_content_processor.lua:1070
+msgid "Highlights:"
+msgstr "Resaltados:"
+
+#: gota_content_processor.lua:968
+msgid "This article has no notes"
+msgstr "Este artículo no tiene notas"
+
+#: gota_content_processor.lua:978 gota_content_processor.lua:1020
+#: gota_content_processor.lua:1044
+msgid "Saved: "
+msgstr "Saved: "
+
+#: gota_content_processor.lua:1002 gota_content_processor.lua:1080
+msgid "Note: "
+msgstr "Nota: "
+
+#: gota_content_processor.lua:1009
+msgid "This article has no highlights"
+msgstr "Este artículo no tiene resaltados"
+
+#: gota_content_processor.lua:1034
+msgid "URL: "
+msgstr "URL: "
+
+#: gota_content_processor.lua:1038
+msgid "Domain: "
+msgstr "Domain: "
+
+#: gota_content_processor.lua:1049
+msgid "Link"
+msgstr "Link"
+
+#: gota_content_processor.lua:1050 gota_dialogs.lua:400 main.lua:606
+msgid "Article"
+msgstr "Article"
+
+#: gota_content_processor.lua:1051 gota_dialogs.lua:401
+msgid "Image"
+msgstr "Image"
+
+#: gota_content_processor.lua:1052 gota_dialogs.lua:402
+msgid "Video"
+msgstr "Video"
+
+#: gota_content_processor.lua:1053 gota_dialogs.lua:404
+msgid "Document"
+msgstr "Document"
+
+#: gota_content_processor.lua:1054 gota_dialogs.lua:403
+msgid "Audio"
+msgstr "Audio"
+
+#: gota_content_processor.lua:1056
+msgid "Type: "
+msgstr "Type: "
+
+#: gota_content_processor.lua:1060
+msgid "Excerpt:"
+msgstr "Extracto:"
+
+#: gota_content_processor.lua:1089
+msgid "Tags: "
+msgstr "Etiquetas: "
+
+#: gota_content_processor.lua:1094
+msgid "Available"
+msgstr "Available"
+
+#: gota_content_processor.lua:1094
+msgid "Cache: "
+msgstr "Caché: "
+
+#: gota_content_processor.lua:1096
+msgid "Size: "
+msgstr "Size: "
+
+#: gota_content_processor.lua:1100
+msgid "Ready"
+msgstr "Ready"
+
+#: gota_content_processor.lua:1101
+msgid "Retrying"
+msgstr "Retrying"
+
+#: gota_content_processor.lua:1102
+msgid "Failed"
+msgstr "Failed"
+
+#: gota_content_processor.lua:1103
+msgid "Invalid origin"
+msgstr "Invalid origin"
+
+#: gota_content_processor.lua:1104
+msgid "Timeout"
+msgstr "Timeout"
+
+#: gota_content_processor.lua:1105
+msgid "Invalid size"
+msgstr "Invalid size"
+
+#: gota_content_processor.lua:1107
+msgid "Cache status: "
+msgstr "Cache status: "
+
+#: gota_dialogs.lua:32
+msgid "Raindrop.io Access Token"
+msgstr "Raindrop.io Access Token"
+
+#: gota_dialogs.lua:33
+msgid ""
+"TEST TOKEN (Recommended and currently supported):\n"
+"• Go to: https://app.raindrop.io/settings/integrations\n"
+"• Create a new application\n"
+"• Copy the 'Test token'\n"
+"\n"
+"Gota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n"
+"\n"
+"Paste the token here:"
+msgstr ""
+"TOKEN DE PRUEBA (recomendado y compatible actualmente):\n"
+"• Ve a: https://app.raindrop.io/settings/integrations\n"
+"• Crea una aplicación nueva\n"
+"• Copia el 'Test token'\n"
+"\n"
+"Gota está pensado para integraciones personales. El inicio de sesión OAuth y la renovación del token no están implementados.\n"
+"\n"
+"Pega aquí el token:"
+
+#: gota_dialogs.lua:39 gota_dialogs.lua:135 gota_dialogs.lua:198
+#: gota_dialogs.lua:250 gota_dialogs.lua:443 main.lua:504
+msgid "Cancel"
+msgstr "Cancel"
+
+#: gota_dialogs.lua:46
+msgid "Test"
+msgstr "Test"
+
+#: gota_dialogs.lua:56 gota_dialogs.lua:59
+msgid "Please enter a token to test"
+msgstr "Please enter a token to test"
+
+#: gota_dialogs.lua:64 gota_dialogs.lua:205
+msgid "Save"
+msgstr "Save"
+
+#: gota_dialogs.lua:72 gota_dialogs.lua:88
+msgid "Please enter a valid token"
+msgstr "Please enter a valid token"
+
+#: gota_dialogs.lua:77
+msgid "Warning: Token seems very short, but it will be saved anyway"
+msgstr "Warning: Token seems very short, but it will be saved anyway"
+
+#: gota_dialogs.lua:83
+msgid "Token saved successfully"
+msgstr "Token guardado correctamente"
+
+#: gota_dialogs.lua:85
+msgid "Error saving configuration: "
+msgstr "Error al guardar la configuración: "
+
+#: gota_dialogs.lua:111 gota_dialogs.lua:191
+msgid "Download folder"
+msgstr "Download folder"
+
+#: gota_dialogs.lua:112
+msgid "Current folder"
+msgstr "Current folder"
+
+#: gota_dialogs.lua:113 gota_dialogs.lua:193
+msgid "Full path"
+msgstr "Full path"
+
+#: gota_dialogs.lua:117
+msgid "Browse folders"
+msgstr "Browse folders"
+
+#: gota_dialogs.lua:126
+msgid "Enter folder name manually"
+msgstr "Enter folder name manually"
+
+#: gota_dialogs.lua:157
+msgid "Select download folder"
+msgstr "Select download folder"
+
+#: gota_dialogs.lua:170
+msgid "Please select a folder inside the KOReader data folder"
+msgstr "Selecciona una carpeta dentro de la carpeta de datos de KOReader"
+
+#: gota_dialogs.lua:177 gota_dialogs.lua:221
+msgid "Folder configured: "
+msgstr "Folder configured: "
+
+#: gota_dialogs.lua:179 gota_dialogs.lua:223
+msgid "Error saving: "
+msgstr "Error saving: "
+
+#: gota_dialogs.lua:192
+msgid "Enter the folder name where downloaded articles will be saved"
+msgstr "Enter the folder name where downloaded articles will be saved"
+
+#: gota_dialogs.lua:214
+msgid "Invalid folder name"
+msgstr "Invalid folder name"
+
+#: gota_dialogs.lua:226
+msgid "Please enter a folder name"
+msgstr "Please enter a folder name"
+
+#: gota_dialogs.lua:245 main.lua:193
+msgid "Search articles"
+msgstr "Search articles"
+
+#: gota_dialogs.lua:260 gota_dialogs.lua:450
+msgid "Search"
+msgstr "Search"
+
+#: gota_dialogs.lua:274
+msgid "Please enter a search term"
+msgstr "Please enter a search term"
+
+#: gota_dialogs.lua:328
+msgid "Article URL:"
+msgstr "Article URL:"
+
+#: gota_dialogs.lua:330
+msgid "Cannot be opened directly in KOReader."
+msgstr "Cannot be opened directly in KOReader."
+
+#: gota_dialogs.lua:331
+msgid "Use this URL to open the article on another device."
+msgstr "Usa esta URL para abrir el artículo en otro dispositivo."
+
+#: gota_dialogs.lua:334
+msgid "Article link"
+msgstr "Article link"
+
+#: gota_dialogs.lua:349
+msgid "Article information"
+msgstr "Article information"
+
+#: gota_dialogs.lua:382
+msgid "Available tags"
+msgstr "Available tags"
+
+#: gota_dialogs.lua:382
+msgid "case-insensitive"
+msgstr "case-insensitive"
+
+#: gota_dialogs.lua:394
+msgid "No tags available"
+msgstr "No tags available"
+
+#: gota_dialogs.lua:398
+msgid "Available types"
+msgstr "Available types"
+
+#: gota_dialogs.lua:420
+msgid "Enter search criteria"
+msgstr "Enter search criteria"
+
+#: gota_dialogs.lua:424
+msgid "Advanced Search"
+msgstr "Advanced Search"
+
+#: gota_dialogs.lua:429
+msgid "Search term (optional)"
+msgstr "Search term (optional)"
+
+#: gota_dialogs.lua:433
+msgid "Tag (e.g., 'guides')"
+msgstr "Etiqueta (p. ej., 'guías')"
+
+#: gota_dialogs.lua:437
+msgid "Type (article/image/video/audio/document)"
+msgstr "Tipo (article/image/video/audio/document)"
+
+#: gota_dialogs.lua:465
+msgid "Please enter at least one search criterion"
+msgstr "Please enter at least one search criterion"
+
+#: gota_dialogs.lua:483
+msgid "Unsupported type filter"
+msgstr "Filtro de tipo no compatible"
+
+#: gota_reader.lua:33 gota_reader.lua:39
+msgid "Error: Could not find HTML file"
+msgstr "Error: Could not find HTML file"
+
+#: gota_reader.lua:48 gota_reader.lua:56 gota_reader.lua:93
+msgid "Error: Could not open HTML file"
+msgstr "Error: Could not open HTML file"
+
+#: gota_ui_builder.lua:176
+msgid "No articles available"
+msgstr "No articles available"
+
+#: gota_ui_builder.lua:224
+msgid "You have no collections created"
+msgstr "You have no collections created"
+
+#: gota_ui_builder.lua:256
+msgid "Open in full reader"
+msgstr "Open in full reader"
+
+#: gota_ui_builder.lua:262
+msgid "View content as plain text"
+msgstr "View content as plain text"
+
+#: gota_ui_builder.lua:268
+msgid "View article information"
+msgstr "View article information"
+
+#: gota_ui_builder.lua:276
+msgid "View notes"
+msgstr "Ver notas"
+
+#: gota_ui_builder.lua:284
+#, lua-format
+msgid "View highlights (%d)"
+msgstr "Ver resaltados (%d)"
+
+#: gota_ui_builder.lua:293 gota_ui_builder.lua:502
+msgid "Save HTML with notes & highlights"
+msgstr "Guardar HTML con notas y resaltados"
+
+#: gota_ui_builder.lua:302 gota_ui_builder.lua:487
+msgid "Show article URL"
+msgstr "Mostrar URL del artículo"
+
+#: gota_ui_builder.lua:310
+msgid "Cache is being generated, try again later"
+msgstr "Cache is being generated, try again later"
+
+#: gota_ui_builder.lua:311
+msgid "Cache generation has failed"
+msgstr "Cache generation has failed"
+
+#: gota_ui_builder.lua:312
+msgid "Could not generate cache due to invalid origin"
+msgstr "Could not generate cache due to invalid origin"
+
+#: gota_ui_builder.lua:313
+msgid "Could not generate cache due to timeout"
+msgstr "Could not generate cache due to timeout"
+
+#: gota_ui_builder.lua:314
+msgid "Could not generate cache due to excessive size"
+msgstr "Could not generate cache due to excessive size"
+
+#: gota_ui_builder.lua:319
+msgid "Cached content could not be downloaded; try again"
+msgstr "No se pudo descargar el contenido en caché; inténtalo de nuevo"
+
+#: gota_ui_builder.lua:321
+msgid "Cached content is available; try reloading the article"
+msgstr "El contenido en caché está disponible; intenta recargar el artículo"
+
+#: gota_ui_builder.lua:323
+msgid "Cache is not available"
+msgstr "Cache is not available"
+
+#: gota_ui_builder.lua:333
+msgid "Try reloading full article"
+msgstr "Try reloading full article"
+
+#: gota_ui_builder.lua:338
+msgid "This article has no cached content available"
+msgstr "This article has no cached content available"
+
+#: gota_ui_builder.lua:368
+msgid "« First page"
+msgstr "« First page"
+
+#: gota_ui_builder.lua:376 gota_ui_builder.lua:424
+msgid "← Previous page"
+msgstr "← Previous page"
+
+#: gota_ui_builder.lua:384 gota_ui_builder.lua:437
+msgid "Next page →"
+msgstr "Next page →"
+
+#: gota_ui_builder.lua:392
+msgid "» Last page"
+msgstr "» Last page"
+
+#: gota_ui_builder.lua:398
+#, lua-format
+msgid "Showing %d-%d of %d articles"
+msgstr "Mostrando %d-%d de %d artículos"
+
+#: gota_ui_builder.lua:430
+#, lua-format
+msgid "Page %d of %d"
+msgstr "Page %d of %d"
+
+#: gota_ui_builder.lua:477
+msgid "Close"
+msgstr "Close"
+
+#: gota_ui_builder.lua:481
+msgid "Open in reader"
+msgstr "Open in reader"
+
+#: gota_ui_builder.lua:491
+msgid "Save HTML"
+msgstr "Save HTML"
+
+#: main.lua:65
+msgid "Gota: all articles"
+msgstr "Gota: todos los artículos"
+
+#: main.lua:71
+msgid "Gota: search articles"
+msgstr "Gota: buscar artículos"
+
+#: main.lua:77
+msgid "Gota: view collections"
+msgstr "Gota: ver colecciones"
+
+#: main.lua:84 main.lua:94 main.lua:102
+msgid "Please configure your Raindrop.io token first"
+msgstr "Configura primero tu token de Raindrop.io"
+
+#: main.lua:88 main.lua:175 main.lua:179
+msgid "All articles"
+msgstr "All articles"
+
+#: main.lua:184
+msgid "View collections"
+msgstr "View collections"
+
+#: main.lua:198
+msgid "Advanced search"
+msgstr "Advanced search"
+
+#: main.lua:207
+msgid "Configuration"
+msgstr "Configuration"
+
+#: main.lua:210
+msgid "Configure access token"
+msgstr "Configure access token"
+
+#: main.lua:214
+msgid "Configure download folder"
+msgstr "Configure download folder"
+
+#: main.lua:220 main.lua:226
+msgid "newest first"
+msgstr "más recientes primero"
+
+#: main.lua:221
+msgid "oldest first"
+msgstr "más antiguos primero"
+
+#: main.lua:222
+msgid "title A-Z"
+msgstr "título A-Z"
+
+#: main.lua:223
+msgid "title Z-A"
+msgstr "título Z-A"
+
+#: main.lua:224
+msgid "custom order"
+msgstr "orden personalizado"
+
+#: main.lua:227
+msgid "Sort order"
+msgstr "Orden"
+
+#: main.lua:232
+msgid "Debug Raindrop API connection"
+msgstr "Debug Raindrop API connection"
+
+#: main.lua:241
+msgid "< Back to Gota"
+msgstr "< Back to Gota"
+
+#: main.lua:293
+msgid "Loading filters..."
+msgstr "Loading filters..."
+
+#: main.lua:299
+msgid "Error loading filters: "
+msgstr "Error loading filters: "
+
+#: main.lua:335
+msgid "Error saving configuration"
+msgstr "Error saving configuration"
+
+#: main.lua:348
+msgid "Loading collections..."
+msgstr "Loading collections..."
+
+#: main.lua:353
+msgid "Error retrieving collections:"
+msgstr "Error retrieving collections:"
+
+#: main.lua:361
+msgid "Unsorted (inbox)"
+msgstr "Sin clasificar (bandeja de entrada)"
+
+#: main.lua:362
+msgid "Unsorted"
+msgstr "Sin clasificar"
+
+#: main.lua:381 main.lua:382
+msgid "Trash"
+msgstr "Papelera"
+
+#: main.lua:392
+msgid "Reload collections"
+msgstr "Recargar colecciones"
+
+#: main.lua:403
+msgid "Raindrop Collections"
+msgstr "Raindrop Collections"
+
+#: main.lua:414
+msgid "Loading articles..."
+msgstr "Loading articles..."
+
+#: main.lua:419
+msgid "Error retrieving articles: "
+msgstr "Error retrieving articles: "
+
+#: main.lua:430 main.lua:708
+msgid "Type"
+msgstr "Tipo"
+
+#: main.lua:432 main.lua:710
+msgid "Tags"
+msgstr "Etiquetas"
+
+#: main.lua:435
+msgid "Cache"
+msgstr "Caché"
+
+#: main.lua:452
+msgid "Reload"
+msgstr "Recargar"
+
+#: main.lua:464
+msgid "Articles"
+msgstr "Articles"
+
+#: main.lua:488
+msgid "Sort order: "
+msgstr "Orden: "
+
+#: main.lua:494
+msgid "Sort articles by"
+msgstr "Ordenar artículos por"
+
+#: main.lua:497
+msgid "Newest first"
+msgstr "Más recientes primero"
+
+#: main.lua:498
+msgid "Oldest first"
+msgstr "Más antiguos primero"
+
+#: main.lua:499
+msgid "Title A-Z"
+msgstr "Título A-Z"
+
+#: main.lua:500
+msgid "Title Z-A"
+msgstr "Título Z-A"
+
+#: main.lua:501
+msgid "Custom order"
+msgstr "Orden personalizado"
+
+#: main.lua:521 main.lua:530
+msgid "Error loading article: "
+msgstr "Error al cargar el artículo: "
+
+#: main.lua:555 main.lua:562
+msgid "Content is not available yet"
+msgstr "Content is not available yet"
+
+#: main.lua:629
+msgid "No cached content available"
+msgstr "No cached content available"
+
+#: main.lua:655
 msgid "Article saved: "
 msgstr "Artículo guardado: "
 
+#: main.lua:680
+msgid "Cached content"
+msgstr "Cached content"
+
+#: main.lua:692
+msgid "Searching articles..."
+msgstr "Searching articles..."
+
+#: main.lua:697
+msgid "Search error: "
+msgstr "Search error: "
+
+#: main.lua:726
+msgid "Results: '"
+msgstr "Resultados: '"
+
+#: main.lua:748
+msgid "Warning: Empty token, cannot test"
+msgstr "Warning: Empty token, cannot test"
+
+#: main.lua:753
+msgid "Warning: Token seems very short, but it will be tested anyway"
+msgstr "Warning: Token seems very short, but it will be tested anyway"
+
+#: main.lua:756
+msgid "Testing token..."
+msgstr "Testing token..."
+
+#: main.lua:761
+msgid "Verified user"
+msgstr "Usuario verificado"
+
+#: main.lua:762
+msgid " (PRO)"
+msgstr " (PRO)"
+
+#: main.lua:763
+msgid ""
+"Valid token!\n"
+"User: "
+msgstr ""
+"Valid token!\n"
+"User: "
+
+#: main.lua:765
+msgid "Error with token:\n"
+msgstr "Error with token:\n"
+
+#: main.lua:765
+msgid "Invalid token"
+msgstr "Token no válido"
+
+#~ msgid "Error saving file: "
+#~ msgstr "Error guardando archivo: "
+
+#~ msgid ""
+#~ "OPTION 1 - Test Token (Recommended):\n"
+#~ "• Go to: https://app.raindrop.io/settings/integrations\n"
+#~ "• Create a new application\n"
+#~ "• Copy the 'Test token'\n"
+#~ "\n"
+#~ "OPTION 2 - Personal Token:\n"
+#~ "• Use a personal access token\n"
+#~ "\n"
+#~ "Paste the token here:"
+#~ msgstr ""
+#~ "OPCIÓN 1 - Test Token (Recomendado):\n"
+#~ "• Ve a: https://app.raindrop.io/settings/integrations\n"
+#~ "• Crea una nueva aplicación\n"
+#~ "• Copia el 'Test token'\n"
+#~ "\n"
+#~ "OPCIÓN 2 - Token personal:\n"
+#~ "• Usa un token de acceso personal\n"
+#~ "\n"
+#~ "Pega el token aquí:"
+
+#~ msgid ""
+#~ "Token saved successfully\n"
+#~ "Use 'Test' to verify functionality"
+#~ msgstr ""
+#~ "Token guardado correctamente\n"
+#~ "Usa 'Probar' para verificar su funcionamiento"
+
+#~ msgid "You can copy this URL to open it on another device."
+#~ msgstr "You can copy this URL to open it on another device."
+
+#~ msgid "Type (article/image/video/document)"
+#~ msgstr "Type (article/image/video/document)"
+
+#~ msgid "Copy URL"
+#~ msgstr "Copy URL"
+
+#~ msgid "Share link"
+#~ msgstr "Share link"
+
+#~ msgid "Download folder updated: "
+#~ msgstr "Download folder updated: "
+
+#~ msgid "Error creating temporary file"
+#~ msgstr "Error creating temporary file"
+
+#~ msgid "Error: Could not decompress server response"
+#~ msgstr "Error: Could not decompress server response"
+
+#~ msgid "Error processing server response"
+#~ msgstr "Error processing server response"
+
+#~ msgid "HTTP error "
+#~ msgstr "HTTP error "
+
+#~ msgid " attempts"
+#~ msgstr " attempts"
+
+#~ msgid "Copy article URL"
+#~ msgstr "Copy article URL"
+
+#~ msgid "Article with notes saved: "
+#~ msgstr "Artículo con notas guardado: "

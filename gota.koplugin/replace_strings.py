@@ -213,13 +213,13 @@ def main():
     
     # Archivos a procesar (excluyendo backups)
     lua_files = [
-        'api.lua',
-        'article_manager.lua',
-        'content_processor.lua',
-        'dialogs.lua',
+        'gota_api.lua',
+        'gota_article_manager.lua',
+        'gota_content_processor.lua',
+        'gota_dialogs.lua',
         'gota_reader.lua',
         'main.lua',
-        'ui_builder.lua',
+        'gota_ui_builder.lua',
         '_meta.lua',
     ]
     
