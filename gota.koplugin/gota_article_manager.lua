@@ -155,7 +155,12 @@ end
 local function offlineIdFor(raw_id)
     if type(raw_id) ~= "number" and type(raw_id) ~= "string" then return nil end
     local numeric = tonumber(raw_id)
-    if not numeric or numeric < 0 or numeric ~= math.floor(numeric) then return nil end
+    if not numeric then return nil end
+    -- NaN and infinity must go before the floor test: math.floor(inf) == inf,
+    -- and string.format("%d", inf) saturates, so every unrepresentable value
+    -- would collapse onto one shared maximum-integer name.
+    if numeric ~= numeric or numeric >= 2 ^ 53 or numeric < 0 then return nil end
+    if numeric ~= math.floor(numeric) then return nil end
     return string.format("%d", numeric)
 end
 
@@ -173,7 +178,11 @@ function ArticleManager:getOfflinePath(raindrop, for_download)
     local lfs = require("libs/libkoreader-lfs")
 
     local existing, annotated = OfflineLibrary.find(dir, safe_id, safe_title, lfs)
-    if existing then return existing, annotated end
+    -- A download must never target one of Gota's own annotated exports: that
+    -- file holds the user's notes and highlights, and the atomic rename that
+    -- finalizes a transfer would destroy it. Reading it is still fine, which is
+    -- why only the download path filters it out.
+    if existing and not (for_download and annotated) then return existing, annotated end
     if not for_download then return nil end
 
     local name = OfflineLibrary.canonicalName(safe_id, safe_title)

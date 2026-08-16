@@ -987,6 +987,14 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
     
     local formatted_content = self.content_processor:formatArticleText(raindrop)
 
+    -- The text viewer sits above the article screen, so it has to be dismissed
+    -- before rebuilding it; otherwise the menu stacks on top of the still-open
+    -- web-copy text.
+    local function return_to_article()
+        self:closeWidget("text_viewer")
+        self:showRaindropContent(raindrop, source_context)
+    end
+
     local buttons = self.ui_builder:buildContentViewerButtons({
         close = function()
             self:closeWidget("text_viewer")
@@ -1005,13 +1013,13 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
         save_html = function()
             self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
                 normalize_styles = true,
-                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+                on_return = return_to_article,
             })
         end,
         save_html_with_notes = function()
             self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop), {
                 normalize_styles = false,
-                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+                on_return = return_to_article,
             })
         end,
     }, raindrop)

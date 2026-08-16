@@ -1,10 +1,12 @@
 --[[
     Locating Gota's offline article copies in the export folder.
 
-    KOReader stores reading position in a sidecar keyed to the document path,
-    so resuming an article only needs a stable path. Offline copies therefore
-    use a deterministic name instead of the collision counter that
-    ArticleManager:getUniqueFilename applies to other exports.
+    KOReader stores reading position in a sidecar whose key depends on the
+    document_metadata_folder setting: the document path under the default "doc"
+    and "dir" locations, a partialMD5 of the contents under "hash". Offline
+    copies therefore use a deterministic name instead of the collision counter
+    that ArticleManager:getUniqueFilename applies to other exports, so the path
+    stays put across downloads.
 
     The filesystem is the single source of truth: no index is persisted, so
     nothing can go stale when the user moves or deletes a file from KOReader's
@@ -87,9 +89,9 @@ function OfflineLibrary.find(dir, safe_id, safe_title, lfs)
     local canonical_name = OfflineLibrary.canonicalName(id, safe_title)
     if canonical_name then
         local canonical_path = joinPath(dir, canonical_name)
-        if isFile(lfs, canonical_path) then
-            return canonical_path, isAnnotatedExport(canonical_name)
-        end
+        -- Never annotated by construction: this is the exact name downloadHTML
+        -- writes, even when the article's own title ends in "_notes".
+        if isFile(lfs, canonical_path) then return canonical_path, false end
     end
 
     if type(lfs.dir) ~= "function" then return nil end

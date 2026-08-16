@@ -610,6 +610,16 @@ test("offline lookup prefers the original copy over an annotated export", functi
     equal(annotated, false, "reported as a publisher document")
 end)
 
+test("a canonical hit is never mistaken for an annotated export", function()
+    -- The article's own title ends in "_notes"; its web copy is still a
+    -- publisher page and must receive publisher style normalization.
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["123_Release_notes.html"] = 10 })
+    local path, annotated = OfflineLibrary.find(dir, 123, "Release_notes", lfs)
+    equal(path, dir .. "/123_Release_notes.html", "canonical hit")
+    equal(annotated, false, "the canonical name is what downloadHTML writes")
+end)
+
 test("an annotated export is still readable when it is the only copy", function()
     -- A title that sanitizes to something ending in "_notes" (for example
     -- "Release notes") must not make its own copy invisible.
@@ -1358,6 +1368,10 @@ test("offline paths require a documented integer id", function()
         equal(manager:getOfflinePath({ _id = false, title = "A" }, true), nil, "boolean id")
         equal(manager:getOfflinePath({ _id = {}, title = "A" }, true), nil, "table id")
         equal(manager:getOfflinePath({ _id = "abc", title = "A" }, true), nil, "non-numeric id")
+        -- math.floor(inf) == inf and %d saturates, so both would collapse to
+        -- the same maximum-integer name.
+        equal(manager:getOfflinePath({ _id = 1/0, title = "A" }, true), nil, "infinite id")
+        equal(manager:getOfflinePath({ _id = 1e300, title = "A" }, true), nil, "unrepresentable id")
         equal(manager:getOfflinePath({ _id = 123, title = "A" }, true),
             "/tmp/exports/123_A.html", "integer id")
         equal(manager:getOfflinePath({ _id = "123", title = "A" }, true),
@@ -1428,6 +1442,64 @@ test("a malformed article reports the real reason it cannot be saved", function(
         equal(message ~= nil and message:find("directory", 1, true), nil,
             "does not blame the directory")
     end)
+end)
+
+test("filenames work on releases without KOReader's safe-filename helper", function()
+    -- Stubbing getSafeFilename made the suite exercise the device branch, but
+    -- older KOReader releases still take Gota's own fallback.
+    local util = package.loaded["util"] or require("util")
+    local original = util.getSafeFilename
+    util.getSafeFilename = nil
+    local ok, err = pcall(function()
+        local manager = ArticleManager:new({}, {}, {}, {
+            showProgress = noop, hideProgress = noop, notify = noop,
+        })
+        equal(manager:sanitizeFilename("Aristotle Quotes", 80), "Aristotle_Quotes",
+            "fallback replaces spaces")
+        equal(manager:sanitizeFilename("a/b:c", 80), "a_b_c", "fallback replaces separators")
+        equal(manager:sanitizeFilename("", 80), "untitled", "empty title")
+    end)
+    util.getSafeFilename = original
+    if not ok then error(err, 0) end
+end)
+
+test("a download never targets Gota's own annotated export", function()
+    withExportFolder({ ["900_Foo_notes.html"] = 10 }, function()
+        local manager = offlineManager({})
+        -- The annotated export holds the user's notes and highlights. The
+        -- atomic rename that finalizes a download would destroy it.
+        equal(manager:getOfflinePath({ _id = 900, title = "Foo" }, true),
+            "/tmp/exports/900_Foo.html", "download aims at the web-copy name")
+        -- Reading it is still fine when it is the only copy present.
+        equal(manager:getOfflinePath({ _id = 900, title = "Foo" }, false),
+            "/tmp/exports/900_Foo_notes.html", "still readable")
+    end)
+end)
+
+test("an annotated copy is opened without publisher normalization", function()
+    withExportFolder({ ["900_Foo_notes.html"] = 10 }, function()
+        local shown
+        local manager = ArticleManager:new({}, {}, {
+            show = function(_, options) shown = options; return true end,
+        }, { showProgress = noop, hideProgress = noop, notify = noop })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        equal(manager:openOfflineCopy({ _id = 900, title = "Foo" }, nil, noop), true, "opened")
+        equal(shown.normalize_styles, false, "Gota-authored document left alone")
+    end)
+end)
+
+test("saved files are opened without normalization unless asked", function()
+    local shown
+    local manager = ArticleManager:new({}, {}, {
+        show = function(_, options) shown = options; return true end,
+    }, { showProgress = noop, hideProgress = noop, notify = noop })
+    manager:openSavedFile("/tmp/x.html")
+    equal(shown.normalize_styles, false, "default is to leave a document alone")
+    manager:openSavedFile("/tmp/x.html", { normalize_styles = true })
+    equal(shown.normalize_styles, true, "opt in explicitly")
 end)
 
 test("offline state reports the copy and its progress", function()
@@ -2188,6 +2260,20 @@ test("GotaReader ignores unrelated documents", function()
     armGotaReader("/tmp/article.html", true)
     GotaReader:onReaderUIClose("/tmp/article.html")
     equal(GotaReader:shouldNormalize("/tmp/article.html"), false, "cleared on close")
+end)
+
+test("ReaderUI document identity gates destructive refreshes", function()
+    local previous = ReaderUI.instance
+    ReaderUI.instance = nil
+    equal(GotaReader:isDocumentOpen("/tmp/a.html"), false, "no reader open")
+    ReaderUI.instance = { document = { file = "/tmp/a.html" } }
+    equal(GotaReader:isDocumentOpen("/tmp/a.html"), true, "same document")
+    equal(GotaReader:isDocumentOpen("/tmp/b.html"), false, "different document")
+    equal(GotaReader:isDocumentOpen(nil), false, "no path")
+    equal(GotaReader:isDocumentOpen(""), false, "empty path")
+    ReaderUI.instance = { document = nil }
+    equal(GotaReader:isDocumentOpen("/tmp/a.html"), false, "reader without a document")
+    ReaderUI.instance = previous
 end)
 
 test("GotaReader contains missing or throwing CREngine style APIs", function()

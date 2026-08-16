@@ -34,7 +34,7 @@
 
 ### Validation and open gates
 
-- Expanded the dependency-free suite from 51 to 123 cases, including gzip, decompressed-size, explicit-retry, plain-text sanitization and full-reader style normalization coverage, and validated plugin startup with the isolated macOS Kindle profile.
+- Expanded the dependency-free suite from 51 to 129 cases, including gzip, decompressed-size, explicit-retry, plain-text sanitization and full-reader style normalization coverage, and validated plugin startup with the isolated macOS Kindle profile.
 - Full-reader style normalization is verified against KOReader v2026.07 sources (`PreRenderDocument` ordering, `CreDocument:setStyleSheet` argument contract, `ReaderTypeset`/`ReaderStyleTweak` behavior) and by unit tests, but the local emulator runs a v2025.08 runtime; the on-device 2026.07+ cascade check remains an open gate.
 - Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
 - No release version bump is included until live Raindrop and physical-device gates pass.
