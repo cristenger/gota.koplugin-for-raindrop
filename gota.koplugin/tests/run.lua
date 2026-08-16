@@ -491,6 +491,131 @@ test("disabled or broken style-tweak objects are contained", function()
     }), false, "no font-size tweak active")
 end)
 
+local OfflineLibrary = require("gota_offline_library")
+
+-- Doubles for the offline library. `entries` maps a file name to its
+-- modification time; the iterator also yields "." and ".." like real lfs.dir.
+local function offlineLfs(dir, entries)
+    return {
+        attributes = function(path, field)
+            local parent, name = path:match("^(.*)/([^/]+)$")
+            if parent ~= dir or entries[name] == nil then return nil end
+            if field == "mode" then return "file" end
+            if field == "modification" then return entries[name] end
+            return nil
+        end,
+        dir = function(target)
+            if target ~= dir then error("unexpected directory: " .. tostring(target)) end
+            local names = { ".", ".." }
+            for name in pairs(entries) do names[#names + 1] = name end
+            table.sort(names)
+            local index = 0
+            return function()
+                index = index + 1
+                return names[index]
+            end
+        end,
+    }
+end
+
+local function offlineDocSettings(percent, options)
+    options = options or {}
+    return {
+        hasSidecarFile = function()
+            if options.throws_has then error("no sidecar access") end
+            return not options.no_sidecar
+        end,
+        open = function()
+            if options.throws_open then error("cannot open settings") end
+            return {
+                readSetting = function(_, key)
+                    if options.throws_read then error("cannot read setting") end
+                    if key == "percent_finished" then return percent end
+                    return nil
+                end,
+            }
+        end,
+    }
+end
+
+test("offline copies use a deterministic name", function()
+    -- Callers pass components already sanitized by ArticleManager, so the name
+    -- matches what downloadHTML has always produced and legacy copies are
+    -- still recognized.
+    equal(OfflineLibrary.canonicalName("123", "Aristotle Quotes"),
+        "123_Aristotle Quotes.html", "canonical name")
+    -- No collision counter: the path must stay stable so KOReader keeps the
+    -- reading position across downloads.
+    equal(OfflineLibrary.canonicalName("123", "Aristotle Quotes"),
+        OfflineLibrary.canonicalName("123", "Aristotle Quotes"), "stable across calls")
+    equal(OfflineLibrary.canonicalName(123, "Title"), "123_Title.html", "numeric id accepted")
+    equal(OfflineLibrary.canonicalName("123", nil), nil, "title required")
+    equal(OfflineLibrary.canonicalName(nil, "Title"), nil, "id required")
+end)
+
+test("offline lookup prefers the canonical path", function()
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["123_Title.html"] = 10, ["123_Title_1.html"] = 20 })
+    equal(OfflineLibrary.find(dir, 123, "Title", lfs), dir .. "/123_Title.html",
+        "canonical wins over a newer legacy copy")
+end)
+
+test("offline lookup falls back to legacy numbered copies", function()
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["123_Old Title_1.html"] = 10 })
+    equal(OfflineLibrary.find(dir, 123, "New Title", lfs), dir .. "/123_Old Title_1.html",
+        "legacy copy found after a title change")
+    equal(OfflineLibrary.find(dir, 999, "Missing", offlineLfs(dir, {})), nil, "no copy")
+end)
+
+test("offline lookup ignores annotated exports", function()
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, {
+        ["123_Title_notes.html"] = 30,
+        ["123_Title_notes_1.html"] = 40,
+    })
+    equal(OfflineLibrary.find(dir, 123, "Title", lfs), nil,
+        "annotated exports are not offline copies")
+end)
+
+test("offline lookup does not confuse id prefixes", function()
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["123_Other.html"] = 10, ["12_Wanted.html"] = 5 })
+    equal(OfflineLibrary.find(dir, 12, "Wanted", lfs), dir .. "/12_Wanted.html", "exact id")
+    equal(OfflineLibrary.find(dir, 1, "None", lfs), nil, "shorter id does not match")
+end)
+
+test("offline lookup picks the most recently modified candidate", function()
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, {
+        ["123_A_1.html"] = 10,
+        ["123_B_2.html"] = 99,
+        ["123_C_3.html"] = 50,
+    })
+    equal(OfflineLibrary.find(dir, 123, "Absent", lfs), dir .. "/123_B_2.html", "newest copy")
+end)
+
+test("offline progress reports a whole percentage", function()
+    -- KOReader stores percent_finished as a 0..1 fraction.
+    equal(OfflineLibrary.progress("/tmp/a.html", offlineDocSettings(0.4321)), 43, "fraction to percent")
+    equal(OfflineLibrary.progress("/tmp/a.html", offlineDocSettings(1)), 100, "finished")
+    equal(OfflineLibrary.progress("/tmp/a.html", offlineDocSettings(0)), 0, "just started")
+    -- Never overstate progress by rounding up.
+    equal(OfflineLibrary.progress("/tmp/a.html", offlineDocSettings(0.999)), 99, "floored")
+end)
+
+test("offline progress degrades when document settings fail", function()
+    local path = "/tmp/a.html"
+    equal(OfflineLibrary.progress(path, nil), nil, "missing module")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(nil)), nil, "no stored progress")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { no_sidecar = true })), nil, "no sidecar")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_has = true })), nil, "throwing check")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_open = true })), nil, "throwing open")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_read = true })), nil, "throwing read")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(1.5)), nil, "out of range")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(-0.1)), nil, "negative")
+end)
+
 local API = require("gota_api")
 
 test("Raindrop search expression quotes tags and embeds type", function()
