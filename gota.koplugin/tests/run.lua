@@ -388,6 +388,109 @@ test("plain-text highlights cover every documented Raindrop color", function()
     contains(content, "[Teal]", "teal")
 end)
 
+local ReaderStyles = require("gota_reader_styles")
+
+test("full-reader CSS uses a bounded rem scale", function()
+    local css = ReaderStyles.build(nil, {})
+    contains(css, "font-size: 1rem !important", "body scale")
+    contains(css, "h1 { font-size: 1.6rem !important; }", "h1 scale")
+    contains(css, "h2 { font-size: 1.4rem !important; }", "h2 scale")
+    contains(css, "h3 { font-size: 1.25rem !important; }", "h3 scale")
+    contains(css, "h4, h5, h6 { font-size: 1.1rem !important; }", "h4-h6 scale")
+    contains(css, "font-size: 0.9rem !important", "small/table/code scale")
+    contains(css, "font-size: 0.8rem !important", "sub/sup scale")
+    -- KOReader owns absolute sizing, typeface and colors; Gota only scales.
+    equal(css:find("px", 1, true), nil, "absolute pixel size")
+    equal(css:find("font-family", 1, true), nil, "typeface override")
+    equal(css:find("http", 1, true), nil, "remote reference")
+    equal(css:find("color:", 1, true), nil, "color override")
+end)
+
+test("full-reader CSS neutralizes inherited sizes before the semantic scale", function()
+    local css = ReaderStyles.build(nil, {})
+    local universal = css:find("* {\n    font-size: inherit !important;\n}", 1, true)
+    truthy(universal, "universal reset present")
+    truthy(css:find("h1 { font-size", 1, true) > universal, "reset precedes headings")
+end)
+
+test("full-reader CSS preserves code and media presentation", function()
+    local css = ReaderStyles.build(nil, {})
+    -- Compare exact tag names: a substring check would match "pre" inside the
+    -- word "presentation" in the leading comment.
+    local selector = css:match("%*/%s*\n([^{]+)%s*{%s*\n?%s*display: none !important;")
+    truthy(selector, "hidden element list")
+    local hidden = {}
+    local hidden_count = 0
+    for tag in selector:gmatch("%a+") do
+        hidden[tag] = true
+        hidden_count = hidden_count + 1
+    end
+    equal(hidden_count, 14, "hidden element count")
+
+    for _, tag in ipairs({ "nav", "form", "iframe", "object", "script", "button" }) do
+        equal(hidden[tag], true, "hidden " .. tag)
+    end
+    -- Editorial containers must survive: hiding them would lose article text.
+    for _, tag in ipairs({ "pre", "code", "table", "img", "header", "footer",
+                           "aside", "figure", "svg", "blockquote" }) do
+        equal(hidden[tag], nil, "visible " .. tag)
+    end
+    -- Exactly one display:none rule, so nothing else can hide content.
+    local _, rules = css:gsub("display: none", "")
+    equal(rules, 1, "single hiding rule")
+    contains(css, "max-width: 100% !important", "image fit")
+end)
+
+test("full-reader CSS appends user tweaks last", function()
+    local css = ReaderStyles.build("p { -gota-user-marker: 1; }", {})
+    local user = css:find("-gota-user-marker", 1, true)
+    truthy(user, "user CSS present")
+    truthy(user > css:find("font-size: 0.8rem", 1, true), "user CSS after Gota CSS")
+    -- Whitespace-only tweak text must not append an empty trailing block.
+    equal(ReaderStyles.build("   \n\t ", {}), ReaderStyles.build(nil, {}), "blank user CSS")
+    equal(ReaderStyles.build({}, {}), ReaderStyles.build(nil, {}), "non-string user CSS")
+end)
+
+test("active KOReader font-size tweaks suppress Gota font sizing", function()
+    for _, tweak_id in ipairs({ "font_size_all_inherit", "font_size_most_reset" }) do
+        local styletweak = {
+            enabled = true,
+            isTweakEnabled = function(_, id)
+                -- Mirrors KOReader's two return values (enabled, globally_enabled).
+                return id == tweak_id, false
+            end,
+        }
+        equal(ReaderStyles.hasActiveFontSizeTweak(styletweak), true, "detected " .. tweak_id)
+    end
+
+    local skipped = ReaderStyles.build("p { -gota-user-marker: 1; }",
+        { skip_font_normalization = true })
+    equal(skipped:find("h1 { font-size", 1, true), nil, "no heading scale")
+    equal(skipped:find("font-size: 1rem", 1, true), nil, "no body scale")
+    -- Cleanup and media rules are independent of the font-size policy.
+    contains(skipped, "display: none !important", "cleanup retained")
+    contains(skipped, "max-width: 100% !important", "image fit retained")
+    contains(skipped, "-gota-user-marker", "user CSS retained")
+end)
+
+test("disabled or broken style-tweak objects are contained", function()
+    equal(ReaderStyles.hasActiveFontSizeTweak(nil), false, "missing object")
+    equal(ReaderStyles.hasActiveFontSizeTweak("styletweak"), false, "non-table object")
+    equal(ReaderStyles.hasActiveFontSizeTweak({}), false, "missing method")
+    equal(ReaderStyles.hasActiveFontSizeTweak({
+        enabled = false,
+        isTweakEnabled = function() return true end,
+    }), false, "globally disabled tweaks")
+    equal(ReaderStyles.hasActiveFontSizeTweak({
+        enabled = true,
+        isTweakEnabled = function() error("no tweak table") end,
+    }), false, "throwing lookup")
+    equal(ReaderStyles.hasActiveFontSizeTweak({
+        enabled = true,
+        isTweakEnabled = function() return false end,
+    }), false, "no font-size tweak active")
+end)
+
 local API = require("gota_api")
 
 test("Raindrop search expression quotes tags and embeds type", function()
