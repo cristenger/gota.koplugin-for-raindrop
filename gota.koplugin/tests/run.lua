@@ -1271,7 +1271,7 @@ test("plugin init registers Dispatcher actions and settings ownership", function
 
     local menu = {}
     Gota:addToMainMenu(menu)
-    equal(menu.gota.sorting_hint, "more_tools", "sorting hint")
+    equal(menu.gota.sorting_hint, nil, "legacy top-level menu placement")
 end)
 
 test("source contexts preserve page and copied search criteria", function()

@@ -373,7 +373,6 @@ end
 function Gota:addToMainMenu(menu_items)
     menu_items.gota = {
         text = _("Gota"),
-        sorting_hint = "more_tools",
         sub_item_table_func = function()
             return self:getSubMenuItems()
         end,
