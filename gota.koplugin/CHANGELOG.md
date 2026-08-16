@@ -26,10 +26,11 @@
 - The token dialog and debug view state the actual TLS limitation: encryption is available, remote certificate/hostname authentication is not.
 - Plain-text loading reports the specific download or size error, avoids duplicate notices and retries when the user explicitly selects the action again.
 - Gzip output is limited after decompression, and failed or oversized transfers remove both compressed and decoded partial files.
+- Plain-text articles remove embedded JavaScript, CSS and non-text containers before conversion, then select semantic content without comparing it to the page shell size. Escaped code examples remain readable.
 
 ### Validation and open gates
 
-- Expanded the dependency-free suite from 51 to 73 cases, including gzip, decompressed-size and explicit-retry coverage, and validated plugin startup with the isolated macOS Kindle profile.
+- Expanded the dependency-free suite from 51 to 80 cases, including gzip, decompressed-size, explicit-retry and plain-text sanitization coverage, and validated plugin startup with the isolated macOS Kindle profile.
 - Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
 - No release version bump is included until live Raindrop and physical-device gates pass.
 

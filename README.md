@@ -15,7 +15,7 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Browse Collections**: Follow Raindrop groups, root order and nested collections
 - **Scoped Search**: Search globally, within a collection, or through its descendants
 - **Advanced Search**: Session-preserved filters with a visible scope, sort and match summary
-- **Read Articles**: View web copies as plain text or in the full HTML reader; gzip responses are handled automatically
+- **Read Articles**: View cleaned plain text or use the full HTML reader; gzip responses are handled automatically
 - **Personal Notes**: View your personal notes attached to bookmarks
 - **Highlights**: Review highlights globally or by collection without requiring PRO
 - **Bookmark Editing**: Update favorite, note, tags and collection; move safely to/from Trash
@@ -96,7 +96,7 @@ Shows Raindrop groups, ordered roots and nested collections. All, Unsorted and T
 
 Select any article to see its available actions:
 - **Open in full reader**: HTML with formatting (requires Raindrop PRO)
-- **View as plain text**: Simple text view (requires Raindrop PRO)
+- **View as plain text**: Removes scripts, styles and page chrome while keeping article prose and code examples (requires Raindrop PRO)
 - **View information**: Metadata, tags, URL, web-copy status, notes, and highlights
 - **Show article URL**: Display the article link for manual use
 - **Edit bookmark**: Change favorite, note, tags or collection; Trash is guarded against permanent deletion
@@ -162,6 +162,8 @@ This means Raindrop's web copy is unavailable or has not been loaded into Gota's
 ### A web copy exceeds the text limit
 
 The plain-text action keeps the complete HTML in RAM, so it uses the smaller text limit. Gota now reports the exact cause and size instead of a combined unavailable/size message. Use **Open in full reader** for a larger streamed file, or raise the text limit under **Configuration → Content limits**. Tapping the plain-text action again is an explicit retry after a previous download error.
+
+The limit applies to the downloaded, decompressed HTML before scripts, styles and page chrome are removed. Sanitization therefore does not allow a response larger than the selected 2–64 MiB cap.
 
 Gota asks Raindrop for an identity response but also decodes gzip in-process when a storage server returns it anyway. The configured limit applies to decompressed bytes. Other encodings are rejected with their name and leave no partial reader file behind.
 

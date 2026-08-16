@@ -145,6 +145,12 @@ Raindrop separa los metadatos de caché del HTML. Gota refleja esa separación:
 
 Abrir el menú o recargar obtiene solo metadatos. La vista de texto descarga en memoria con presets de 2–64 MiB; una instalación nueva comienza en 16 MiB. El lector y «Guardar copia original» transmiten directamente a archivo con presets de 16–512 MiB y un valor inicial de 128 MiB, sin cargar antes el cuerpo completo en RAM. Los valores guardados de versiones anteriores siguen siendo válidos. `cache.size` permite rechazo anticipado y el sink LTN12 aborta si el cuerpo recibido cruza el límite. Cuando la respuesta es gzip, el mismo límite vuelve a comprobarse contra la salida descomprimida. Cada archivo usa `.part`; la variante comprimida y la decodificada se eliminan ante cualquier error, y el archivo final solo aparece después del 2xx y del renombrado atómico. «Exportar con notas y resaltados» no depende del HTML PRO.
 
+### Pipeline de texto plano
+
+La vista de texto valida UTF-8 y elimina `script`, `style`, `template`, `svg`, `iframe`, `object` y comentarios antes de interpretar la estructura. Después retira `nav`, `header`, `footer` y los elementos de navegación conocidos, elige el `article` con más texto visible o, si no existe, el `main` con más texto visible. Solo entonces quita las etiquetas restantes, decodifica entidades HTML y normaliza espacios y saltos de línea. La selección no depende del porcentaje que ocupe el artículo dentro del documento.
+
+El saneamiento ocurre antes de decodificar entidades. Por eso un ejemplo editorial escrito como `&lt;style&gt;` permanece como texto y el contenido de `pre` y `code` no se descarta. El lector HTML y la copia original no pasan por este pipeline. Los límites de 2–64 MiB tampoco cambian: se aplican al HTML descargado y descomprimido antes de convertirlo.
+
 ### Frontera de confianza de los exports
 
 La copia original conserva byte a byte el HTML servido por Raindrop y puede contener código o recursos del sitio; se guarda para fidelidad y debe tratarse como contenido web no confiable. El export anotado pertenece a Gota: elimina elementos activos conocidos, convierte el cuerpo remoto a texto, valida UTF-8 y escapa el resultado antes de insertarlo en una plantilla controlada. Notas, resaltados, metadatos y URL también se insertan como texto escapado; la URL no se convierte en `href`. Este segundo formato prioriza seguridad y legibilidad sobre fidelidad visual.
