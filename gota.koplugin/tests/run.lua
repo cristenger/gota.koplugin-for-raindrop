@@ -58,6 +58,8 @@ end
 package.preload["device"] = function()
     return { screen = { getWidth = function() return 600 end, getHeight = function() return 800 end } }
 end
+local http = { PROXY = nil }
+package.preload["socket.http"] = function() return http end
 package.preload["ssl.https"] = function() return { request = noop } end
 package.preload["ltn12"] = function()
     return { source = { string = function(value) return value end } }
@@ -402,6 +404,49 @@ test("long rate-limit windows do not freeze the UI thread", function()
     equal(attempts, 1, "attempt count")
     equal(slept, false, "sleep")
     contains(err, "retry later", "retry guidance")
+end)
+
+test("HTTPS requests bypass and restore KOReader's unsupported HTTP proxy", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local configured_proxy = "http://proxy.example:3128"
+    local request_saw_proxy
+    http.PROXY = configured_proxy
+    https.request = function(request)
+        request_saw_proxy = http.PROXY
+        request.sink('{"ok":true}')
+        request.sink(nil)
+        return 1, 200, {}, "HTTP/1.1 200 OK"
+    end
+
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:makeRequestWithRetry("/user")
+
+    https.request = original_request
+    equal(err, nil, "request error")
+    equal(result.ok, true, "request result")
+    equal(request_saw_proxy, nil, "proxy during HTTPS request")
+    equal(http.PROXY, configured_proxy, "restored proxy")
+    http.PROXY = nil
+end)
+
+test("HTTPS request exceptions still restore KOReader's HTTP proxy", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local configured_proxy = "http://proxy.example:3128"
+    http.PROXY = configured_proxy
+    https.request = function()
+        error("simulated TLS failure")
+    end
+
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:makeRequestWithRetry("/user", "GET", nil, 1)
+
+    https.request = original_request
+    equal(result, nil, "request result")
+    contains(err, "simulated TLS failure", "request error")
+    equal(http.PROXY, configured_proxy, "restored proxy")
+    http.PROXY = nil
 end)
 
 test("bounded sink aborts only after crossing the configured limit", function()

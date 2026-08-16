@@ -3,6 +3,7 @@
     Handles all HTTP communication with Raindrop.io API
 ]]
 
+local http = require("socket.http")
 local https = require("ssl.https")
 local ltn12 = require("ltn12")
 local socket = require("socket")
@@ -62,6 +63,26 @@ local HTTP_METHODS = {
     DELETE = true,
     HEAD = true,
 }
+
+-- LuaSec 1.3.2 refuses HTTPS whenever LuaSocket's global HTTP proxy is set.
+-- Gota requests are synchronous, so temporarily clearing and restoring that
+-- global lets LuaSec establish end-to-end TLS without exposing the Raindrop
+-- bearer token to a plaintext forward proxy.
+local function requestHttpsDirectly(request)
+    local configured_proxy = http.PROXY
+    if not configured_proxy then
+        return https.request(request)
+    end
+
+    http.PROXY = nil
+    local ok, result, status, headers, status_line = pcall(https.request, request)
+    http.PROXY = configured_proxy
+
+    if not ok then
+        error(result, 0)
+    end
+    return result, status, headers, status_line
+end
 
 local function trim(value)
     return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -499,7 +520,8 @@ function API:_performRequest(url, method, body, include_authorization, is_file_d
         else
             socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
         end
-        call_ok, request_result, actual_status, response_headers, status_line = pcall(https.request, request)
+        call_ok, request_result, actual_status, response_headers, status_line =
+            pcall(requestHttpsDirectly, request)
     end)
 
     local reset_ok, reset_error = pcall(function() socketutil:reset_timeout() end)
