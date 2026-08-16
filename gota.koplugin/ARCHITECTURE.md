@@ -19,6 +19,7 @@ flowchart LR
     M --> A["gota_article_manager.lua<br/>casos de uso de artículo"]
     A --> C["gota_content_processor.lua<br/>texto y HTML"]
     A --> R["gota_reader.lua<br/>ReaderUI"]
+    R --> Y["gota_reader_styles.lua<br/>política CSS pura"]
     A --> P["gota_api.lua<br/>Raindrop REST v1"]
     P --> Z["gota_compression.lua<br/>gzip acotado"]
     P --> X["api.raindrop.io"]
@@ -34,7 +35,8 @@ flowchart LR
 | `gota_compression.lua` | Descomprimir gzip mediante el zlib incluido en KOReader y limitar la salida | Hacer red o ejecutar comandos externos |
 | `gota_article_manager.lua` | Cargar, recargar, exportar y abrir artículos | Conocer internals de `ReaderUI` |
 | `gota_content_processor.lua` | Sanear UTF-8, convertir HTML a texto y generar documentos locales | Hacer red |
-| `gota_reader.lua` | Abrir/cambiar documento y volver a Gota mediante APIs públicas de KOReader | Preabrir documentos o modificar tablas internas del menú |
+| `gota_reader.lua` | Abrir/cambiar documento, volver a Gota mediante APIs públicas de KOReader y aplicar la hoja transitoria en pre-render | Preabrir documentos, modificar tablas internas del menú o mutar ajustes persistentes |
+| `gota_reader_styles.lua` | Componer el CSS de presentación y detectar los tweaks oficiales de tamaño | Requerir módulos de KOReader, tocar disco o guardar estado |
 | `gota_ui_builder.lua` | Crear items, jerarquías de colecciones y paginación | Hacer red o persistir configuración |
 | `gota_dialogs.lua` | Construir diálogos y recoger entradas | Guardar directamente ajustes |
 | `gota_settings.lua` | Leer y escribir `gota.lua` mediante `LuaSettings` | Registrar UI |
@@ -70,13 +72,18 @@ sequenceDiagram
     UI->>AM: openInReader(raindrop)
     AM->>AM: comprueba cache.size y límite de archivo
     AM->>AM: transmite /cache a un .part acotado
-    AM->>GR: show(path, callback)
+    AM->>GR: show(path, callback, normalize_styles)
     GR->>GR: DocumentRegistry:getProvider(path)
     alt ReaderUI ya existe
         GR->>RU: switchDocument(path, nil, callback, provider, forced)
     else FileManager activo
         GR->>RU: showReader(path, provider, nil, forced, callback)
     end
+    RU->>RU: ReadSettings y loadDocument
+    RU-->>UI: PreRenderDocument
+    UI->>GR: applyStyleNormalization(ui)
+    GR->>RU: setStyleSheet(misma hoja base, CSS añadido)
+    RU->>RU: primer y único render
     RU-->>GR: after_open_callback
     Note over GR: activa “Back to Gota” solo para ese path
     GR->>RU: onHome()
@@ -86,6 +93,29 @@ sequenceDiagram
 ```
 
 `DocumentRegistry:getProvider` solo selecciona el proveedor. `ReaderUI` conserva la propiedad exclusiva de abrir y cerrar el documento; Gota no llama `DocumentRegistry:openDocument` por anticipado. La limpieza se centraliza en `CloseDocument`, por lo que volver con «Back to Gota» y salir por Home siguen el mismo ciclo.
+
+### Normalización tipográfica del full reader
+
+Las copias web conservan el CSS editorial del sitio, y la hoja base de KOReader asigna 150 %–100 % a `h1`–`h6`, 80 % a `table` y 70 % a `sub`/`sup`. Una página que marca sus citas como `h5` acaba mostrándolas mucho mayores que su propia prosa. Gota acota esa jerarquía con una hoja de presentación transitoria.
+
+`ReaderUI` emite `PreRenderDocument` después de `loadDocument()` y antes de `document:render()`. En ese punto `ReaderTypeset:onReadSettings` ya resolvió la hoja base y los tweaks activos, así que instalar CSS no provoca un segundo render. `CreDocument:setStyleSheet(hoja_base, css_añadido)` recarga la misma hoja base y concatena el string después de ella; el binding de CREngine hace esa concatenación sin copiar el HTML.
+
+Contratos de esta etapa:
+
+| Contrato | Comportamiento |
+|---|---|
+| Archivo | El HTML temporal sigue siendo el recibido de Raindrop. No se genera una copia normalizada ni se reescribe el original. |
+| Memoria | Un string CSS de pocos KiB, independiente del tamaño del documento. La ruta no lee el archivo ni usa `read("*all")`. |
+| Persistencia | Nada se guarda en `doc_settings`, `configurable` ni `G_reader_settings`. La intención vive en el singleton de proceso y `reset()` la borra. |
+| Alcance | Solo el documento cuyo path coincide con la petición activa de Gota. Libros ajenos, el documento saliente de `switchDocument` y el HTML reabierto desde historial quedan intactos. |
+| Estilos incrustados | `embedded_css` no se toca; Gota nunca llama `setEmbeddedStyleSheet`. |
+| Fallo | Un API ausente o que lanza deja abrir el artículo con un warning técnico sin contenido del artículo. |
+
+La precedencia inicial es: hoja base de KOReader → CSS transitorio de Gota → Style tweaks del usuario → cascada del CSS editorial. Hay dos excepciones deliberadas. Si `font_size_all_inherit` o `font_size_most_reset` ya están activos, Gota omite su bloque tipográfico y solo conserva limpieza y ajuste de imágenes: el usuario ya eligió una política de tamaños. Y si durante la lectura cambia los Style tweaks, `ReaderTypeset:onApplyStyleSheet` reconstruye la hoja con sus ajustes; Gota no intercepta ese evento ni reimpone su escala.
+
+La escala usa `rem` como los tweaks oficiales, de modo que cuerpo, títulos, tabla y código escalan juntos al cambiar el tamaño base.
+
+Esta etapa **no es un saneamiento**. `display:none` solo evita que CREngine presente etiquetas interactivas o no presentables; el HTML remoto sigue en el archivo y sigue siendo contenido no confiable. `header`, `footer`, `aside`, `figure`, `svg`, tablas, listas, `pre` y `code` permanecen visibles porque suelen contener texto editorial. El chrome basado en `div` y clases del sitio no se detecta: para extracción real, la vista de texto plano es la ruta prevista. La copia original y la vista de texto plano no pasan por esta política.
 
 ## Transporte y contrato Raindrop
 
@@ -185,7 +215,9 @@ luac -p *.lua tests/run.lua
 git diff --check
 ```
 
-Cubre 73 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI` y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+Cubre 94 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+
+Los tres casos de gzip requieren el FFI de LuaJIT. Un intérprete sin JIT los falla con `LuaJIT FFI is unavailable`; esa es una limitación del intérprete, no del plugin.
 
 Antes de publicar una release se requiere además un smoke test en KOReader 2026.07.1 o posterior y una prueba real contra Raindrop para 200/307/401/429. Esas pruebas verifican la integración real de LuaSec en Kindle, el renderizado e-ink y el servicio externo; no pueden sustituirse por mocks.
 

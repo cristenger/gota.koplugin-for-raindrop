@@ -95,7 +95,7 @@ Shows Raindrop groups, ordered roots and nested collections. All, Unsorted and T
 ### Read an Article
 
 Select any article to see its available actions:
-- **Open in full reader**: HTML with formatting (requires Raindrop PRO)
+- **Open in full reader**: HTML with formatting, keeping structure, images, lists, tables and code (requires Raindrop PRO). Gota bounds extreme publisher font sizes so headings stay slightly larger than body text instead of several times larger, and hides interactive page elements such as navigation bars and forms. The downloaded file itself is not modified.
 - **View as plain text**: Removes scripts, styles and page chrome while keeping article prose and code examples (requires Raindrop PRO)
 - **View information**: Metadata, tags, URL, web-copy status, notes, and highlights
 - **Show article URL**: Display the article link for manual use
@@ -167,6 +167,19 @@ The limit applies to the downloaded, decompressed HTML before scripts, styles an
 
 Gota asks Raindrop for an identity response but also decodes gzip in-process when a storage server returns it anyway. The configured limit applies to decompressed bytes. Other encodings are rejected with their name and leave no partial reader file behind.
 
+### Text in the full reader looks too big, too small or uneven
+
+Gota applies a readability policy before the article is first rendered: body text follows KOReader's base font size, headings stay within a bounded range above it, and code, tables and sub/superscripts have explicit floors. Everything is expressed relative to your base size, so raising or lowering it in Typesetting scales the whole document together.
+
+Two things deliberately override that policy:
+
+- If you already enabled **Ignore publisher font sizes** or **Reset main text font size** under Style tweaks, Gota detects it and does not add a second sizing policy.
+- If you change any Style tweak while reading, KOReader rebuilds the stylesheet with your settings and Gota does not reapply its own. Use Style tweaks whenever you want full editorial control.
+
+If a site still shows menus, banners or other page chrome, that is an accepted limit: the policy only hides interactive elements such as navigation and forms, not layout built from generic `div` containers. Use **View as plain text** when you want extraction rather than fidelity.
+
+This is a presentation policy, not sanitization. The remote HTML stays in the downloaded file and remains untrusted content.
+
 ### TLS Certificate Limitation on Kindle
 
 Raindrop only provides an HTTPS API. On the supported Kindle runtime, however, remote certificate authentication is not implemented in this flow. Gota inherits KOReader's LuaSec behavior (`verify = "none"` in LuaSec 1.3.2) and does not mutate process-wide TLS state.
@@ -213,6 +226,7 @@ gota.koplugin/
 ├── gota_content_processor.lua # HTML processing
 ├── gota_article_manager.lua  # Article operations
 ├── gota_reader.lua           # Reader integration
+├── gota_reader_styles.lua    # Full-reader presentation stylesheet
 ├── gota_version.lua          # Version and compatibility metadata
 ├── ARCHITECTURE.md           # Maintained architecture and contracts
 ├── tests/run.lua             # Dependency-free regression tests
