@@ -17,6 +17,51 @@ function UIBuilder:new()
     return o
 end
 
+function UIBuilder.buildActiveFilterSummary(state, context, sort)
+    state = state or {}
+    context = context or {}
+    local parts = {}
+    local scope = context.collection_name and
+        string.format(_("Scope: %s"), tostring(context.collection_name)) or _("Scope: all articles")
+    if context.nested == true then scope = scope .. " + " .. _("subcollections") end
+    parts[#parts + 1] = scope
+
+    local sort_names = {
+        ["-created"] = _("newest first"), created = _("oldest first"),
+        title = _("title A-Z"), ["-title"] = _("title Z-A"),
+        domain = _("domain A-Z"), ["-domain"] = _("domain Z-A"),
+        ["-sort"] = _("custom order"),
+    }
+    parts[#parts + 1] = string.format(_("Sort: %s"), sort_names[sort] or tostring(sort or "-created"))
+
+    local filters = {}
+    local function add(label, value)
+        if value ~= nil and tostring(value) ~= "" then
+            filters[#filters + 1] = label .. ": " .. tostring(value)
+        end
+    end
+    add(_("Text"), state.term)
+    add(_("Tag"), state.tag)
+    add(_("Type"), state.type)
+    local quick = type(state.quick) == "table" and state.quick or {}
+    if quick.important then filters[#filters + 1] = _("Favorites") end
+    if quick.notag then filters[#filters + 1] = _("No tags") end
+    if quick.file then filters[#filters + 1] = _("Uploaded files") end
+    if quick.reminder then filters[#filters + 1] = _("Has reminder") end
+    if quick.cache_ready then filters[#filters + 1] = _("Web copy ready") end
+    local more = type(state.more) == "table" and state.more or {}
+    add(_("Exclude tag"), more.exclude_tag)
+    add(_("Exclude type"), more.exclude_type)
+    add(_("Created"), more.created)
+    add(_("Updated"), more.last_update)
+    if #filters == 0 then filters[1] = _("No active filters")
+    elseif #filters > 1 then
+        filters[#filters + 1] = state.match == "any" and _("Match: any") or _("Match: all")
+    end
+    for _, filter in ipairs(filters) do parts[#parts + 1] = filter end
+    return table.concat(parts, " · ")
+end
+
 -- ========== MENU BUILDERS ==========
 
 -- Type abbreviations for the mandatory field

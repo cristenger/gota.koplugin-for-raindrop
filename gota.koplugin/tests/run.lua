@@ -886,6 +886,23 @@ test("original-copy action exists only for ready cache metadata", function()
     equal(unavailable_action, nil, "unavailable action")
 end)
 
+test("active search summary covers scope, mode, and every operator", function()
+    local summary = UIBuilder.buildActiveFilterSummary({
+        term = "swift", tag = "reading", type = "article", match = "any",
+        quick = { important = true, notag = true, file = true, reminder = true, cache_ready = true },
+        more = { exclude_tag = "later", exclude_type = "video",
+            created = ">2026-01", last_update = "<2026-08-15" },
+    }, { collection_name = "Research", nested = true }, "-created")
+    contains(summary, "Scope: Research + subcollections", "scope")
+    contains(summary, "Sort: newest first", "sort")
+    contains(summary, "Text: swift", "term")
+    contains(summary, "Favorites", "favorite")
+    contains(summary, "Web copy ready", "web copy")
+    contains(summary, "Exclude tag: later", "exclusion")
+    contains(summary, "Created: >2026-01", "created")
+    contains(summary, "Match: any", "mode")
+end)
+
 test("article excerpts remain valid UTF-8 and only show ellipsis when truncated", function()
     local builder = UIBuilder:new()
     local short = builder:buildRaindropItems({ items = {
@@ -1214,6 +1231,31 @@ test("confirmed token removal clears API cache and closes authenticated navigati
     equal(cache_clears, 1, "cache cleared")
     equal(closes, 1, "authenticated widgets closed")
     equal(notice, "Local access token removed", "success notice")
+end)
+
+test("advanced search state survives reopening only in the plugin session", function()
+    local Gota = require("main")
+    local seen_initial
+    local fake = {
+        api = { getFilters = function() return { tags = {}, types = {} } end },
+        settings = { getSortOrder = function() return "-created" end },
+        ui_builder = { buildActiveFilterSummary = UIBuilder.buildActiveFilterSummary },
+        dialogs = { showAdvancedSearchDialog = function(_, _, initial, callbacks)
+            seen_initial = initial
+            callbacks.on_state_change({
+                term = "saved in memory", tag = "", type = "", quick = {}, match = "all", more = {},
+            })
+            return {}
+        end },
+        widgets = {},
+        showProgress = noop,
+        hideProgress = noop,
+        notify = noop,
+    }
+    Gota.showAdvancedSearchDialog(fake, {})
+    equal(seen_initial.term, "", "first opening")
+    Gota.showAdvancedSearchDialog(fake, {})
+    equal(seen_initial.term, "saved in memory", "session state")
 end)
 
 test("successful mutation reloads source once while failure preserves detail", function()

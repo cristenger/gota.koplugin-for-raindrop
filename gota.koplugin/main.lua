@@ -448,11 +448,26 @@ function Gota:showAdvancedSearchDialog(context)
         return
     end
 
+    local initial_state = copyPlainTable(self.last_advanced_search or {
+        term = "", tag = "", type = "", quick = {}, match = "all", more = {},
+    })
     self.widgets.advanced_search_dialog = self.dialogs:showAdvancedSearchDialog(
         filters_data,
+        initial_state,
         {
-            on_search = function(search_term, filters)
-                self:searchRaindrops(search_term, 0, filters, context)
+            build_summary = function(state)
+                return self.ui_builder.buildActiveFilterSummary(
+                    state, context, self.settings:getSortOrder())
+            end,
+            on_state_change = function(state)
+                self.last_advanced_search = copyPlainTable(state)
+            end,
+            on_search = function(state, filters)
+                self.last_advanced_search = copyPlainTable(state)
+                local search_context = copyPlainTable(context)
+                search_context.filter_summary = self.ui_builder.buildActiveFilterSummary(
+                    state, context, self.settings:getSortOrder())
+                self:searchRaindrops(state.term, 0, filters, search_context)
             end,
             notify = function(...) self:notify(...) end,
         }
@@ -959,25 +974,41 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
         function(new_page) self:searchRaindrops(search_term, new_page, filters, context) end
     )
     
-    -- Construir título con información de filtros
-    local title = _("Results: '") .. (search_term or "") .. "'"
-    if results.count ~= nil then title = title .. " (" .. results.count .. ")" end
-    if context.collection_name then
-        title = title .. " — " .. context.collection_name .. (context.nested and " + " .. _("subcollections") or "")
+    local filter_summary = context.filter_summary
+    if not filter_summary then
+        filters = filters or {}
+        filter_summary = self.ui_builder.buildActiveFilterSummary({
+            term = search_term,
+            tag = filters.tag,
+            type = filters.type,
+            match = filters.match_or and "any" or "all",
+            quick = {
+                important = filters.important,
+                notag = filters.notag,
+                file = filters.file,
+                reminder = filters.reminder,
+                cache_ready = filters.cache_ready,
+            },
+            more = {
+                exclude_tag = filters.exclude_tag,
+                exclude_type = filters.exclude_type,
+                created = filters.created,
+                last_update = filters.last_update,
+            },
+        }, context, self.settings:getSortOrder())
     end
-    if filters then
-        if filters.tag then
-            title = title .. " [#" .. filters.tag .. "]"
-        end
-        if filters.type then
-            title = title .. " [" .. filters.type .. "]"
-        end
-    end
+    subtitle = filter_summary .. " · " .. subtitle
     
     self:closeWidget("search_menu")
     self.widgets.search_menu = self.ui_builder:createMenu(
-        title,
-        items
+        _("Search results"),
+        items,
+        {
+            subtitle = subtitle,
+            focus_raindrop_id = focus_raindrop_id,
+            items_max_lines = 2,
+            multilines_forced = true,
+        }
     )
     UIManager:show(self.widgets.search_menu)
 end

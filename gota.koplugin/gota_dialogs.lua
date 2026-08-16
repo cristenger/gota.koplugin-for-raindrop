@@ -419,9 +419,22 @@ end
 
 -- ========== ADVANCED SEARCH DIALOG ==========
 
-function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
+function Dialogs:showAdvancedSearchDialog(filters_data, initial_state, callbacks)
     local MultiInputDialog = require("ui/widget/multiinputdialog")
     local ButtonDialog = require("ui/widget/buttondialog")
+    initial_state = initial_state or {}
+    local function copyTable(value)
+        local copy = {}
+        for key, item in pairs(type(value) == "table" and value or {}) do copy[key] = item end
+        return copy
+    end
+    local function countEnabled(values)
+        local count = 0
+        for _, value in pairs(values) do
+            if value == true or (type(value) == "string" and value ~= "") then count = count + 1 end
+        end
+        return count
+    end
     
     -- Construir lista de tags para mostrar
     local tags_text = _("Available tags") .. " (" .. _("case-insensitive") .. "):\n"
@@ -461,13 +474,33 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
         end
     end
     
-    local description = tags_text .. types_text .. "\n" .. 
+    local state = {
+        term = tostring(initial_state.term or ""),
+        tag = tostring(initial_state.tag or ""),
+        type = tostring(initial_state.type or ""),
+        quick = copyTable(initial_state.quick),
+        match = initial_state.match == "any" and "any" or "all",
+        more = copyTable(initial_state.more),
+    }
+    local summary = callbacks.build_summary and callbacks.build_summary(state) or _("No active filters")
+    local description = summary .. "\n\n" .. tags_text .. types_text .. "\n" ..
                        _("Enter search criteria") .. ":"
     
-    local selected = {}
-    local more_filters = {}
+    local selected = state.quick
+    local more_filters = state.more
     local advanced_dialog
+    local function capturePrimaryFields()
+        if not advanced_dialog or not advanced_dialog.getFields then return end
+        local values = advanced_dialog:getFields()
+        local function trim(value) return (value or ""):gsub("^%s*(.-)%s*$", "%1") end
+        state.term = trim(values[1])
+        state.tag = trim(values[2])
+        state.type = trim(values[3]):lower()
+        state.quick = selected
+        state.more = more_filters
+    end
     local function showQuickFilters()
+        capturePrimaryFields()
         local quick_dialog
         local choices = {
             { "important", _("Favorites") },
@@ -475,7 +508,6 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
             { "file", _("Uploaded files") },
             { "reminder", _("Has reminder") },
             { "cache_ready", _("Web archive ready") },
-            { "match_or", _("Match any selected filter") },
         }
         local buttons = {}
         for _, choice in ipairs(choices) do
@@ -489,17 +521,29 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                 end,
             }}
         end
+        buttons[#buttons + 1] = {{
+            text = state.match == "any" and _("Match mode: any") or _("Match mode: all"),
+            callback = function()
+                state.match = state.match == "any" and "all" or "any"
+                UIManager:close(quick_dialog)
+                showQuickFilters()
+            end,
+        }}
         buttons[#buttons + 1] = {{ text = _("Close"), id = "close", callback = function()
             UIManager:close(quick_dialog)
         end }}
-        quick_dialog = ButtonDialog:new{ title = _("Quick filters"), buttons = buttons }
+        quick_dialog = ButtonDialog:new{
+            title = string.format(_("Quick filters (%d)"), countEnabled(selected)),
+            buttons = buttons,
+        }
         UIManager:show(quick_dialog)
     end
 
     local function showMoreFilters()
+        capturePrimaryFields()
         local more_dialog
         more_dialog = MultiInputDialog:new{
-            title = _("More filters"),
+            title = string.format(_("More filters (%d)"), countEnabled(more_filters)),
             fields = {
                 { text = more_filters.exclude_tag or "", hint = _("Exclude tag") },
                 { text = more_filters.exclude_type or "", hint = _("Exclude type") },
@@ -543,15 +587,15 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
         fields = {
             {
                 description = description,
-                text = "",
+                text = state.term,
                 hint = _("Search term (optional)"),
             },
             {
-                text = "",
+                text = state.tag,
                 hint = _("Tag (e.g., 'guides')"),
             },
             {
-                text = "",
+                text = state.type,
                 hint = _("Type (article/image/video/audio/document)"),
             },
         },
@@ -565,6 +609,8 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                     text = _("Cancel"),
                     id = "close",
                     callback = function()
+                        capturePrimaryFields()
+                        if callbacks.on_state_change then callbacks.on_state_change(state) end
                         UIManager:close(advanced_dialog)
                     end,
                 },
@@ -579,12 +625,12 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                         local search_term = trim(fields[1])
                         local tag = trim(fields[2])
                         local type_filter = trim(fields[3]):lower()
+                        state.term, state.tag, state.type = search_term, tag, type_filter
+                        state.quick, state.more = selected, more_filters
                         
                         -- Validar que al menos haya un criterio
                         local has_quick = false
-                        for key, value in pairs(selected) do
-                            if key ~= "match_or" and value then has_quick = true break end
-                        end
+                        for _, value in pairs(selected) do if value then has_quick = true break end end
                         local has_more = false
                         for _, value in pairs(more_filters) do if value ~= "" then has_more = true break end end
                         if (not search_term or search_term == "") and 
@@ -613,11 +659,23 @@ function Dialogs:showAdvancedSearchDialog(filters_data, callbacks)
                             end
                             filters.type = type_filter
                         end
-                        for key, value in pairs(selected) do if value then filters[key] = true end end
+                        local active_filter_count = (search_term ~= "" and 1 or 0) +
+                            (tag ~= "" and 1 or 0) + (type_filter ~= "" and 1 or 0)
+                        for key, value in pairs(selected) do
+                            if value then
+                                filters[key] = true
+                                active_filter_count = active_filter_count + 1
+                            end
+                        end
                         for key, value in pairs(more_filters) do if value ~= "" then filters[key] = value end end
+                        for _, value in pairs(more_filters) do
+                            if value ~= "" then active_filter_count = active_filter_count + 1 end
+                        end
+                        if state.match == "any" and active_filter_count > 1 then filters.match_or = true end
                         
                         UIManager:close(advanced_dialog)
-                        callbacks.on_search(search_term, filters)
+                        if callbacks.on_state_change then callbacks.on_state_change(state) end
+                        callbacks.on_search(state, filters)
                     end,
                 },
             },
