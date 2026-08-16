@@ -606,6 +606,76 @@ test("reader cache files are isolated from permanent exports", function()
     equal(manager:getReaderCachePath(42), "/tmp/cache/gota/raindrop_42.html")
 end)
 
+test("reader cleanup is confined, idempotent, and preserves sidecars", function()
+    local manager = ArticleManager:new({}, {}, {}, {
+        showProgress = noop, hideProgress = noop, notify = noop,
+    })
+    local cache_dir = "/tmp/cache/gota"
+    local active = cache_dir .. "/raindrop_2.html"
+    local files = {
+        [cache_dir .. "/raindrop_1.html"] = true,
+        [cache_dir .. "/raindrop_1.html.part"] = true,
+        [active] = true,
+        [cache_dir .. "/raindrop_3.html.part"] = true,
+        [cache_dir .. "/raindrop_1.sdr"] = true,
+        [cache_dir .. "/other.html"] = true,
+    }
+    local names = { ".", "..", "raindrop_1.html", "raindrop_1.html.part",
+        "raindrop_2.html", "raindrop_3.html.part", "raindrop_1.sdr", "other.html" }
+    local history, removed = {}, {}
+    local old_lfs = package.loaded["libs/libkoreader-lfs"]
+    local old_ffi = package.loaded["ffi/util"]
+    local old_history = package.loaded["readhistory"]
+    local old_remove = os.remove
+    package.loaded["ffi/util"] = { realpath = function(path) return path end }
+    package.loaded["readhistory"] = {
+        removeItemByPath = function(_, path) history[#history + 1] = path end,
+    }
+    package.loaded["libs/libkoreader-lfs"] = {
+        attributes = function(path, attribute)
+            if path == cache_dir and attribute == "mode" then return "directory" end
+            if files[path] then return "file" end
+            return nil
+        end,
+        dir = function(path)
+            equal(path, cache_dir, "cleanup directory")
+            local index = 0
+            return function()
+                index = index + 1
+                return names[index]
+            end
+        end,
+    }
+    os.remove = function(path)
+        removed[#removed + 1] = path
+        files[path] = nil
+        return true
+    end
+
+    local ok, err = pcall(function()
+        truthy(manager:isManagedReaderPath(cache_dir .. "/raindrop_1.html"), "managed html")
+        truthy(manager:isManagedReaderPath(cache_dir .. "/raindrop_1.html.part"), "managed part")
+        equal(manager:isManagedReaderPath(cache_dir .. "/raindrop_bad.html"), false, "invalid id")
+        equal(manager:isManagedReaderPath("/tmp/gota_articles/raindrop_1.html"), false, "export")
+        equal(manager:isManagedReaderPath(cache_dir .. "/raindrop_1.sdr"), false, "sidecar")
+
+        local removed_count, warnings = manager:cleanupOrphanReaderFiles(active)
+        equal(removed_count, 3, "orphan entries")
+        equal(#warnings, 0, "cleanup warnings")
+        equal(files[active], true, "active document preserved")
+        equal(files[cache_dir .. "/raindrop_1.sdr"], true, "sidecar preserved")
+        equal(files[cache_dir .. "/other.html"], true, "foreign file preserved")
+        equal(history[1], cache_dir .. "/raindrop_1.html", "history path")
+
+        truthy(manager:cleanupManagedReaderPath(cache_dir .. "/raindrop_1.html"), "idempotent cleanup")
+    end)
+    os.remove = old_remove
+    package.loaded["libs/libkoreader-lfs"] = old_lfs
+    package.loaded["ffi/util"] = old_ffi
+    package.loaded["readhistory"] = old_history
+    if not ok then error(err, 0) end
+end)
+
 test("article reload forces metadata without downloading permanent HTML", function()
     local force_refresh
     local cache_calls = 0
@@ -992,7 +1062,10 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     package.loaded["gota_dialogs"] = { new = function() return {} end }
     package.loaded["gota_article_manager"] = {
         new = function()
-            return { setSettings = noop }
+            return {
+                setSettings = noop,
+                cleanupOrphanReaderFiles = function() return 0, {} end,
+            }
         end,
     }
     package.loaded["main"] = nil

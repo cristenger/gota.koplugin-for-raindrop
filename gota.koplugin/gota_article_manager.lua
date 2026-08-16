@@ -3,7 +3,6 @@
     Handles all article-related operations: viewing, downloading, opening in reader
 ]]
 
-local UIManager = require("ui/uimanager")
 local DataStorage = require("datastorage")
 local logger = require("logger")
 local util = require("util")
@@ -142,6 +141,114 @@ end
 function ArticleManager:getReaderCachePath(raindrop_id)
     return DataStorage:getDataDir() .. "/cache/gota/raindrop_" ..
         self:sanitizeID(raindrop_id) .. ".html"
+end
+
+function ArticleManager:getReaderCacheDir()
+    return DataStorage:getDataDir():gsub("/+$", "") .. "/cache/gota"
+end
+
+local function canonicalPath(path)
+    local ffi_ok, ffiUtil = pcall(require, "ffi/util")
+    if ffi_ok and ffiUtil and ffiUtil.realpath then
+        return ffiUtil.realpath(path) or path
+    end
+    return path
+end
+
+local function splitPath(path)
+    if type(path) ~= "string" then return nil, nil end
+    return path:match("^(.*)/([^/]+)$")
+end
+
+local function isManagedReaderName(name)
+    return type(name) == "string" and
+        (name:match("^raindrop_%d+%.html$") ~= nil or
+         name:match("^raindrop_%d+%.html%.part$") ~= nil)
+end
+
+function ArticleManager:isManagedReaderPath(path)
+    if type(path) ~= "string" or path == "" or path:find("%c") then
+        return false
+    end
+    local parent, name = splitPath(path)
+    if not parent or not isManagedReaderName(name) then return false end
+
+    local cache_dir = canonicalPath(self:getReaderCacheDir()):gsub("/+$", "")
+    if canonicalPath(parent):gsub("/+$", "") ~= cache_dir then return false end
+
+    -- If the final component already exists, reject a symlink that resolves
+    -- outside Gota's cache directory even when its textual parent looks safe.
+    local resolved = canonicalPath(path)
+    if resolved ~= path then
+        local resolved_parent, resolved_name = splitPath(resolved)
+        if not resolved_parent or not isManagedReaderName(resolved_name) or
+           canonicalPath(resolved_parent):gsub("/+$", "") ~= cache_dir then
+            return false
+        end
+    end
+    return true
+end
+
+function ArticleManager:cleanupManagedReaderPath(path)
+    if not self:isManagedReaderPath(path) then
+        return false, "path is not managed by Gota"
+    end
+
+    local lfs = require("libs/libkoreader-lfs")
+    local is_part = path:match("%.part$") ~= nil
+    local history_path = not is_part and canonicalPath(path) or nil
+    local paths = { path }
+    if not is_part then paths[#paths + 1] = path .. ".part" end
+
+    local errors = {}
+    for _, candidate in ipairs(paths) do
+        if lfs.attributes(candidate, "mode") ~= nil then
+            local removed, remove_error = os.remove(candidate)
+            if not removed then errors[#errors + 1] = tostring(remove_error or candidate) end
+        end
+    end
+
+    if history_path then
+        local history_ok, history_error = pcall(function()
+            require("readhistory"):removeItemByPath(history_path)
+        end)
+        if not history_ok then
+            logger.warn("ArticleManager: could not clean reader history:", history_error)
+            errors[#errors + 1] = tostring(history_error)
+        end
+    end
+
+    if #errors > 0 then return false, table.concat(errors, "; ") end
+    return true
+end
+
+function ArticleManager:cleanupOrphanReaderFiles(active_path)
+    local lfs = require("libs/libkoreader-lfs")
+    local cache_dir = self:getReaderCacheDir()
+    if lfs.attributes(cache_dir, "mode") ~= "directory" then return 0, {} end
+
+    local iterator_ok, iterator_or_error, directory_state = pcall(lfs.dir, cache_dir)
+    if not iterator_ok then return 0, { tostring(iterator_or_error) } end
+    if type(iterator_or_error) ~= "function" then
+        return 0, { "could not enumerate Gota reader cache" }
+    end
+
+    local active_canonical = type(active_path) == "string" and canonicalPath(active_path) or nil
+    local removed_count, warnings = 0, {}
+    for name in iterator_or_error, directory_state do
+        if isManagedReaderName(name) then
+            local path = cache_dir .. "/" .. name
+            if canonicalPath(path) ~= active_canonical then
+                local cleaned, clean_error = self:cleanupManagedReaderPath(path)
+                if cleaned then
+                    removed_count = removed_count + 1
+                else
+                    warnings[#warnings + 1] = tostring(clean_error)
+                end
+            end
+        end
+    end
+    return removed_count, warnings
 end
 
 -- Keep Raindrop's cache metadata separate from the result of downloading the
@@ -290,7 +397,7 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     local lfs = require("libs/libkoreader-lfs")
     local path_ok, path_error = ensureDirectory(html_dir, lfs)
     if not path_ok then
-        self.callbacks.notify(_("Error creating reader cache directory") ..
+        self.callbacks.notify(_("Error creating temporary reader directory") ..
             (path_error and (": " .. tostring(path_error)) or ""))
         return false
     end
@@ -319,24 +426,7 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         before_open_callback = close_all_callback,
         on_return_callback = function()
             logger.dbg("ArticleManager: Usuario volvió del lector")
-            UIManager:scheduleIn(0.2, function()
-                local history_path = filename
-                local ffi_ok, ffiUtil = pcall(require, "ffi/util")
-                if ffi_ok and ffiUtil and ffiUtil.realpath then
-                    history_path = ffiUtil.realpath(filename) or filename
-                end
-                local removed, remove_error = os.remove(filename)
-                if not removed and lfs.attributes(filename, "mode") then
-                    logger.warn("ArticleManager: could not remove reader cache file:", remove_error)
-                end
-                local history_ok, history_error = pcall(function()
-                    require("readhistory"):removeItemByPath(history_path)
-                end)
-                if not history_ok then
-                    logger.warn("ArticleManager: could not clean reader history:", history_error)
-                end
-                on_return_callback(raindrop)
-            end)
+            on_return_callback(raindrop)
         end,
     }) == true
 

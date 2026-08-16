@@ -53,6 +53,15 @@ function Gota:init()
     self.article_manager:setSettings(self.settings)
     self.widgets = {}
     self.collapsed_collection_groups = {}
+    local active_path = self.ui and self.ui.document and self.ui.document.file
+    local removed_count, cleanup_warnings =
+        self.article_manager:cleanupOrphanReaderFiles(active_path)
+    if removed_count > 0 then
+        logger.dbg("Gota: removed orphan reader cache files:", removed_count)
+    end
+    for _, warning in ipairs(cleanup_warnings) do
+        logger.warn("Gota: reader cache cleanup warning:", warning)
+    end
     self.ui.menu:registerToMainMenu(self)
     logger.dbg("Gota: initialized, token:", self.settings:isTokenValid() and "valid" or "missing")
 end
@@ -290,6 +299,14 @@ end
 function Gota:onCloseDocument()
     local path = self.ui and self.ui.document and self.ui.document.file
     GotaReader:onReaderUIClose(path)
+    if self.article_manager and self.article_manager:isManagedReaderPath(path) then
+        UIManager:nextTick(function()
+            local cleaned, cleanup_error = self.article_manager:cleanupManagedReaderPath(path)
+            if not cleaned then
+                logger.warn("Gota: could not clean closed reader document:", cleanup_error)
+            end
+        end)
+    end
 end
 
 -- ========== DIALOGS ==========
