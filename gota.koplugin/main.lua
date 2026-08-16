@@ -159,7 +159,7 @@ function Gota:closeAllWidgets()
     local widget_names = {"progress", "token_dialog", "collections_menu", "collection_actions_menu", "raindrops_menu",
                           "article_menu", "search_dialog", "search_menu", "advanced_search_dialog",
                           "text_viewer", "sort_dialog", "highlights_menu", "highlight_actions_menu",
-                          "collection_picker"}
+                          "collection_picker", "remove_token_dialog"}
     for _, name in ipairs(widget_names) do
         self:closeWidget(name)
     end
@@ -170,6 +170,51 @@ end
 function Gota:getSubMenuItems()
     local token_valid = function()
         return self.settings and self.settings:isTokenValid()
+    end
+
+    local configuration_items = {
+        {
+            text = _("Configure access token"),
+            callback = function() self:showTokenDialog() end,
+        },
+        {
+            text = _("Configure download folder"),
+            callback = function() self:showDownloadPathDialog() end,
+        },
+        {
+            text_func = function()
+                local sort_labels = {
+                    ["-created"] = _("newest first"),
+                    ["created"]  = _("oldest first"),
+                    ["title"]    = _("title A-Z"),
+                    ["-title"]   = _("title Z-A"),
+                    ["-sort"]    = _("custom order"),
+                    ["domain"]   = _("domain A-Z"),
+                    ["-domain"]  = _("domain Z-A"),
+                }
+                local label = sort_labels[self.settings:getSortOrder()] or _("newest first")
+                return _("Sort order") .. ": " .. label
+            end,
+            callback = function() self:showSortPicker() end,
+        },
+        {
+            text_func = function()
+                return string.format(_("Cache limits: %d MiB text / %d MiB reader"),
+                    self.settings:getMaxCacheMemoryBytes() / 1048576,
+                    self.settings:getMaxCacheFileBytes() / 1048576)
+            end,
+            callback = function() self:showCacheLimitPicker() end,
+        },
+        {
+            text = _("Debug Raindrop API connection"),
+            callback = function() self:showDebugInfo() end,
+        },
+    }
+    if token_valid() then
+        table.insert(configuration_items, 2, {
+            text = _("Remove access token"),
+            callback = function() self:confirmRemoveToken() end,
+        })
     end
 
     local items = {
@@ -214,44 +259,7 @@ function Gota:getSubMenuItems()
         },
         {
             text = _("Configuration"),
-            sub_item_table = {
-                {
-                    text = _("Configure access token"),
-                    callback = function() self:showTokenDialog() end,
-                },
-                {
-                    text = _("Configure download folder"),
-                    callback = function() self:showDownloadPathDialog() end,
-                },
-                {
-                    text_func = function()
-                        local sort_labels = {
-                            ["-created"] = _("newest first"),
-                            ["created"]  = _("oldest first"),
-                            ["title"]    = _("title A-Z"),
-                            ["-title"]   = _("title Z-A"),
-                            ["-sort"]    = _("custom order"),
-                            ["domain"]   = _("domain A-Z"),
-                            ["-domain"]  = _("domain Z-A"),
-                        }
-                        local label = sort_labels[self.settings:getSortOrder()] or _("newest first")
-                        return _("Sort order") .. ": " .. label
-                    end,
-                    callback = function() self:showSortPicker() end,
-                },
-                {
-                    text_func = function()
-                        return string.format(_("Cache limits: %d MiB text / %d MiB reader"),
-                            self.settings:getMaxCacheMemoryBytes() / 1048576,
-                            self.settings:getMaxCacheFileBytes() / 1048576)
-                    end,
-                    callback = function() self:showCacheLimitPicker() end,
-                },
-                {
-                    text = _("Debug Raindrop API connection"),
-                    callback = function() self:showDebugInfo() end,
-                },
-            },
+            sub_item_table = configuration_items,
         },
     }
 
@@ -292,12 +300,30 @@ function Gota:showTokenDialog()
         {
             test = function(token) self:testToken(token) end,
             save = function(token)
+                local previous_token = self.settings:getToken()
                 self.settings:setToken(token)
-                return self.settings:save()
+                local saved, save_error = self.settings:save()
+                if not saved then self.settings:setToken(previous_token) end
+                return saved, save_error
             end,
             notify = function(...) self:notify(...) end,
         }
     )
+end
+
+function Gota:confirmRemoveToken()
+    self.widgets.remove_token_dialog = self.dialogs:confirmRemoveToken(function()
+        self.widgets.remove_token_dialog = nil
+        local removed, remove_error = self.settings:clearToken()
+        if not removed then
+            self:notify(_("Could not remove the local access token: ") ..
+                (remove_error or _("Unknown error")), 4)
+            return
+        end
+        self.api:clearCache()
+        self:closeAllWidgets()
+        self:notify(_("Local access token removed"), 3)
+    end)
 end
 
 function Gota:showSearchDialog(context)
@@ -365,7 +391,8 @@ end
 function Gota:showDebugInfo()
     self.dialogs:showDebugInfo(
         self.settings:getDebugInfo(),
-        self.api.server_url
+        self.api.server_url,
+        self.api:getTransportSecurityInfo()
     )
 end
 

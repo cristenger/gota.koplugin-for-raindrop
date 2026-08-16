@@ -102,21 +102,29 @@ end
 function Settings:save()
     if not self.config then
         logger.err("Gota Settings: cannot save, config not initialized")
-        return false
+        return false, "configuration is not initialized"
     end
 
-    self.download_path = normalizeDownloadPath(self.download_path)
-    self.config:saveSetting("token", self.token)
-    self.config:saveSetting("download_path", self.download_path)
-    self.sort_order = normalizeSortOrder(self.sort_order)
-    self.config:saveSetting("sort_order", self.sort_order)
-    self.max_cache_memory_bytes = normalizePreset(self.max_cache_memory_bytes,
-        CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
-    self.max_cache_file_bytes = normalizePreset(self.max_cache_file_bytes,
-        CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
-    self.config:saveSetting("max_cache_memory_bytes", self.max_cache_memory_bytes)
-    self.config:saveSetting("max_cache_file_bytes", self.max_cache_file_bytes)
-    self.config:flush()
+    local saved, save_error = pcall(function()
+        self.download_path = normalizeDownloadPath(self.download_path)
+        self.config:saveSetting("token", self.token)
+        self.config:saveSetting("download_path", self.download_path)
+        self.sort_order = normalizeSortOrder(self.sort_order)
+        self.config:saveSetting("sort_order", self.sort_order)
+        self.max_cache_memory_bytes = normalizePreset(self.max_cache_memory_bytes,
+            CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
+        self.max_cache_file_bytes = normalizePreset(self.max_cache_file_bytes,
+            CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
+        self.config:saveSetting("max_cache_memory_bytes", self.max_cache_memory_bytes)
+        self.config:saveSetting("max_cache_file_bytes", self.max_cache_file_bytes)
+        -- LuaSettings:flush() returns self, not an I/O success boolean. Treat
+        -- exceptions as failures without claiming stronger durability guarantees.
+        self.config:flush()
+    end)
+    if not saved then
+        logger.err("Gota Settings: could not save configuration:", save_error)
+        return false, tostring(save_error)
+    end
     return true
 end
 
@@ -126,6 +134,17 @@ end
 
 function Settings:setToken(token)
     self.token = token or ""
+end
+
+function Settings:clearToken()
+    local previous_token = self.token
+    self.token = ""
+    local saved, save_error = self:save()
+    if not saved then
+        self.token = previous_token
+        return false, save_error
+    end
+    return true
 end
 
 function Settings:isTokenValid()

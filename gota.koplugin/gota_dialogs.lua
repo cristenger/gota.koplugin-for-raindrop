@@ -31,7 +31,7 @@ function Dialogs:showTokenDialog(current_token, callbacks)
     local token_dialog  -- Declarar antes para que los callbacks puedan acceder
     token_dialog = InputDialog:new{
         title = _("Raindrop.io Access Token"),
-        description = _("TEST TOKEN (Recommended and currently supported):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nGota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n\nPaste the token here:"),
+        description = _("TEST TOKEN (Recommended and currently supported):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nGota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n\nSecurity warning: this KOReader TLS flow encrypts traffic but does not authenticate the remote server. Use a trusted network and treat the token as a password.\n\nPaste the token here:"),
         input = current_token,
         text_type = "password",
         buttons = {
@@ -98,6 +98,31 @@ function Dialogs:showTokenDialog(current_token, callbacks)
     token_dialog:onShowKeyboard()
     
     return token_dialog
+end
+
+function Dialogs:confirmRemoveToken(callback)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog
+    dialog = ButtonDialog:new{
+        title = _("Remove the local access token?") .. "\n\n" ..
+            _("This removes Gota's local copy. It does not revoke the token in Raindrop.io."),
+        buttons = {{
+            {
+                text = _("Cancel"),
+                id = "close",
+                callback = function() UIManager:close(dialog) end,
+            },
+            {
+                text = _("Remove token"),
+                callback = function()
+                    UIManager:close(dialog)
+                    callback()
+                end,
+            },
+        }},
+    }
+    UIManager:show(dialog)
+    return dialog
 end
 
 -- ========== DOWNLOAD PATH DIALOG ==========
@@ -289,34 +314,44 @@ end
 
 -- ========== DEBUG INFO VIEWER ==========
 
-function Dialogs:showDebugInfo(debug_info_table, server_url)
-    local debug_info = "DEBUG GOTA PLUGIN v" .. Version.version .. "\n"
+function Dialogs:showDebugInfo(debug_info_table, server_url, transport_security)
+    local debug_info = _("GOTA PLUGIN DEBUG v") .. Version.version .. "\n"
     debug_info = debug_info .. "══════════════════════\n\n"
-    debug_info = debug_info .. "Token status: " .. debug_info_table.token_status .. "\n"
-    debug_info = debug_info .. "Config file: " .. debug_info_table.settings_file .. "\n\n"
+    local token_status = debug_info_table.token_status == "configured" and
+        _("configured") or _("not configured")
+    debug_info = debug_info .. _("Token status: ") .. token_status .. "\n"
+    debug_info = debug_info .. _("Configuration file: ") .. debug_info_table.settings_file .. "\n\n"
     
     if debug_info_table.file_exists then
-        debug_info = debug_info .. "File exists: YES\n"
-        debug_info = debug_info .. "File size: " .. debug_info_table.file_size .. " bytes\n"
-        debug_info = debug_info .. "(Content hidden for security)\n\n"
+        debug_info = debug_info .. _("File exists: yes") .. "\n"
+        debug_info = debug_info .. _("File size: ") .. debug_info_table.file_size .. " " .. _("bytes") .. "\n"
+        debug_info = debug_info .. _("(Content hidden for security)") .. "\n\n"
     else
-        debug_info = debug_info .. "File exists: NO\n\n"
+        debug_info = debug_info .. _("File exists: no") .. "\n\n"
     end
     
-    debug_info = debug_info .. "\nServer URL: " .. server_url
-    debug_info = debug_info .. "\nKOReader target: " .. Version.target_koreader
+    debug_info = debug_info .. "\n" .. _("Server URL: ") .. server_url
+    debug_info = debug_info .. "\n" .. _("KOReader target: ") .. Version.target_koreader
+    if transport_security then
+        debug_info = debug_info .. "\n" .. _("TLS encryption: ") ..
+            (transport_security.encrypted and _("available") or _("not available"))
+        debug_info = debug_info .. "\n" .. _("Remote TLS authentication: ") ..
+            (transport_security.peer_authenticated and
+                transport_security.hostname_verified and _("available") or _("not available"))
+    end
     if debug_info_table.max_cache_memory_mib then
-        debug_info = debug_info .. "\nText cache limit: " ..
+        debug_info = debug_info .. "\n" .. _("Text memory limit: ") ..
             tostring(debug_info_table.max_cache_memory_mib) .. " MiB"
     end
     if debug_info_table.max_cache_file_mib then
-        debug_info = debug_info .. "\nReader cache limit: " ..
+        debug_info = debug_info .. "\n" .. _("Reader file limit: ") ..
             tostring(debug_info_table.max_cache_file_mib) .. " MiB"
     end
-    debug_info = debug_info .. "\nModules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager"
+    debug_info = debug_info .. "\n" ..
+        _("Modules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager")
     
     local text_viewer = TextViewer:new{
-        title = "Debug Info - Gota Plugin",
+        title = _("Debug information — Gota"),
         text = debug_info,
         width = Device.screen:getWidth() * 0.9,
         height = Device.screen:getHeight() * 0.8,

@@ -768,6 +768,36 @@ end)
 
 local Dialogs = require("gota_dialogs")
 
+test("debug information reports TLS limits without exposing token material", function()
+    local viewer = Dialogs:new():showDebugInfo({
+        token_status = "configured",
+        settings_file = "/tmp/gota.lua",
+        file_exists = true,
+        file_size = 12,
+        secret = "do-not-show",
+        max_cache_memory_mib = 4,
+        max_cache_file_mib = 32,
+    }, "https://api.raindrop.io/rest/v1", {
+        encrypted = true,
+        peer_authenticated = false,
+        hostname_verified = false,
+    })
+    equal(viewer.text:find("do-not-show", 1, true), nil, "secret hidden")
+    contains(viewer.text, "TLS encryption: available", "encryption status")
+    contains(viewer.text, "Remote TLS authentication: not available", "authentication limit")
+end)
+
+test("token removal confirmation explains revocation and Cancel is inert", function()
+    package.loaded["ui/widget/buttondialog"] = {
+        new = function(_, options) return options end,
+    }
+    local removed = 0
+    local dialog = Dialogs:new():confirmRemoveToken(function() removed = removed + 1 end)
+    contains(dialog.title, "does not revoke", "remote revocation warning")
+    dialog.buttons[1][1].callback()
+    equal(removed, 0, "cancel")
+end)
+
 test("tag editing trims and de-duplicates Unicode tags case-insensitively", function()
     local tags = Dialogs.normalizeTagsInput("  Lectura  \nlectura\nCAFÉ\ncafé\n漢字\n\n")
     equal(#tags, 3, "tag count")
@@ -801,12 +831,15 @@ test("settings normalize manipulated paths and unsupported sort values", functio
         sort_order = "score",
     }
     local saved = {}
+    local fail_flush = false
     package.loaded["luasettings"] = {
         open = function()
             return {
                 readSetting = function(_, key) return stored[key] end,
                 saveSetting = function(_, key, value) saved[key] = value end,
-                flush = noop,
+                flush = function()
+                    if fail_flush then error("simulated flush failure") end
+                end,
             }
         end,
     }
@@ -833,6 +866,16 @@ test("settings normalize manipulated paths and unsupported sort values", functio
     equal(settings:getMaxCacheMemoryBytes(), 4 * 1024 * 1024, "memory default")
     equal(settings:getMaxCacheFileBytes(), 32 * 1024 * 1024, "file default")
     equal(settings:setMaxCacheMemoryBytes(3 * 1024 * 1024), nil, "invalid memory preset")
+    truthy(settings:clearToken(), "clear token")
+    equal(settings:getToken(), "", "cleared token")
+    equal(saved.token, "", "saved empty token")
+    settings:setToken("restored-secret")
+    fail_flush = true
+    local cleared, clear_error = settings:clearToken()
+    equal(cleared, false, "failed clear")
+    contains(clear_error, "simulated flush failure", "clear error")
+    equal(settings:getToken(), "restored-secret", "token restored in memory")
+    fail_flush = false
 
     package.loaded["ffi/util"] = {
         realpath = function(path)
@@ -968,6 +1011,23 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     local menu = {}
     Gota:addToMainMenu(menu)
     equal(menu.gota.sorting_hint, "more_tools", "sorting hint")
+end)
+
+test("confirmed token removal clears API cache and closes authenticated navigation", function()
+    local Gota = require("main")
+    local cache_clears, closes, notice = 0, 0
+    local fake = {
+        widgets = {},
+        dialogs = { confirmRemoveToken = function(_, callback) callback() return {} end },
+        settings = { clearToken = function() return true end },
+        api = { clearCache = function() cache_clears = cache_clears + 1 end },
+        closeAllWidgets = function() closes = closes + 1 end,
+        notify = function(_, text) notice = text end,
+    }
+    Gota.confirmRemoveToken(fake)
+    equal(cache_clears, 1, "cache cleared")
+    equal(closes, 1, "authenticated widgets closed")
+    equal(notice, "Local access token removed", "success notice")
 end)
 
 test("collection screen reads documented nested user statistics counts", function()

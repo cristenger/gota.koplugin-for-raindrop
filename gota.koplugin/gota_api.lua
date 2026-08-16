@@ -424,6 +424,15 @@ function API:new(settings, server_url)
     return o
 end
 
+function API:getTransportSecurityInfo()
+    return {
+        encrypted = true,
+        peer_authenticated = false,
+        hostname_verified = false,
+        limitation = "LuaSec 1.3.2 verify=none",
+    }
+end
+
 function API:_performRequest(url, method, body, include_authorization, is_file_download, request_options)
     request_options = request_options or {}
     local response_mode = request_options.response_mode or
