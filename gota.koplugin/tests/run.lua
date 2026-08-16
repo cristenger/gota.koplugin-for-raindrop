@@ -9,6 +9,22 @@ local logger = setmetatable({}, { __index = function() return noop end })
 package.preload["logger"] = function() return logger end
 package.preload["gettext"] = function() return function(value) return value end end
 package.preload["util"] = function()
+    local html_entities = {
+        amp = "&",
+        apos = "'",
+        gt = ">",
+        lt = "<",
+        quot = '"',
+    }
+
+    local function decodeNumericEntity(number, base, original)
+        local value = tonumber(number, base)
+        if value and value >= 0 and value <= 127 then
+            return string.char(value)
+        end
+        return original
+    end
+
     return {
         makePath = function() return true end,
         htmlEscape = function(value)
@@ -17,6 +33,18 @@ package.preload["util"] = function()
                 :gsub("<", "&lt;")
                 :gsub(">", "&gt;")
                 :gsub('"', "&quot;")
+        end,
+        htmlEntitiesToUtf8 = function(value)
+            value = tostring(value or "")
+            value = value:gsub("&#[xX]([%x]+);", function(number)
+                return decodeNumericEntity(number, 16, "&#x" .. number .. ";")
+            end)
+            value = value:gsub("&#(%d+);", function(number)
+                return decodeNumericEntity(number, 10, "&#" .. number .. ";")
+            end)
+            return (value:gsub("&([%a]+);", function(name)
+                return html_entities[name] or "&" .. name .. ";"
+            end))
         end,
         htmlToPlainTextIfHtml = function(value) return value end,
         stringLower = function(value)
@@ -249,6 +277,52 @@ test("plain text sanitizes documents without article or main", function()
     equal(plain:find("GOTA_SCRIPT_JUNK", 1, true), nil, "script content")
     equal(plain:find("GOTA_STYLE_JUNK", 1, true), nil, "style content")
     equal(plain:find("GOTA_TEMPLATE_JUNK", 1, true), nil, "template content")
+end)
+
+test("plain text selects an article smaller than the page shell", function()
+    local processor = ContentProcessor:new()
+    local shell = string.rep("<p>SHELL_CHROME_WITH_VISIBLE_TEXT</p>", 150)
+    local plain = processor:htmlToText(
+        "<body><section>" .. shell .. "</section>" ..
+        "<ARTICLE><p>ARTICLE_BODY</p></ARTICLE></body>"
+    )
+
+    contains(plain, "ARTICLE_BODY", "article body")
+    equal(plain:find("SHELL_CHROME_WITH_VISIBLE_TEXT", 1, true), nil, "page shell")
+end)
+
+test("plain text chooses the largest visible article", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText([[
+        <article><p>SHORT_TEASER</p></article>
+        <article><h1>FULL_ARTICLE_TITLE</h1><p>FULL_ARTICLE_BODY_WITH_MORE_TEXT</p></article>
+    ]])
+
+    contains(plain, "FULL_ARTICLE_TITLE", "selected article title")
+    contains(plain, "FULL_ARTICLE_BODY_WITH_MORE_TEXT", "selected article body")
+    equal(plain:find("SHORT_TEASER", 1, true), nil, "short article")
+end)
+
+test("plain text falls back to main when no article exists", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText([[
+        <body>
+            <aside>OUTSIDE_MAIN_CHROME_WITH_VISIBLE_TEXT</aside>
+            <MaIn><p>MAIN_ARTICLE_BODY</p></MaIn>
+        </body>
+    ]])
+
+    contains(plain, "MAIN_ARTICLE_BODY", "main body")
+    equal(plain:find("OUTSIDE_MAIN_CHROME_WITH_VISIBLE_TEXT", 1, true), nil, "outside main")
+end)
+
+test("plain text decodes numeric HTML entities after stripping tags", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText(
+        "<article><p>It&#39;s &#x27;safe&#x27; to show &lt;style&gt;.</p></article>"
+    )
+
+    contains(plain, "It's 'safe' to show <style>.", "decoded entities")
 end)
 
 test("generated notes HTML escapes metadata and constrains highlight colors", function()

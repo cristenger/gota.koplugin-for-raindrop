@@ -225,9 +225,9 @@ function ContentProcessor:htmlToText(html_content)
         return ""
     end
     html_content = self:ensureUTF8(html_content)
+    local input_length = #html_content
     local content = stripNonTextElements(html_content)
-    local original_length = #content
-    logger.dbg("Gota ContentProcessor: Procesando contenido HTML, longitud original:", original_length)
+    local sanitized_length = #content
 
     -- Remover elementos no deseados
     content = removePairedElement(content, "nav")
@@ -259,7 +259,7 @@ function ContentProcessor:htmlToText(html_content)
     end
 
     -- Intentar identificar el contenido principal
-    local main_content = self:extractMainContent(content, original_length)
+    local main_content = self:extractMainContent(content)
     if main_content then
         content = main_content
     end
@@ -287,31 +287,49 @@ function ContentProcessor:htmlToText(html_content)
     content = content:gsub("^%s+", "")
     content = content:gsub("%s+$", "")
 
-    -- Verificación de seguridad
-    if #content < original_length * 0.3 then
-        logger.dbg("Gota ContentProcessor: La limpieza eliminó demasiado contenido, usando conversión más simple")
-        return self:simpleHtmlToText(html_content)
-    end
-
-    logger.dbg("Gota ContentProcessor: Contenido final procesado, longitud:", #content,
-               "Proporción retenida:", math.floor(#content/original_length*100), "%")
+    logger.dbg("Gota ContentProcessor: plain HTML bytes:", input_length,
+               "sanitized bytes:", sanitized_length,
+               "plain bytes:", #content)
 
     return content
 end
 
+local function visibleTextWeight(fragment)
+    local text = fragment:gsub("<[^>]+>", "")
+    text = text:gsub("&[%w#]+;", "x")
+    text = text:gsub("%s+", "")
+    return #text
+end
+
+-- This intentionally handles non-nested semantic containers. Malformed or
+-- nested article/main structures require a bounded HTML parser, not more
+-- pattern heuristics here.
+local function largestElementContent(content, tag)
+    local pattern = caseInsensitiveTag(tag)
+    local best, best_weight = nil, 0
+    for candidate in content:gmatch(
+        "<%s*" .. pattern .. "[^>]*>(.-)</%s*" .. pattern .. "%s*>"
+    ) do
+        local weight = visibleTextWeight(candidate)
+        if weight > best_weight then
+            best = candidate
+            best_weight = weight
+        end
+    end
+    return best, best_weight
+end
+
 -- Extrae el contenido principal del HTML
-function ContentProcessor:extractMainContent(content, original_length)
-    -- Buscar etiqueta article
-    local article_match = content:match("<article[^>]*>(.-)</article>")
-    if article_match and #article_match > original_length * 0.4 then
-        logger.dbg("Gota ContentProcessor: Encontrada etiqueta <article> con contenido significativo")
+function ContentProcessor:extractMainContent(content)
+    local article_match, article_weight = largestElementContent(content, "article")
+    if article_match then
+        logger.dbg("Gota ContentProcessor: selected <article> visible bytes:", article_weight)
         return article_match
     end
 
-    -- Buscar etiqueta main
-    local main_match = content:match("<main[^>]*>(.-)</main>")
-    if main_match and #main_match > original_length * 0.4 then
-        logger.dbg("Gota ContentProcessor: Encontrada etiqueta <main> con contenido significativo")
+    local main_match, main_weight = largestElementContent(content, "main")
+    if main_match then
+        logger.dbg("Gota ContentProcessor: selected <main> visible bytes:", main_weight)
         return main_match
     end
 
@@ -335,12 +353,7 @@ end
 -- Decodifica entidades HTML
 function ContentProcessor:decodeHtmlEntities(content)
     content = content:gsub("&nbsp;", " ")
-    content = content:gsub("&lt;", "<")
-    content = content:gsub("&gt;", ">")
-    content = content:gsub("&quot;", "\"")
-    content = content:gsub("&apos;", "'")
-    content = content:gsub("&amp;", "&")
-    return content
+    return util.htmlEntitiesToUtf8(content)
 end
 
 -- Conversión simple de HTML a texto (fallback)
