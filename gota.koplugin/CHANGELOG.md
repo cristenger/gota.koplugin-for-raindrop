@@ -18,6 +18,7 @@
 - Manual download paths preserve valid spaces and nested folders, reject unsafe input without replacing it with a default, and ask before applying sanitizer changes.
 - Annotated exports convert remote article markup to escaped plain text. Original copies remain byte-faithful web content and are identified separately.
 - Spanish UI terminology now consistently distinguishes copia web, copia original, archivo temporal and resaltados.
+- The configurable folder is now called "export folder" everywhere, and its dialog states that it holds saved copies and annotated exports while the full reader uses a temporary file. Opening an article shows "Preparing article..." instead of "Downloading article for reader...", which wrongly implied a file kept in that folder. The stored `download_path` setting key is unchanged, so existing configurations keep working.
 - New installations use 16 MiB for plain-text memory and 128 MiB for reader files. Presets now reach 64 MiB and 512 MiB, while saved legacy selections remain valid.
 
 ### Fixed

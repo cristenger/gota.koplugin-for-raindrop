@@ -52,31 +52,31 @@ local function pathIsInside(base_path, candidate_path)
 end
 
 local function validateDownloadPath(path)
-    if type(path) ~= "string" then return nil, _("Download path must be text") end
-    if path == "" then return nil, _("Download path cannot be empty") end
-    if path:find("%c") then return nil, _("Download path cannot contain control characters") end
+    if type(path) ~= "string" then return nil, _("Export path must be text") end
+    if path == "" then return nil, _("Export path cannot be empty") end
+    if path:find("%c") then return nil, _("Export path cannot contain control characters") end
 
     path = path:gsub("\\", "/")
     if path:sub(1, 1) == "/" or path:match("^%a:/") then
-        return nil, _("Download path must be relative to the KOReader data folder")
+        return nil, _("Export path must be relative to the KOReader data folder")
     end
 
     local util_ok, util = pcall(require, "util")
     local parts = {}
     for part in path:gmatch("[^/]+") do
         if part == ".." then
-            return nil, _("Download path cannot contain '..'")
+            return nil, _("Export path cannot contain '..'")
         elseif part == "." then
-            return nil, _("Download path cannot contain '.'")
+            return nil, _("Export path cannot contain '.'")
         elseif part ~= "" then
             local safe = util_ok and util.replaceAllInvalidChars and
                 util.replaceAllInvalidChars(part) or part:gsub('[\\:*?"<>|]', "_")
-            if safe == "" then return nil, _("Download path contains an empty folder name") end
+            if safe == "" then return nil, _("Export path contains an empty folder name") end
             table.insert(parts, safe)
         end
     end
 
-    if #parts == 0 then return nil, _("Download path cannot be empty") end
+    if #parts == 0 then return nil, _("Export path cannot be empty") end
     return table.concat(parts, "/")
 end
 

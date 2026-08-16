@@ -22,7 +22,7 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Content Limits**: Separate presets up to 64 MiB for text-in-RAM and 512 MiB for reader-file downloads
 - **Save Offline**: Save a byte-faithful original copy or a safer text-based annotated export
 - **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
-- **Configurable**: Customizable download folder with visual folder picker
+- **Configurable**: Customizable export folder with visual folder picker
 - **KOReader Compatibility**: Targets KOReader 2026.07 and later
 
 ## Installation
@@ -116,9 +116,11 @@ Use **All highlights** to review the whole library. A collection's action menu a
   
 **Important:** Notes and highlights work with both free and PRO accounts. However, viewing Raindrop's web copy (full text/HTML) requires a **Raindrop.io PRO subscription**.
 
-### Configure Download Folder
+### Configure Export Folder
 
-`Menu → Gota → Configuration → Configure download folder`
+`Menu → Gota → Configuration → Configure export folder`
+
+This folder holds the files Gota keeps: **Save original copy** and **Export with notes & highlights**. It is not used by **Open in full reader**, which streams the article to a temporary file and removes it when you close the document.
 
 Choose between the visual picker—long-press a folder name to select it—or manual relative-path entry. Manual paths may contain spaces and nested segments; Gota shows sanitizer changes before saving and confines the result to KOReader's data directory.
 
@@ -141,7 +143,7 @@ Want to add your language? See [l10n/README.md](gota.koplugin/l10n/README.md) fo
 ## Configuration
 
 - **Access Token**: Configuration → Configure access token (required)
-- **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
+- **Export Folder**: Configuration → Configure export folder (default: `gota_articles/`); used by saved copies and annotated exports, not by the full reader
 - **Sort Order**: Newest, oldest, title, domain or Raindrop custom order
 - **Content Limits**: 2–64 MiB for in-memory text and 16–512 MiB for reader/file downloads (new-install default: 16 MiB / 128 MiB; existing selections are preserved)
 - **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
@@ -166,6 +168,12 @@ The plain-text action keeps the complete HTML in RAM, so it uses the smaller tex
 The limit applies to the downloaded, decompressed HTML before scripts, styles and page chrome are removed. Sanitization therefore does not allow a response larger than the selected 2–64 MiB cap.
 
 Gota asks Raindrop for an identity response but also decodes gzip in-process when a storage server returns it anyway. The configured limit applies to decompressed bytes. Other encodings are rejected with their name and leave no partial reader file behind.
+
+### An article I opened in the full reader is not in my export folder
+
+That is expected. **Open in full reader** writes a temporary file under `cache/gota/` and deletes it when you close the document, so opening an article never overwrites a copy you saved on purpose and large web copies do not accumulate silently.
+
+To keep a file, use **Save original copy** (byte-faithful web copy) or **Export with notes & highlights** (annotated text export). Only those two write to the export folder, and both offer **Open folder** right after saving.
 
 ### Text in the full reader looks too big, too small or uneven
 

@@ -411,7 +411,9 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         return false
     end
     os.remove(filename)
-    self.callbacks.showProgress(_("Downloading article for reader..."))
+    -- Deliberately not "Downloading": this copy is temporary and is removed on
+    -- close, so the wording must not suggest a file kept in the export folder.
+    self.callbacks.showProgress(_("Preparing article..."))
     local downloaded_path, download_error = self.api:downloadRaindropCache(
         raindrop._id, filename, max_bytes)
     self.callbacks.hideProgress()
@@ -566,7 +568,7 @@ function ArticleManager:downloadHTML(raindrop)
     -- Crear directorio si no existe
     local path_ok = ensureDirectory(html_dir, lfs)
     if not path_ok then
-        self.callbacks.notify(_("Error creating download directory"))
+        self.callbacks.notify(_("Error creating export directory"))
         return nil
     end
 
@@ -616,7 +618,7 @@ function ArticleManager:downloadHTMLWithNotes(raindrop)
     -- Crear directorio si no existe
     local path_ok = ensureDirectory(html_dir, lfs)
     if not path_ok then
-        self.callbacks.notify(_("Error creating download directory"))
+        self.callbacks.notify(_("Error creating export directory"))
         return nil
     end
 

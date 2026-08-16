@@ -273,7 +273,7 @@ function Gota:getSubMenuItems()
             callback = function() self:showTokenDialog() end,
         },
         {
-            text = _("Configure download folder"),
+            text = _("Configure export folder"),
             callback = function() self:showDownloadPathDialog() end,
         },
         {

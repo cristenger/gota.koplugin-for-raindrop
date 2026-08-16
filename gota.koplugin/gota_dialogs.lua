@@ -134,7 +134,8 @@ function Dialogs:showDownloadPathDialog(current_path, callbacks)
     
     local button_dialog
     button_dialog = ButtonDialog:new{
-        title = _("Download folder") .. "\n\n" .. 
+        title = _("Export folder") .. "\n\n" ..
+                _("Saved copies and annotated exports are written here. The full reader uses a temporary file instead.") .. "\n\n" ..
                 _("Current folder") .. ":\n" .. current_path .. "\n\n" ..
                 _("Full path") .. ":\n" .. full_path,
         buttons = {
@@ -227,8 +228,8 @@ function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
         end
     end
     path_dialog = InputDialog:new{
-        title = _("Download folder"),
-        description = _("Enter the folder name where downloaded articles will be saved") .. "\n\n" ..
+        title = _("Export folder"),
+        description = _("Enter the folder name for saved copies and annotated exports") .. "\n\n" ..
                      _("Full path") .. ": " .. (callbacks.get_data_dir() .. "/" .. current_path .. "/"),
         input = current_path,
         buttons = {
@@ -248,7 +249,7 @@ function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
                         if new_path and new_path ~= "" then
                             local normalized, validation_error = callbacks.validate(new_path)
                             if not normalized then
-                                callbacks.notify(_("Invalid download folder: ") ..
+                                callbacks.notify(_("Invalid export folder: ") ..
                                     (validation_error or _("Unknown error")), 3)
                                 return
                             end
