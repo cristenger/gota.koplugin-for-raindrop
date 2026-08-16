@@ -196,6 +196,37 @@ test("generated notes HTML escapes metadata and constrains highlight colors", fu
     equal(html:find("onclick", 1, true), nil, "injected attribute")
 end)
 
+test("annotated export turns adversarial remote markup into escaped text", function()
+    local processor = ContentProcessor:new()
+    local malformed = "safe \192\175 RTL مرحبا"
+    local html = processor:createReaderHTMLWithNotes({
+        title = "Title <unsafe>",
+        domain = "example.test",
+        link = "javascript:alert(1)\nnext",
+        note = '<note & "quoted">',
+        cache = { text = [[
+            <body onclick="bad"><script>alert(1)</script><style>.x{display:none}</style>
+            <iframe src="data:text/html,bad">frame</iframe><object>object</object>
+            <svg onload="bad"><text>svg</text></svg><math><mi>x</mi></math>
+            <p>Hello <img src=x onerror=bad> &amp; goodbye</p><!-- comment -->
+        ]] .. malformed .. "</body>" },
+        highlights = {{ text = "<mark>&", note = "one\ntwo", color = "blue" }},
+    })
+    equal(html:find("<script", 1, true), nil, "remote script tag")
+    equal(html:find("<iframe", 1, true), nil, "remote iframe tag")
+    equal(html:find("<svg", 1, true), nil, "remote SVG tag")
+    equal(html:find("onerror", 1, true), nil, "remote attribute")
+    equal(html:find('href="javascript:', 1, true), nil, "unsafe href")
+    contains(html, "Hello", "article text")
+    contains(html, "&amp; goodbye", "escaped article text")
+    contains(html, "&lt;note &amp; &quot;quoted&quot;&gt;", "escaped note")
+    contains(html, "&lt;mark&gt;&amp;", "escaped highlight")
+    contains(html, "javascript:alert(1)", "URL rendered as text")
+    contains(html, "\239\191\189", "malformed UTF-8 replaced")
+    contains(html, "</body>", "closed body")
+    contains(html, "</html>", "closed document")
+end)
+
 test("plain-text highlights cover every documented Raindrop color", function()
     local processor = ContentProcessor:new()
     local content = processor:formatHighlights({

@@ -633,21 +633,19 @@ end
 function ContentProcessor:createReaderHTMLWithNotes(raindrop)
     local body = ""
 
-    -- Solo procesar contenido si existe y el cache está listo
+    -- Annotated exports are Gota-owned HTML. Remote markup is converted to
+    -- plain text and escaped before insertion; unlike the original-copy export,
+    -- no source tags or attributes cross this trust boundary.
     if raindrop.cache and raindrop.cache.text and raindrop.cache.text ~= "" then
-        local content = raindrop.cache.text
-
-        -- Validar UTF-8 y remover BOM
-        content = self:ensureUTF8(content)
-
-        -- Extraer body si existe
-        body = extractHTMLBody(content)
-
-        -- Limpiar HTML para e-ink
-        body = self:cleanHTMLForEink(body)
+        local content = self:ensureUTF8(raindrop.cache.text)
+        for _, tag in ipairs({ "script", "style", "iframe", "object", "svg", "math", "template" }) do
+            content = removePairedElement(content, tag)
+        end
+        local plain_text = self:ensureUTF8(self:htmlToText(extractHTMLBody(content)))
+        body = '<div class="article-text">' .. escapeHTMLMultiline(plain_text) .. '</div>'
     else
         -- Si no hay contenido del artículo, mostrar mensaje traducido
-        local msg = escapeHTMLValue(_("Article content not yet available. The full article cache is still being generated or is not available."))
+        local msg = escapeHTMLValue(_("Article content is not yet available. The web copy is still being generated or is unavailable."))
         body = '<div style="padding: 1.5em; background: #f0f0f0; border: 2px solid #999; margin: 2em 0;">' ..
                '<p style="font-style: italic; color: #333;">' .. msg .. '</p></div>'
     end
@@ -656,6 +654,11 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
     local safe_title = escapeHTMLValue(raindrop.title)
     local safe_domain = escapeHTMLValue(raindrop.domain)
     local safe_date = escapeHTMLValue(raindrop.created and raindrop.created:sub(1,10) or "")
+    local link_section = ""
+    if raindrop.link and raindrop.link ~= "" then
+        link_section = string.format('<div class="source-url"><strong>%s</strong> %s</div>',
+            escapeHTMLValue(_("Original URL:")), escapeHTMLValue(self:ensureUTF8(raindrop.link)))
+    end
 
     -- Generar sección de Notes (si existen)
     local notes_section = ""
@@ -761,6 +764,15 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
         }
 
         .meta div { margin: 0.4em 0; }
+
+        .source-url {
+            margin: 1em 0;
+            overflow-wrap: anywhere;
+        }
+
+        .article-text {
+            white-space: pre-wrap;
+        }
 
         /* Párrafos con espaciado para e-ink */
         p {
@@ -942,6 +954,7 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
     %s
     %s
     %s
+    %s
 </body>
 </html>
 ]],
@@ -949,6 +962,7 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
     safe_title,
     safe_domain,
     safe_date,
+    link_section,
     notes_section,
     highlights_section,
     body)
