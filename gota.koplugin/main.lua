@@ -238,6 +238,17 @@ function Gota:showSavedFileActions(filename)
         title_align = "center",
         buttons = {{
             {
+                -- Opens the file just written, so this works for the original
+                -- copy and for an annotated export alike.
+                text = _("Read now"),
+                callback = function()
+                    self:closeWidget("saved_file_dialog")
+                    self:closeAllWidgets()
+                    self.article_manager:openSavedFile(filename)
+                end,
+            },
+        }, {
+            {
                 text = _("Stay in Gota"),
                 callback = function() self:closeWidget("saved_file_dialog") end,
             },
@@ -840,7 +851,16 @@ function Gota:showRaindropContent(raindrop, source_context)
     -- Construir menú con callbacks
     local current_collection_id = raindrop.collection and raindrop.collection["$id"]
     local in_trash = tonumber(current_collection_id) == -99
+    local offline_state = self.article_manager:getOfflineState(raindrop)
     local items = self.ui_builder:buildArticleMenu(raindrop, cache_available, {
+        continue_reading = function()
+            -- Deliberately independent of cache_available: the copy is on disk.
+            self.article_manager:openOfflineCopy(
+                raindrop,
+                function() self:closeAllWidgets() end,
+                function(rd) self:showRaindropContent(rd, source_context) end
+            )
+        end,
         open_reader = function()
             if cache_available then
                 self.article_manager:openInReader(
@@ -907,8 +927,8 @@ function Gota:showRaindropContent(raindrop, source_context)
         move_to_trash = function()
             self:confirmTrashRaindrop(raindrop, current_collection_id, source_context)
         end,
-    })
-    
+    }, offline_state)
+
     self:closeWidget("article_menu")
     self.widgets.article_menu = self.ui_builder:createMenu(
         raindrop.title or _("Article"),

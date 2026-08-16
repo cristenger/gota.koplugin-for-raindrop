@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 2.3.0\n"
 "Report-Msgid-Bugs-To: https://github.com/cristenger/gota.koplugin-for-raindrop/issues\n"
-"POT-Creation-Date: 2026-08-16 01:47-0400\n"
+"POT-Creation-Date: 2026-08-16 02:33-0400\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: _meta.lua:4 main.lua:375
+#: _meta.lua:4 main.lua:386
 msgid "Gota"
 msgstr ""
 
@@ -117,7 +117,7 @@ msgstr ""
 msgid "HTTP response did not include a status code"
 msgstr ""
 
-#: gota_api.lua:683 gota_api.lua:752 gota_article_manager.lua:348
+#: gota_api.lua:683 gota_api.lua:752 gota_article_manager.lua:417
 msgid "Empty server response"
 msgstr ""
 
@@ -261,84 +261,89 @@ msgstr ""
 msgid "Invalid Trash response"
 msgstr ""
 
-#: gota_article_manager.lua:109
+#: gota_article_manager.lua:111
 #, lua-format
 msgid "Permanent copy is %.1f MiB; configured limit is %.1f MiB"
 msgstr ""
 
-#: gota_article_manager.lua:280 gota_article_manager.lua:307
+#: gota_article_manager.lua:197
+msgid "The offline copy is no longer available; download it again"
+msgstr ""
+
+#: gota_article_manager.lua:349 gota_article_manager.lua:376
 msgid "Invalid article data"
 msgstr ""
 
-#: gota_article_manager.lua:290
+#: gota_article_manager.lua:359
 msgid "Loading full content..."
 msgstr ""
 
-#: gota_article_manager.lua:328 gota_ui_builder.lua:540
+#: gota_article_manager.lua:397 gota_ui_builder.lua:542
 msgid "The web copy is not available"
 msgstr ""
 
-#: gota_article_manager.lua:338
+#: gota_article_manager.lua:407
 msgid "Loading web copy text..."
 msgstr ""
 
-#: gota_article_manager.lua:365
+#: gota_article_manager.lua:434
 msgid "Reloading article..."
 msgstr ""
 
-#: gota_article_manager.lua:379
+#: gota_article_manager.lua:448
 msgid "The article does not yet have a web copy available"
 msgstr ""
 
-#: gota_article_manager.lua:383
+#: gota_article_manager.lua:452
 msgid "Error reloading article: "
 msgstr ""
 
-#: gota_article_manager.lua:383 gota_dialogs.lua:86 gota_dialogs.lua:208
-#: gota_dialogs.lua:227 gota_dialogs.lua:253 main.lua:442 main.lua:466
-#: main.lua:566 main.lua:725 main.lua:825 main.lua:834 main.lua:988
-#: main.lua:1059 main.lua:1110 main.lua:1153 main.lua:1210
+#: gota_article_manager.lua:452 gota_dialogs.lua:86 gota_dialogs.lua:208
+#: gota_dialogs.lua:227 gota_dialogs.lua:253 main.lua:453 main.lua:477
+#: main.lua:577 main.lua:736 main.lua:836 main.lua:845 main.lua:1008
+#: main.lua:1079 main.lua:1130 main.lua:1173 main.lua:1230
 msgid "Unknown error"
 msgstr ""
 
-#: gota_article_manager.lua:391
+#: gota_article_manager.lua:460
 msgid "No content available"
 msgstr ""
 
-#: gota_article_manager.lua:401
+#: gota_article_manager.lua:470
 msgid "Error creating temporary reader directory"
 msgstr ""
 
-#: gota_article_manager.lua:416
+#: gota_article_manager.lua:485
 msgid "Preparing article..."
 msgstr ""
 
-#: gota_article_manager.lua:421
+#: gota_article_manager.lua:490
 msgid "Could not download article for reader: "
 msgstr ""
 
-#: gota_article_manager.lua:422 gota_article_manager.lua:589
-#: gota_article_manager.lua:638 main.lua:862
+#: gota_article_manager.lua:491 gota_article_manager.lua:660
+#: gota_article_manager.lua:709 main.lua:882
 msgid "unknown error"
 msgstr ""
 
-#: gota_article_manager.lua:560
+#: gota_article_manager.lua:629
 msgid "No content available to download"
 msgstr ""
 
-#: gota_article_manager.lua:571 gota_article_manager.lua:621
+#: gota_article_manager.lua:640 gota_article_manager.lua:649
+#: gota_article_manager.lua:692
 msgid "Error creating export directory"
 msgstr ""
 
-#: gota_article_manager.lua:585
+#: gota_article_manager.lua:656
 msgid "Saving permanent copy..."
 msgstr ""
 
-#: gota_article_manager.lua:589 gota_article_manager.lua:638
+#: gota_article_manager.lua:660 gota_article_manager.lua:709
 msgid "Error writing file: "
 msgstr ""
 
-#: gota_article_manager.lua:606
+#: gota_article_manager.lua:677
 msgid "No notes or highlights available to download"
 msgstr ""
 
@@ -393,7 +398,7 @@ msgstr ""
 #: gota_content_processor.lua:377 gota_content_processor.lua:1004
 #: gota_content_processor.lua:1031 gota_content_processor.lua:1111
 #: gota_dialogs.lua:786 gota_ui_builder.lua:359 gota_ui_builder.lua:433
-#: main.lua:691
+#: main.lua:702
 msgid "Untitled"
 msgstr ""
 
@@ -438,11 +443,11 @@ msgstr ""
 msgid "This article has no highlights"
 msgstr ""
 
-#: gota_content_processor.lua:1088 main.lua:1087 main.lua:1099
+#: gota_content_processor.lua:1088 main.lua:1107 main.lua:1119
 msgid "Highlight"
 msgstr ""
 
-#: gota_content_processor.lua:1091 gota_ui_builder.lua:657
+#: gota_content_processor.lua:1091 gota_ui_builder.lua:671
 msgid "Highlight without text"
 msgstr ""
 
@@ -490,7 +495,7 @@ msgstr ""
 msgid "Link"
 msgstr ""
 
-#: gota_content_processor.lua:1138 gota_dialogs.lua:481 main.lua:914
+#: gota_content_processor.lua:1138 gota_dialogs.lua:481 main.lua:934
 msgid "Article"
 msgstr ""
 
@@ -603,7 +608,7 @@ msgstr ""
 #: gota_dialogs.lua:40 gota_dialogs.lua:111 gota_dialogs.lua:162
 #: gota_dialogs.lua:238 gota_dialogs.lua:261 gota_dialogs.lua:299
 #: gota_dialogs.lua:577 gota_dialogs.lua:632 gota_dialogs.lua:748
-#: gota_dialogs.lua:771 gota_dialogs.lua:788 main.lua:808
+#: gota_dialogs.lua:771 gota_dialogs.lua:788 main.lua:819
 msgid "Cancel"
 msgstr ""
 
@@ -708,7 +713,7 @@ msgstr ""
 msgid "Please enter a folder name"
 msgstr ""
 
-#: gota_dialogs.lua:294 main.lua:335
+#: gota_dialogs.lua:294 main.lua:346
 msgid "Search articles"
 msgstr ""
 
@@ -868,7 +873,7 @@ msgstr ""
 msgid "Match mode: any"
 msgstr ""
 
-#: gota_dialogs.lua:555 gota_ui_builder.lua:727 main.lua:524
+#: gota_dialogs.lua:555 gota_ui_builder.lua:741 main.lua:535
 msgid "Close"
 msgstr ""
 
@@ -930,11 +935,11 @@ msgstr ""
 msgid "Please enter at least one search criterion"
 msgstr ""
 
-#: gota_dialogs.lua:745 gota_ui_builder.lua:483
+#: gota_dialogs.lua:745 gota_ui_builder.lua:485
 msgid "Edit note"
 msgstr ""
 
-#: gota_dialogs.lua:766 gota_ui_builder.lua:484
+#: gota_dialogs.lua:766 gota_ui_builder.lua:486
 msgid "Edit tags"
 msgstr ""
 
@@ -946,7 +951,7 @@ msgstr ""
 msgid "Move to Trash?"
 msgstr ""
 
-#: gota_dialogs.lua:789 gota_ui_builder.lua:490
+#: gota_dialogs.lua:789 gota_ui_builder.lua:492
 msgid "Move to Trash"
 msgstr ""
 
@@ -999,31 +1004,31 @@ msgstr ""
 msgid "subcollections"
 msgstr ""
 
-#: gota_ui_builder.lua:30 main.lua:282 main.lua:290
+#: gota_ui_builder.lua:30 main.lua:293 main.lua:301
 msgid "newest first"
 msgstr ""
 
-#: gota_ui_builder.lua:30 main.lua:283
+#: gota_ui_builder.lua:30 main.lua:294
 msgid "oldest first"
 msgstr ""
 
-#: gota_ui_builder.lua:31 main.lua:284
+#: gota_ui_builder.lua:31 main.lua:295
 msgid "title A-Z"
 msgstr ""
 
-#: gota_ui_builder.lua:31 main.lua:285
+#: gota_ui_builder.lua:31 main.lua:296
 msgid "title Z-A"
 msgstr ""
 
-#: gota_ui_builder.lua:32 main.lua:287
+#: gota_ui_builder.lua:32 main.lua:298
 msgid "domain A-Z"
 msgstr ""
 
-#: gota_ui_builder.lua:32 main.lua:288
+#: gota_ui_builder.lua:32 main.lua:299
 msgid "domain Z-A"
 msgstr ""
 
-#: gota_ui_builder.lua:33 main.lua:286
+#: gota_ui_builder.lua:33 main.lua:297
 msgid "custom order"
 msgstr ""
 
@@ -1032,7 +1037,7 @@ msgstr ""
 msgid "Sort: %s"
 msgstr ""
 
-#: gota_ui_builder.lua:43 main.lua:503
+#: gota_ui_builder.lua:43 main.lua:514
 msgid "Text"
 msgstr ""
 
@@ -1040,7 +1045,7 @@ msgstr ""
 msgid "Tag"
 msgstr ""
 
-#: gota_ui_builder.lua:45 main.lua:693
+#: gota_ui_builder.lua:45 main.lua:704
 msgid "Type"
 msgstr ""
 
@@ -1084,11 +1089,11 @@ msgstr ""
 msgid "Aud."
 msgstr ""
 
-#: gota_ui_builder.lua:131 main.lua:698
+#: gota_ui_builder.lua:131 main.lua:709
 msgid "Favorite"
 msgstr ""
 
-#: gota_ui_builder.lua:132 gota_ui_builder.lua:666 main.lua:705
+#: gota_ui_builder.lua:132 gota_ui_builder.lua:680 main.lua:716
 msgid "Note"
 msgstr ""
 
@@ -1097,19 +1102,19 @@ msgstr ""
 msgid "%d highlights"
 msgstr ""
 
-#: gota_ui_builder.lua:136 main.lua:703
+#: gota_ui_builder.lua:136 main.lua:714
 msgid "File"
 msgstr ""
 
-#: gota_ui_builder.lua:137 main.lua:700
+#: gota_ui_builder.lua:137 main.lua:711
 msgid "Reminder"
 msgstr ""
 
-#: gota_ui_builder.lua:138 main.lua:697
+#: gota_ui_builder.lua:138 main.lua:708
 msgid "Broken link"
 msgstr ""
 
-#: gota_ui_builder.lua:140 main.lua:710
+#: gota_ui_builder.lua:140 main.lua:721
 msgid "Web copy"
 msgstr ""
 
@@ -1137,125 +1142,142 @@ msgstr ""
 msgid "View content as plain text"
 msgstr ""
 
-#: gota_ui_builder.lua:465 gota_ui_builder.lua:741
-msgid "Save original copy"
+#: gota_ui_builder.lua:469
+msgid "Update offline copy"
 msgstr ""
 
-#: gota_ui_builder.lua:471
+#: gota_ui_builder.lua:470
+msgid "Download to read offline"
+msgstr ""
+
+#: gota_ui_builder.lua:477
 msgid "View article information"
 msgstr ""
 
-#: gota_ui_builder.lua:480
+#: gota_ui_builder.lua:482
 msgid "Remove from favorites"
 msgstr ""
 
-#: gota_ui_builder.lua:481
+#: gota_ui_builder.lua:483
 msgid "Add to favorites"
 msgstr ""
 
-#: gota_ui_builder.lua:486
+#: gota_ui_builder.lua:488
 msgid "Restore / move to collection"
 msgstr ""
 
-#: gota_ui_builder.lua:487 main.lua:1183
+#: gota_ui_builder.lua:489 main.lua:1203
 msgid "Move to collection"
 msgstr ""
 
-#: gota_ui_builder.lua:496
+#: gota_ui_builder.lua:498
 msgid "View notes"
 msgstr ""
 
-#: gota_ui_builder.lua:504
+#: gota_ui_builder.lua:506
 #, lua-format
 msgid "View highlights (%d)"
 msgstr ""
 
-#: gota_ui_builder.lua:513 gota_ui_builder.lua:752
+#: gota_ui_builder.lua:515 gota_ui_builder.lua:766
 msgid "Export with notes & highlights"
 msgstr ""
 
-#: gota_ui_builder.lua:522 gota_ui_builder.lua:737
+#: gota_ui_builder.lua:524 gota_ui_builder.lua:751
 msgid "Show article URL"
 msgstr ""
 
-#: gota_ui_builder.lua:530
+#: gota_ui_builder.lua:532
 msgid "The web copy is being generated; try again later"
 msgstr ""
 
-#: gota_ui_builder.lua:531
+#: gota_ui_builder.lua:533
 msgid "Web copy generation has failed"
 msgstr ""
 
-#: gota_ui_builder.lua:532
+#: gota_ui_builder.lua:534
 msgid "Could not generate the web copy due to an invalid origin"
 msgstr ""
 
-#: gota_ui_builder.lua:533
+#: gota_ui_builder.lua:535
 msgid "Could not generate the web copy before the timeout"
 msgstr ""
 
-#: gota_ui_builder.lua:534
+#: gota_ui_builder.lua:536
 msgid "Could not generate the web copy due to excessive size"
 msgstr ""
 
-#: gota_ui_builder.lua:539
+#: gota_ui_builder.lua:541
 msgid "The web copy could not be downloaded; try again"
 msgstr ""
 
-#: gota_ui_builder.lua:549
+#: gota_ui_builder.lua:551
 msgid "Try reloading full article"
 msgstr ""
 
-#: gota_ui_builder.lua:554
+#: gota_ui_builder.lua:556
 msgid "This article has no web copy available"
 msgstr ""
 
-#: gota_ui_builder.lua:561
+#: gota_ui_builder.lua:563
 msgid "Reload article metadata"
 msgstr ""
 
-#: gota_ui_builder.lua:581
+#: gota_ui_builder.lua:574
+#, lua-format
+msgid "Continue reading (%d%%)"
+msgstr ""
+
+#: gota_ui_builder.lua:575
+msgid "Continue reading"
+msgstr ""
+
+#: gota_ui_builder.lua:595
 #, lua-format
 msgid "Raindrop page %d of %d"
 msgstr ""
 
-#: gota_ui_builder.lua:582
+#: gota_ui_builder.lua:596
 #, lua-format
 msgid "Raindrop page %d"
 msgstr ""
 
-#: gota_ui_builder.lua:591
+#: gota_ui_builder.lua:605
 msgid "Raindrop: first page"
 msgstr ""
 
-#: gota_ui_builder.lua:598
+#: gota_ui_builder.lua:612
 msgid "Raindrop: previous page"
 msgstr ""
 
-#: gota_ui_builder.lua:605
+#: gota_ui_builder.lua:619
 msgid "Raindrop: next page"
 msgstr ""
 
-#: gota_ui_builder.lua:612
+#: gota_ui_builder.lua:626
 msgid "Raindrop: last page"
 msgstr ""
 
-#: gota_ui_builder.lua:621
+#: gota_ui_builder.lua:635
 #, lua-format
 msgid "%d–%d of %d articles · Raindrop page %d/%d"
 msgstr ""
 
-#: gota_ui_builder.lua:624
+#: gota_ui_builder.lua:638
 #, lua-format
 msgid "%d articles · Raindrop page %d"
 msgstr ""
 
-#: gota_ui_builder.lua:678
+#: gota_ui_builder.lua:692
 msgid "No highlights available"
 msgstr ""
 
-#: gota_ui_builder.lua:731
+#: gota_ui_builder.lua:745
 msgid "Open in reader"
+msgstr ""
+
+#: gota_ui_builder.lua:755
+msgid "Save original copy"
 msgstr ""
 
 #: main.lua:82
@@ -1274,339 +1296,343 @@ msgstr ""
 msgid "Please configure your Raindrop.io token first"
 msgstr ""
 
-#: main.lua:105 main.lua:317 main.lua:321 main.lua:584 main.lua:585
-#: main.lua:1207
+#: main.lua:105 main.lua:328 main.lua:332 main.lua:595 main.lua:596
+#: main.lua:1227
 msgid "All articles"
 msgstr ""
 
-#: main.lua:241
+#: main.lua:243
+msgid "Read now"
+msgstr ""
+
+#: main.lua:252
 msgid "Stay in Gota"
 msgstr ""
 
-#: main.lua:245
+#: main.lua:256
 msgid "Open folder"
 msgstr ""
 
-#: main.lua:272
+#: main.lua:283
 msgid "Configure access token"
 msgstr ""
 
-#: main.lua:276
+#: main.lua:287
 msgid "Configure export folder"
 msgstr ""
 
-#: main.lua:291
+#: main.lua:302
 msgid "Sort order"
 msgstr ""
 
-#: main.lua:297
+#: main.lua:308
 #, lua-format
 msgid "Content limits: %d MiB text / %d MiB reader file"
 msgstr ""
 
-#: main.lua:304
+#: main.lua:315
 msgid "Debug Raindrop API connection"
 msgstr ""
 
-#: main.lua:310
+#: main.lua:321
 msgid "Remove access token"
 msgstr ""
 
-#: main.lua:326
+#: main.lua:337
 msgid "View collections"
 msgstr ""
 
-#: main.lua:340 main.lua:674
+#: main.lua:351 main.lua:685
 msgid "Advanced search"
 msgstr ""
 
-#: main.lua:349 main.lua:352 main.lua:1071
+#: main.lua:360 main.lua:363 main.lua:1091
 msgid "All highlights"
 msgstr ""
 
-#: main.lua:356
+#: main.lua:367
 msgid "Configuration"
 msgstr ""
 
-#: main.lua:363
+#: main.lua:374
 msgid "< Back to Gota"
 msgstr ""
 
-#: main.lua:441
+#: main.lua:452
 msgid "Could not remove the local access token: "
 msgstr ""
 
-#: main.lua:447
+#: main.lua:458
 msgid "Local access token removed"
 msgstr ""
 
-#: main.lua:460
+#: main.lua:471
 msgid "Loading filters..."
 msgstr ""
 
-#: main.lua:466
+#: main.lua:477
 msgid "Error loading filters: "
 msgstr ""
 
-#: main.lua:503
+#: main.lua:514
 msgid "Reader"
 msgstr ""
 
-#: main.lua:515
+#: main.lua:526
 msgid "Content size limits"
 msgstr ""
 
-#: main.lua:516
+#: main.lua:527
 msgid "Text uses the smaller RAM limit; direct reader downloads use the larger file limit."
 msgstr ""
 
-#: main.lua:560 main.lua:1149
+#: main.lua:571 main.lua:1169
 msgid "Loading collections..."
 msgstr ""
 
-#: main.lua:566 main.lua:1153
+#: main.lua:577 main.lua:1173
 msgid "Error retrieving collections:"
 msgstr ""
 
-#: main.lua:588 main.lua:1157
+#: main.lua:599 main.lua:1177
 msgid "Unsorted (inbox)"
 msgstr ""
 
-#: main.lua:589
+#: main.lua:600
 msgid "Unsorted"
 msgstr ""
 
-#: main.lua:610
+#: main.lua:621
 msgid "Broken links"
 msgstr ""
 
-#: main.lua:611
+#: main.lua:622
 msgid "Duplicate links"
 msgstr ""
 
-#: main.lua:632 main.lua:633
+#: main.lua:643 main.lua:644
 msgid "Trash"
 msgstr ""
 
-#: main.lua:643
+#: main.lua:654
 msgid "Reload collections"
 msgstr ""
 
-#: main.lua:655
+#: main.lua:666
 msgid "Raindrop Collections"
 msgstr ""
 
-#: main.lua:659
+#: main.lua:670
 msgid "Some collection information could not be loaded."
 msgstr ""
 
-#: main.lua:665
+#: main.lua:676
 msgid "View articles"
 msgstr ""
 
-#: main.lua:668
+#: main.lua:679
 msgid "Search this collection"
 msgstr ""
 
-#: main.lua:671
+#: main.lua:682
 msgid "Search this collection and subcollections"
 msgstr ""
 
-#: main.lua:679
+#: main.lua:690
 msgid "Highlights in this collection"
 msgstr ""
 
-#: main.lua:695
+#: main.lua:706
 msgid "Tags"
 msgstr ""
 
-#: main.lua:707
+#: main.lua:718
 #, lua-format
 msgid "Highlights: %d"
 msgstr ""
 
-#: main.lua:720
+#: main.lua:731
 msgid "Loading articles..."
 msgstr ""
 
-#: main.lua:725
+#: main.lua:736
 msgid "Error retrieving articles: "
 msgstr ""
 
-#: main.lua:750
+#: main.lua:761
 msgid "Reload"
 msgstr ""
 
-#: main.lua:761
+#: main.lua:772
 msgid "Articles"
 msgstr ""
 
-#: main.lua:790
+#: main.lua:801
 msgid "Sort order: "
 msgstr ""
 
-#: main.lua:796
+#: main.lua:807
 msgid "Sort articles by"
 msgstr ""
 
-#: main.lua:799
+#: main.lua:810
 msgid "Newest first"
 msgstr ""
 
-#: main.lua:800
+#: main.lua:811
 msgid "Oldest first"
 msgstr ""
 
-#: main.lua:801
+#: main.lua:812
 msgid "Title A-Z"
 msgstr ""
 
-#: main.lua:802
+#: main.lua:813
 msgid "Title Z-A"
 msgstr ""
 
-#: main.lua:803
+#: main.lua:814
 msgid "Domain A-Z"
 msgstr ""
 
-#: main.lua:804
+#: main.lua:815
 msgid "Domain Z-A"
 msgstr ""
 
-#: main.lua:805
+#: main.lua:816
 msgid "Custom order"
 msgstr ""
 
-#: main.lua:825 main.lua:834
+#: main.lua:836 main.lua:845
 msgid "Error loading article: "
 msgstr ""
 
-#: main.lua:852
+#: main.lua:872
 msgid "Content is not available yet"
 msgstr ""
 
-#: main.lua:861
+#: main.lua:881
 msgid "Could not load web copy text: "
 msgstr ""
 
-#: main.lua:868
+#: main.lua:888
 msgid "Try Open in full reader or increase the text limit."
 msgstr ""
 
-#: main.lua:901
+#: main.lua:921
 msgid "Favorite updated"
 msgstr ""
 
-#: main.lua:937
+#: main.lua:957
 msgid "No web copy text is loaded"
 msgstr ""
 
-#: main.lua:967
+#: main.lua:987
 msgid "Web copy text"
 msgstr ""
 
-#: main.lua:980
+#: main.lua:1000
 msgid "Searching articles..."
 msgstr ""
 
-#: main.lua:988
+#: main.lua:1008
 msgid "Search error: "
 msgstr ""
 
-#: main.lua:1038
+#: main.lua:1058
 msgid "Search results"
 msgstr ""
 
-#: main.lua:1055
+#: main.lua:1075
 msgid "Loading highlights..."
 msgstr ""
 
-#: main.lua:1059
+#: main.lua:1079
 msgid "Error loading highlights: "
 msgstr ""
 
-#: main.lua:1071
+#: main.lua:1091
 msgid "Highlights"
 msgstr ""
 
-#: main.lua:1085
+#: main.lua:1105
 msgid "View highlight details"
 msgstr ""
 
-#: main.lua:1093
+#: main.lua:1113
 msgid "Open related article"
 msgstr ""
 
-#: main.lua:1106
+#: main.lua:1126
 msgid "Updating bookmark..."
 msgstr ""
 
-#: main.lua:1110
+#: main.lua:1130
 msgid "Could not update bookmark: "
 msgstr ""
 
-#: main.lua:1116
+#: main.lua:1136
 msgid "Bookmark updated"
 msgstr ""
 
-#: main.lua:1130
+#: main.lua:1150
 msgid "Note updated"
 msgstr ""
 
-#: main.lua:1141
+#: main.lua:1161
 msgid "Tags updated"
 msgstr ""
 
-#: main.lua:1161 main.lua:1173
+#: main.lua:1181 main.lua:1193
 msgid "Bookmark moved"
 msgstr ""
 
-#: main.lua:1190
+#: main.lua:1210
 msgid "This item is already in Trash; permanent deletion is not supported."
 msgstr ""
 
-#: main.lua:1195
+#: main.lua:1215
 msgid "Moving bookmark to Trash..."
 msgstr ""
 
-#: main.lua:1200
+#: main.lua:1220
 msgid "Bookmark moved to Trash"
 msgstr ""
 
-#: main.lua:1210
+#: main.lua:1230
 msgid "Could not move bookmark to Trash: "
 msgstr ""
 
-#: main.lua:1220
+#: main.lua:1240
 msgid "Warning: Empty token, cannot test"
 msgstr ""
 
-#: main.lua:1225
+#: main.lua:1245
 msgid "Warning: Token seems very short, but it will be tested anyway"
 msgstr ""
 
-#: main.lua:1228
+#: main.lua:1248
 msgid "Testing token..."
 msgstr ""
 
-#: main.lua:1233
+#: main.lua:1253
 msgid "Verified user"
 msgstr ""
 
-#: main.lua:1234
+#: main.lua:1254
 msgid " (PRO)"
 msgstr ""
 
-#: main.lua:1235
+#: main.lua:1255
 msgid ""
 "Valid token!\n"
 "User: "
 msgstr ""
 
-#: main.lua:1237
+#: main.lua:1257
 msgid "Error with token:\n"
 msgstr ""
 
-#: main.lua:1237
+#: main.lua:1257
 msgid "Invalid token"
 msgstr ""

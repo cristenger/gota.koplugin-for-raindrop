@@ -1207,6 +1207,125 @@ test("ArticleManager requests style normalization for full reader", function()
     equal(raindrop.cache.text, nil, "in-memory copy released")
 end)
 
+-- ArticleManager resolves lfs through require at call time, so tests swap the
+-- loaded module to describe what the export folder contains.
+local function withExportFolder(entries, body)
+    local original = package.loaded["libs/libkoreader-lfs"]
+    package.loaded["libs/libkoreader-lfs"] = {
+        attributes = function(path, field)
+            if field == "mode" and path:sub(-1) == "/" then return "directory" end
+            local name = path:match("([^/]+)$")
+            if not name or entries[name] == nil then return nil end
+            if field == "mode" then return "file" end
+            if field == "modification" then return entries[name] end
+            return nil
+        end,
+        dir = function()
+            local names = { ".", ".." }
+            for name in pairs(entries) do names[#names + 1] = name end
+            table.sort(names)
+            local index = 0
+            return function() index = index + 1; return names[index] end
+        end,
+    }
+    local ok, err = pcall(body)
+    package.loaded["libs/libkoreader-lfs"] = original
+    if not ok then error(err, 0) end
+end
+
+local function offlineManager(entries, api)
+    local manager = ArticleManager:new(api or {}, {}, {}, {
+        showProgress = noop, hideProgress = noop, notify = noop,
+    })
+    manager:setSettings({
+        getFullDownloadPath = function() return "/tmp/exports/" end,
+        getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+    })
+    return manager
+end
+
+test("offline download writes a deterministic path", function()
+    local written
+    withExportFolder({}, function()
+        local manager = offlineManager({}, {
+            downloadRaindropCache = function(_, _, path) written = path; return path end,
+        })
+        local saved = manager:downloadHTML({ _id = 123, title = "Aristotle Quotes",
+            cache = { status = "ready" } })
+        -- The name comes from the existing sanitizer, so it matches what
+        -- downloadHTML has always written and legacy copies stay recognizable.
+        equal(saved, "/tmp/exports/123_Aristotle_Quotes.html", "returned path")
+    end)
+    -- No collision counter: the path must stay stable for KOReader's sidecar.
+    equal(written, "/tmp/exports/123_Aristotle_Quotes.html", "written path")
+end)
+
+test("offline download reuses an existing copy instead of duplicating", function()
+    local written
+    -- A copy saved before this feature, under the older title.
+    withExportFolder({ ["123_Old_Title_1.html"] = 50 }, function()
+        local manager = offlineManager({}, {
+            downloadRaindropCache = function(_, _, path) written = path; return path end,
+        })
+        manager:downloadHTML({ _id = 123, title = "New Title", cache = { status = "ready" } })
+    end)
+    equal(written, "/tmp/exports/123_Old_Title_1.html",
+        "reuses the located copy so the reading position survives")
+end)
+
+test("offline state reports the copy and its progress", function()
+    withExportFolder({ ["123_Title.html"] = 10 }, function()
+        local manager = offlineManager({})
+        manager:setDocSettings({
+            hasSidecarFile = function() return true end,
+            open = function()
+                return { readSetting = function() return 0.43 end }
+            end,
+        })
+        local state = manager:getOfflineState({ _id = 123, title = "Title" })
+        equal(state.path, "/tmp/exports/123_Title.html", "offline path")
+        equal(state.percent, 43, "progress percent")
+        -- Cleanup must never consider an export-folder file its own.
+        equal(manager:isManagedReaderPath(state.path), false, "not a managed reader file")
+    end)
+    withExportFolder({}, function()
+        equal(offlineManager({}):getOfflineState({ _id = 123, title = "Title" }), nil, "no copy")
+    end)
+end)
+
+test("opening an offline copy keeps it and normalizes styles", function()
+    withExportFolder({ ["123_Title.html"] = 10 }, function()
+        local shown
+        local manager = ArticleManager:new({}, {}, {
+            show = function(_, options) shown = options; return true end,
+        }, { showProgress = noop, hideProgress = noop, notify = noop })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        equal(manager:openOfflineCopy({ _id = 123, title = "Title" }, nil, noop), true, "opened")
+        equal(shown.path, "/tmp/exports/123_Title.html", "opens the saved copy")
+        equal(shown.normalize_styles, true, "same reading experience as the full reader")
+    end)
+end)
+
+test("opening a vanished offline copy fails without opening a reader", function()
+    withExportFolder({}, function()
+        local shown, notices = false, 0
+        local manager = ArticleManager:new({}, {}, {
+            show = function() shown = true; return true end,
+        }, { showProgress = noop, hideProgress = noop,
+             notify = function() notices = notices + 1 end })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        equal(manager:openOfflineCopy({ _id = 123, title = "Title" }, nil, noop), false, "not opened")
+        equal(shown, false, "reader never invoked")
+        equal(notices, 1, "user informed")
+    end)
+end)
+
 test("reader cache files are isolated from permanent exports", function()
     local manager = ArticleManager:new({}, {}, {}, {
         showProgress = noop,
@@ -1473,7 +1592,7 @@ test("menu focus uses public item matching and tolerates absent IDs", function()
     equal(absent.switch_call[4].gota_raindrop_id, "99", "absent match remains safe")
 end)
 
-test("original-copy action exists only for ready cache metadata", function()
+test("offline download action exists only for ready cache metadata", function()
     local builder = UIBuilder:new()
     local callback = noop
     local ready = builder:buildArticleMenu({ cache = { status = "ready" } }, true, {
@@ -1481,12 +1600,60 @@ test("original-copy action exists only for ready cache metadata", function()
     })
     local unavailable = builder:buildArticleMenu({}, false, { save_html = callback })
     local ready_action, unavailable_action
-    for _, item in ipairs(ready) do if item.text == "Save original copy" then ready_action = item end end
+    for _, item in ipairs(ready) do
+        if item.text == "Download to read offline" then ready_action = item end
+    end
     for _, item in ipairs(unavailable) do
-        if item.text == "Save original copy" then unavailable_action = item end
+        if item.text == "Download to read offline" then unavailable_action = item end
     end
     equal(ready_action.callback, callback, "direct callback")
     equal(unavailable_action, nil, "unavailable action")
+end)
+
+test("offline reading entry appears only with a downloaded copy", function()
+    local builder = UIBuilder:new()
+    local resume = noop
+    local with_copy = builder:buildArticleMenu({ cache = { status = "ready" } }, true,
+        { continue_reading = resume, save_html = noop }, { path = "/x.html", percent = 43 })
+    equal(with_copy[1].text, "Continue reading (43%)", "entry text with progress")
+    equal(with_copy[1].callback, resume, "entry callback")
+
+    local without_copy = builder:buildArticleMenu({ cache = { status = "ready" } }, true,
+        { continue_reading = resume, save_html = noop }, nil)
+    for _, item in ipairs(without_copy) do
+        equal(item.text ~= "Continue reading", true, "no entry without a copy")
+    end
+
+    -- Progress may be unavailable; the entry must still work.
+    local no_progress = builder:buildArticleMenu({}, true,
+        { continue_reading = resume, save_html = noop }, { path = "/x.html" })
+    equal(no_progress[1].text, "Continue reading", "entry text without progress")
+end)
+
+test("offline reading does not depend on remote availability", function()
+    local builder = UIBuilder:new()
+    -- The file is already on disk, so it must stay readable even when Raindrop
+    -- no longer serves the web copy or the account lost PRO.
+    local menu = builder:buildArticleMenu({}, false,
+        { continue_reading = noop, save_html = noop }, { path = "/x.html", percent = 7 })
+    equal(menu[1].text, "Continue reading (7%)", "entry present without cache metadata")
+    -- The download action still follows remote availability.
+    for _, item in ipairs(menu) do
+        equal(item.text ~= "Download to read offline", true, "no download action")
+    end
+end)
+
+test("download action names the offline outcome", function()
+    local builder = UIBuilder:new()
+    local fresh = builder:buildArticleMenu({ cache = { status = "ready" } }, true,
+        { save_html = noop }, nil)
+    local update = builder:buildArticleMenu({ cache = { status = "ready" } }, true,
+        { save_html = noop, continue_reading = noop }, { path = "/x.html" })
+    local fresh_text, update_text
+    for _, item in ipairs(fresh) do if item.text:find("offline") then fresh_text = item.text end end
+    for _, item in ipairs(update) do if item.text:find("offline") then update_text = item.text end end
+    equal(fresh_text, "Download to read offline", "first download")
+    equal(update_text, "Update offline copy", "refresh an existing copy")
 end)
 
 test("active search summary covers scope, mode, and every operator", function()
@@ -2114,6 +2281,55 @@ test("saved-file result uses one shared action entry point", function()
     equal(Gota.handleSavedFile(fake, nil), false, "cancelled save")
     truthy(Gota.handleSavedFile(fake, "/tmp/articles/item.html"), "successful save")
     equal(shown, "/tmp/articles/item.html", "shared filename")
+end)
+
+test("saved-file dialog offers reading the new copy", function()
+    local Gota = require("main")
+    package.loaded["ui/widget/buttondialog"] = { new = function(_, options) return options end }
+    local opened
+    local fake = {
+        widgets = {}, closeWidget = noop, closeAllWidgets = noop,
+        article_manager = {
+            openSavedFile = function(_, path) opened = path end,
+        },
+    }
+    Gota.showSavedFileActions(fake, "/tmp/articles/7_Item.html")
+    local read_now
+    for _, row in ipairs(fake.widgets.saved_file_dialog.buttons) do
+        for _, button in ipairs(row) do
+            if button.text == "Read now" then read_now = button end
+        end
+    end
+    truthy(read_now, "read-now button present")
+    read_now.callback()
+    -- Opens the file just written, which is correct for the original copy and
+    -- for an annotated export alike.
+    equal(opened, "/tmp/articles/7_Item.html", "opens the file that was just saved")
+end)
+
+test("article detail passes the offline state to the menu", function()
+    local Gota = require("main")
+    local received
+    local raindrop = { _id = 7, title = "Item", cache = { status = "ready" } }
+    local fake = {
+        widgets = {}, closeWidget = noop, notify = noop, toast = noop,
+        settings = { isTokenValid = function() return true end },
+        article_manager = {
+            loadFullArticle = function(_, rd) return rd, nil end,
+            getCacheState = function() return { metadata_available = true } end,
+            getOfflineState = function() return { path = "/tmp/e/7_Item.html", percent = 43 } end,
+        },
+        content_processor = {},
+        ui_builder = {
+            buildArticleMenu = function(_, _, _, _, offline_state)
+                received = offline_state
+                return {}
+            end,
+            createMenu = function() return {} end,
+        },
+    }
+    Gota.showRaindropContent(fake, raindrop)
+    equal(received and received.percent, 43, "offline state reaches the menu builder")
 end)
 
 test("collection screen reads documented nested user statistics counts", function()

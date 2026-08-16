@@ -447,7 +447,7 @@ function UIBuilder:buildCollectionItems(collections, on_select_callback, options
 end
 
 -- Construye items de menú para un artículo individual
-function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
+function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks, offline_state)
     local items = {
         {
             text = _("Open in full reader"),
@@ -461,20 +461,22 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
             select_enabled = cache_available,
             callback = callbacks.show_text,
         },
-        {
-            text = _("Save original copy"),
-            enabled = cache_available,
-            select_enabled = cache_available,
-            callback = callbacks.save_html,
-        },
-        {
-            text = _("View article information"),
-            callback = callbacks.show_info,
-        },
     }
-    if not cache_available or not callbacks.save_html then
-        table.remove(items, 3)
+    -- Built conditionally rather than removed by index: the offline entry
+    -- inserted at the end of this function shifts every fixed position.
+    if cache_available and callbacks.save_html then
+        items[#items + 1] = {
+            text = offline_state and _("Update offline copy")
+                or _("Download to read offline"),
+            enabled = true,
+            select_enabled = true,
+            callback = callbacks.save_html,
+        }
     end
+    items[#items + 1] = {
+        text = _("View article information"),
+        callback = callbacks.show_info,
+    }
 
     if callbacks.toggle_favorite then
         table.insert(items, { text = raindrop.important and _("Remove from favorites") or
@@ -562,7 +564,19 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
             callback = callbacks.reload,
         })
     end
-    
+
+    -- Inserted last so it sits above the web-copy status notes: the file is
+    -- already on disk and stays readable even when Raindrop no longer serves
+    -- the web copy or the account lost PRO.
+    if offline_state and callbacks.continue_reading then
+        table.insert(items, 1, {
+            text = offline_state.percent
+                and string.format(_("Continue reading (%d%%)"), offline_state.percent)
+                or _("Continue reading"),
+            callback = callbacks.continue_reading,
+        })
+    end
+
     return items
 end
 

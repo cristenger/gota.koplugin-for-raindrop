@@ -8,6 +8,8 @@ local logger = require("logger")
 local util = require("util")
 local _ = require("gettext")
 
+local OfflineLibrary = require("gota_offline_library")
+
 local ArticleManager = {}
 
 local CACHE_STATE_FIELD = "_gota_cache_state"
@@ -132,6 +134,73 @@ function ArticleManager:new(api, content_processor, gota_reader, callbacks)
     o.settings = nil  -- Se establecerá después
 
     return o
+end
+
+-- Injected so the dependency-free suite can describe reading progress without
+-- KOReader. Falls back to the real module when the plugin runs on a device.
+function ArticleManager:setDocSettings(docsettings)
+    self.docsettings = docsettings
+end
+
+function ArticleManager:getDocSettings()
+    if self.docsettings ~= nil then return self.docsettings end
+    local ok, docsettings = pcall(require, "docsettings")
+    return ok and docsettings or nil
+end
+
+-- Resolve the offline copy's path: the one already on disk when there is one,
+-- otherwise the deterministic name a download should create.
+function ArticleManager:getOfflinePath(raindrop, for_download)
+    if not raindrop or raindrop._id == nil then return nil end
+    local dir = self.settings and self.settings:getFullDownloadPath() or nil
+    if type(dir) ~= "string" or dir == "" then return nil end
+
+    local safe_id = self:sanitizeID(raindrop._id)
+    local safe_title = self:sanitizeFilename(raindrop.title or "article", 80)
+    local lfs = require("libs/libkoreader-lfs")
+
+    local existing = OfflineLibrary.find(dir, safe_id, safe_title, lfs)
+    if existing then return existing end
+    if not for_download then return nil end
+
+    local name = OfflineLibrary.canonicalName(safe_id, safe_title)
+    if not name then return nil end
+    return (dir:gsub("/+$", "")) .. "/" .. name
+end
+
+function ArticleManager:getOfflineState(raindrop)
+    local path = self:getOfflinePath(raindrop, false)
+    if not path then return nil end
+    return {
+        path = path,
+        percent = OfflineLibrary.progress(path, self:getDocSettings()),
+    }
+end
+
+-- Opens a kept file. No cleanup is registered: the path lives in the export
+-- folder, so isManagedReaderPath rejects it and CloseDocument leaves both the
+-- file and KOReader's reading-position sidecar alone.
+function ArticleManager:openSavedFile(path, close_all_callback, on_return_callback)
+    if type(path) ~= "string" or path == "" then return false end
+    return self.gota_reader:show({
+        path = path,
+        -- Same reading experience as the transient full reader.
+        normalize_styles = true,
+        before_open_callback = close_all_callback,
+        on_return_callback = on_return_callback,
+    }) == true
+end
+
+function ArticleManager:openOfflineCopy(raindrop, close_all_callback, on_return_callback)
+    local path = self:getOfflinePath(raindrop, false)
+    if not path then
+        self.callbacks.notify(_("The offline copy is no longer available; download it again"))
+        return false
+    end
+
+    return self:openSavedFile(path, close_all_callback, function()
+        if on_return_callback then on_return_callback(raindrop) end
+    end)
 end
 
 function ArticleManager:setSettings(settings)
@@ -572,12 +641,14 @@ function ArticleManager:downloadHTML(raindrop)
         return nil
     end
 
-    -- Sanitizar nombre de archivo de forma segura (MEJORADO)
-    local safe_title = self:sanitizeFilename(raindrop.title or "article", 80)
-    local safe_id = self:sanitizeID(raindrop._id)
-
-    -- Generar nombre único para evitar colisiones (NUEVO)
-    local filename = self:getUniqueFilename(html_dir, safe_id, safe_title, ".html")
+    -- Deterministic path, reusing an existing copy when there is one. A stable
+    -- path is what lets KOReader keep the reading position across downloads,
+    -- and it stops repeated saves from piling up numbered duplicates.
+    local filename = self:getOfflinePath(raindrop, true)
+    if not filename then
+        self.callbacks.notify(_("Error creating export directory"))
+        return nil
+    end
 
     local max_bytes = self.settings:getMaxCacheFileBytes()
     local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
