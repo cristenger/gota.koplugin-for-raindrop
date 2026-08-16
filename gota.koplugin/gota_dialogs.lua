@@ -180,10 +180,11 @@ function Dialogs:showFolderPicker(callbacks)
     
     local path_chooser
     path_chooser = PathChooser:new{
-        title = _("Select download folder"),
+        title = _("Long-press a folder to choose it"),
         path = data_dir,
         select_directory = true,
         select_file = false,
+        show_files = false,
         show_hidden = false,
         onConfirm = function(folder_path)
             local canonical_folder = ffiUtil.realpath(folder_path) or folder_path
@@ -194,6 +195,7 @@ function Dialogs:showFolderPicker(callbacks)
                 relative_path = canonical_folder:sub(#data_dir + 2):gsub("/+$", "")
             else
                 callbacks.notify(_("Please select a folder inside the KOReader data folder"), 3)
+                UIManager:nextTick(function() self:showFolderPicker(callbacks) end)
                 return
             end
 
@@ -203,6 +205,7 @@ function Dialogs:showFolderPicker(callbacks)
                 callbacks.notify(_("Folder configured: ") .. (stored_path or relative_path), 3)
             else
                 callbacks.notify(_("Error saving: ") .. (err or _("Unknown error")))
+                UIManager:nextTick(function() self:showFolderPicker(callbacks) end)
             end
         end,
     }
@@ -212,7 +215,17 @@ function Dialogs:showFolderPicker(callbacks)
 end
 
 function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
+    local ButtonDialog = require("ui/widget/buttondialog")
     local path_dialog
+    local function savePath(path)
+        local success, err, stored_path = callbacks.save(path)
+        if success then
+            UIManager:close(path_dialog)
+            callbacks.notify(_("Folder configured: ") .. (stored_path or path), 3)
+        else
+            callbacks.notify(_("Error saving: ") .. (err or _("Unknown error")))
+        end
+    end
     path_dialog = InputDialog:new{
         title = _("Download folder"),
         description = _("Enter the folder name where downloaded articles will be saved") .. "\n\n" ..
@@ -233,20 +246,29 @@ function Dialogs:showDownloadPathInputDialog(current_path, callbacks)
                     callback = function()
                         local new_path = path_dialog:getInputText()
                         if new_path and new_path ~= "" then
-                            new_path = new_path:gsub("^%s+", ""):gsub("%s+$", "")
-                            new_path = new_path:gsub("[%c%p%s]+", "_")  -- Sanitizar
-                            
-                            if new_path == "" then
-                                callbacks.notify(_("Invalid folder name"), 2)
+                            local normalized, validation_error = callbacks.validate(new_path)
+                            if not normalized then
+                                callbacks.notify(_("Invalid download folder: ") ..
+                                    (validation_error or _("Unknown error")), 3)
                                 return
                             end
-                            
-                            local success, err, stored_path = callbacks.save(new_path)
-                            if success then
-                                UIManager:close(path_dialog)
-                                callbacks.notify(_("Folder configured: ") .. (stored_path or new_path), 3)
+                            if normalized ~= new_path then
+                                local confirm_dialog
+                                confirm_dialog = ButtonDialog:new{
+                                    title = _("The folder will be saved as:") .. "\n\n" .. normalized,
+                                    buttons = {{
+                                        { text = _("Cancel"), callback = function()
+                                            UIManager:close(confirm_dialog)
+                                        end },
+                                        { text = _("Use this folder"), callback = function()
+                                            UIManager:close(confirm_dialog)
+                                            savePath(normalized)
+                                        end },
+                                    }},
+                                }
+                                UIManager:show(confirm_dialog)
                             else
-                                callbacks.notify(_("Error saving: ") .. (err or _("Unknown error")))
+                                savePath(normalized)
                             end
                         else
                             callbacks.notify(_("Please enter a folder name"), 2)

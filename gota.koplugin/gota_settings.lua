@@ -1,6 +1,7 @@
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 local logger = require("logger")
+local _ = require("gettext")
 
 local Settings = {}
 local DEFAULT_DOWNLOAD_PATH = "gota_articles"
@@ -36,29 +37,37 @@ local function pathIsInside(base_path, candidate_path)
         candidate_path:sub(1, #base_path + 1) == base_path .. "/"
 end
 
-local function normalizeDownloadPath(path)
-    if type(path) ~= "string" then
-        return DEFAULT_DOWNLOAD_PATH
+local function validateDownloadPath(path)
+    if type(path) ~= "string" then return nil, _("Download path must be text") end
+    if path == "" then return nil, _("Download path cannot be empty") end
+    if path:find("%c") then return nil, _("Download path cannot contain control characters") end
+
+    path = path:gsub("\\", "/")
+    if path:sub(1, 1) == "/" or path:match("^%a:/") then
+        return nil, _("Download path must be relative to the KOReader data folder")
     end
 
-    path = path:gsub("\\", "/"):gsub("^%s+", ""):gsub("%s+$", "")
-    if path == "" or path:sub(1, 1) == "/" or path:find("%c") then
-        return DEFAULT_DOWNLOAD_PATH
-    end
-
+    local util_ok, util = pcall(require, "util")
     local parts = {}
     for part in path:gmatch("[^/]+") do
         if part == ".." then
-            return DEFAULT_DOWNLOAD_PATH
-        elseif part ~= "." and part ~= "" then
-            table.insert(parts, part)
+            return nil, _("Download path cannot contain '..'")
+        elseif part == "." then
+            return nil, _("Download path cannot contain '.'")
+        elseif part ~= "" then
+            local safe = util_ok and util.replaceAllInvalidChars and
+                util.replaceAllInvalidChars(part) or part:gsub('[\\:*?"<>|]', "_")
+            if safe == "" then return nil, _("Download path contains an empty folder name") end
+            table.insert(parts, safe)
         end
     end
 
-    if #parts == 0 then
-        return DEFAULT_DOWNLOAD_PATH
-    end
+    if #parts == 0 then return nil, _("Download path cannot be empty") end
     return table.concat(parts, "/")
+end
+
+local function normalizeDownloadPath(path)
+    return validateDownloadPath(path) or DEFAULT_DOWNLOAD_PATH
 end
 
 function Settings:new()
@@ -155,9 +164,15 @@ function Settings:getDownloadPath()
     return normalizeDownloadPath(self.download_path)
 end
 
+function Settings:validateDownloadPath(path)
+    return validateDownloadPath(path)
+end
+
 function Settings:setDownloadPath(path)
-    self.download_path = normalizeDownloadPath(path)
-    return self.download_path
+    local normalized, validation_error = validateDownloadPath(path)
+    if not normalized then return nil, validation_error end
+    self.download_path = normalized
+    return normalized, nil
 end
 
 function Settings:getFullDownloadPath()

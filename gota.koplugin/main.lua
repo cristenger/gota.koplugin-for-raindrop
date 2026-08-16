@@ -519,13 +519,14 @@ function Gota:showDownloadPathDialog()
         self.settings:getDownloadPath(),
         {
             save = function(new_path)
-                local stored_path = self.settings:setDownloadPath(new_path)
-                local success = self.settings:save()
-                if not success then
-                    self:notify(_("Error saving configuration"))
-                end
-                return success, nil, stored_path
+                local previous_path = self.settings:getDownloadPath()
+                local stored_path, validation_error = self.settings:setDownloadPath(new_path)
+                if not stored_path then return false, validation_error end
+                local success, save_error = self.settings:save()
+                if not success then self.settings:setDownloadPath(previous_path) end
+                return success, save_error, stored_path
             end,
+            validate = function(path) return self.settings:validateDownloadPath(path) end,
             notify = function(...) self:notify(...) end,
             get_data_dir = function() return DataStorage:getDataDir() end,
         }
