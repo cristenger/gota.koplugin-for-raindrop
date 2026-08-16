@@ -20,6 +20,7 @@ flowchart LR
     A --> C["gota_content_processor.lua<br/>texto y HTML"]
     A --> R["gota_reader.lua<br/>ReaderUI"]
     A --> P["gota_api.lua<br/>Raindrop REST v1"]
+    P --> Z["gota_compression.lua<br/>gzip acotado"]
     P --> X["api.raindrop.io"]
     S --> F["settings/gota.lua"]
     A --> H["DataStorage/<download_path>/*.html"]
@@ -30,6 +31,7 @@ flowchart LR
 |---|---|---|
 | `main.lua` | Componer dependencias, registrar menú/Dispatcher y coordinar pantallas | Interpretar HTTP o transformar HTML |
 | `gota_api.lua` | Transporte HTTPS, autenticación, redirects, reintentos, caché de respuestas y endpoints | Construir widgets |
+| `gota_compression.lua` | Descomprimir gzip mediante el zlib incluido en KOReader y limitar la salida | Hacer red o ejecutar comandos externos |
 | `gota_article_manager.lua` | Cargar, recargar, exportar y abrir artículos | Conocer internals de `ReaderUI` |
 | `gota_content_processor.lua` | Sanear UTF-8, convertir HTML a texto y generar documentos locales | Hacer red |
 | `gota_reader.lua` | Abrir/cambiar documento y volver a Gota mediante APIs públicas de KOReader | Preabrir documentos o modificar tablas internas del menú |
@@ -91,7 +93,7 @@ La URL base es `https://api.raindrop.io/rest/v1`. El constructor rechaza HTTP, c
 
 En Kindle, la autenticación del certificado remoto no está implementada en el flujo soportado. Gota no modifica el estado global `ssl.https.cert_verify` ni fuerza `verify = "peer"`; hereda el comportamiento de LuaSec 1.3.2 incluido por KOReader, cuyo cliente HTTPS usa `verify = "none"` por defecto. El tráfico se cifra, pero el servidor no queda autenticado: un atacante activo en la red podría interceptar el Bearer token. El dispositivo debe usarse en una red de confianza. Esta es una limitación aceptada por compatibilidad, no una garantía de seguridad TLS.
 
-Cada llamada inicial incluye `Authorization: Bearer <token>`. Se solicita `Accept-Encoding: identity` para no depender de binarios externos de gzip.
+Cada llamada inicial incluye `Authorization: Bearer <token>`. Gota solicita `Accept-Encoding: identity`, pero algunos hosts de almacenamiento devuelven gzip de todos modos. En ese caso usa el zlib incluido en KOReader: no ejecuta binarios externos y aplica el límite configurado a los bytes ya descomprimidos. Una codificación diferente, como Brotli, se rechaza por nombre.
 
 ### Copia permanente y redirect
 
@@ -141,7 +143,7 @@ Raindrop separa los metadatos de caché del HTML. Gota refleja esa separación:
 | `html_loaded` | existe `cache.text` no vacío y acotado | permite transformar a texto o HTML enriquecido |
 | `download_error` | falló, excedió el límite o llegó vacío | exige recarga/acción explícita |
 
-Abrir el menú o recargar obtiene solo metadatos. La vista de texto descarga en memoria con un preset de 2–16 MiB (4 MiB por defecto). El lector y «Guardar copia original» transmiten directamente a archivo con un preset de 16–128 MiB (32 MiB por defecto), sin cargar antes el body en RAM. `cache.size` permite rechazo anticipado y el sink LTN12 aborta si el body real cruza el límite. Cada archivo usa `.part` y solo se renombra tras el 2xx final. «Exportar con notas y resaltados» no depende del HTML PRO.
+Abrir el menú o recargar obtiene solo metadatos. La vista de texto descarga en memoria con presets de 2–64 MiB; una instalación nueva comienza en 16 MiB. El lector y «Guardar copia original» transmiten directamente a archivo con presets de 16–512 MiB y un valor inicial de 128 MiB, sin cargar antes el cuerpo completo en RAM. Los valores guardados de versiones anteriores siguen siendo válidos. `cache.size` permite rechazo anticipado y el sink LTN12 aborta si el cuerpo recibido cruza el límite. Cuando la respuesta es gzip, el mismo límite vuelve a comprobarse contra la salida descomprimida. Cada archivo usa `.part`; la variante comprimida y la decodificada se eliminan ante cualquier error, y el archivo final solo aparece después del 2xx y del renombrado atómico. «Exportar con notas y resaltados» no depende del HTML PRO.
 
 ### Frontera de confianza de los exports
 
@@ -177,7 +179,7 @@ luac -p *.lua tests/run.lua
 git diff --check
 ```
 
-Cubre 66 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming y límites, envelopes/JSON, reintentos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI` y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+Cubre 73 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI` y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
 
 Antes de publicar una release se requiere además un smoke test en KOReader 2026.07.1 o posterior y una prueba real contra Raindrop para 200/307/401/429. Esas pruebas verifican la integración real de LuaSec en Kindle, el renderizado e-ink y el servicio externo; no pueden sustituirse por mocks.
 

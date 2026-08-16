@@ -15,11 +15,11 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Browse Collections**: Follow Raindrop groups, root order and nested collections
 - **Scoped Search**: Search globally, within a collection, or through its descendants
 - **Advanced Search**: Session-preserved filters with a visible scope, sort and match summary
-- **Read Articles**: View content as plain text or open in full HTML reader
+- **Read Articles**: View web copies as plain text or in the full HTML reader; gzip responses are handled automatically
 - **Personal Notes**: View your personal notes attached to bookmarks
 - **Highlights**: Review highlights globally or by collection without requiring PRO
 - **Bookmark Editing**: Update favorite, note, tags and collection; move safely to/from Trash
-- **Memory Limits**: Separate configurable limits for text-in-RAM and reader-file downloads
+- **Content Limits**: Separate presets up to 64 MiB for text-in-RAM and 512 MiB for reader-file downloads
 - **Save Offline**: Save a byte-faithful original copy or a safer text-based annotated export
 - **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
 - **Configurable**: Customizable download folder with visual folder picker
@@ -143,7 +143,7 @@ Want to add your language? See [l10n/README.md](gota.koplugin/l10n/README.md) fo
 - **Access Token**: Configuration → Configure access token (required)
 - **Download Folder**: Configuration → Configure download folder (default: `gota_articles/`)
 - **Sort Order**: Newest, oldest, title, domain or Raindrop custom order
-- **Content Limits**: 2–16 MiB for in-memory text and 16–128 MiB for reader/file downloads (default: 4 MiB / 32 MiB)
+- **Content Limits**: 2–64 MiB for in-memory text and 16–512 MiB for reader/file downloads (new-install default: 16 MiB / 128 MiB; existing selections are preserved)
 - **Debug**: Configuration → Debug Raindrop API connection (troubleshooting)
 
 ## Troubleshooting
@@ -158,6 +158,12 @@ This means Raindrop's web copy is unavailable or has not been loaded into Gota's
 - You're using a free Raindrop.io account (web copies require PRO)
 - Raindrop has not generated the web copy yet (PRO users: wait a moment and reload the metadata)
 - The article source doesn't allow caching
+
+### A web copy exceeds the text limit
+
+The plain-text action keeps the complete HTML in RAM, so it uses the smaller text limit. Gota now reports the exact cause and size instead of a combined unavailable/size message. Use **Open in full reader** for a larger streamed file, or raise the text limit under **Configuration → Content limits**. Tapping the plain-text action again is an explicit retry after a previous download error.
+
+Gota asks Raindrop for an identity response but also decodes gzip in-process when a storage server returns it anyway. The configured limit applies to decompressed bytes. Other encodings are rejected with their name and leave no partial reader file behind.
 
 ### TLS Certificate Limitation on Kindle
 
@@ -198,6 +204,7 @@ python3 extract_strings.py
 gota.koplugin/
 ├── main.lua                  # Plugin coordinator
 ├── gota_api.lua              # Raindrop.io API client
+├── gota_compression.lua      # Bounded in-process gzip decoding
 ├── gota_settings.lua         # Configuration management
 ├── gota_dialogs.lua          # UI dialogs
 ├── gota_ui_builder.lua       # Menu construction

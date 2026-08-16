@@ -370,7 +370,7 @@ function Dialogs:showDebugInfo(debug_info_table, server_url, transport_security)
             tostring(debug_info_table.max_cache_file_mib) .. " MiB"
     end
     debug_info = debug_info .. "\n" ..
-        _("Modules: API, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager")
+        _("Modules: API, Compression, Settings, ContentProcessor, GotaReader, UIBuilder, Dialogs, ArticleManager")
     
     local text_viewer = TextViewer:new{
         title = _("Debug information — Gota"),

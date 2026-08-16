@@ -9,6 +9,7 @@
 - Session-only advanced-search state with a visible summary of scope, sort, match mode and active filters.
 - Stable article-row identity and source-aware refresh after favorite, note, tag, collection and Trash mutations.
 - Spanish catalog audit for missing/fuzzy entries, printf placeholders and unexplained source-equal translations.
+- Bounded in-process gzip decoding for Raindrop web copies, including CDN responses that omit the encoding header.
 
 ### Changed
 
@@ -16,16 +17,19 @@
 - Manual download paths preserve valid spaces and nested folders, reject unsafe input without replacing it with a default, and ask before applying sanitizer changes.
 - Annotated exports convert remote article markup to escaped plain text. Original copies remain byte-faithful web content and are identified separately.
 - Spanish UI terminology now consistently distinguishes copia web, copia original, archivo temporal and resaltados.
+- New installations use 16 MiB for plain-text memory and 128 MiB for reader files. Presets now reach 64 MiB and 512 MiB, while saved legacy selections remain valid.
 
 ### Fixed
 
 - Temporary ReaderUI files are cleaned through `CloseDocument` and startup recovery with an exact canonical-path/name allowlist; `.sdr` sidecars and permanent exports are preserved.
 - Successful bookmark edits close stale detail/collection screens and reload their authoritative source page; failures keep the current detail open.
 - The token dialog and debug view state the actual TLS limitation: encryption is available, remote certificate/hostname authentication is not.
+- Plain-text loading reports the specific download or size error, avoids duplicate notices and retries when the user explicitly selects the action again.
+- Gzip output is limited after decompression, and failed or oversized transfers remove both compressed and decoded partial files.
 
 ### Validation and open gates
 
-- Expanded the dependency-free suite from 51 to 66 cases and validated plugin startup with the isolated KOReader 2026.07 macOS runtime.
+- Expanded the dependency-free suite from 51 to 73 cases, including gzip, decompressed-size and explicit-retry coverage, and validated plugin startup with the isolated macOS Kindle profile.
 - Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
 - No release version bump is included until live Raindrop and physical-device gates pass.
 
