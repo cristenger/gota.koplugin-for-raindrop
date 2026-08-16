@@ -87,13 +87,14 @@ This creates the `.mo` binary file that KOReader uses at runtime.
 
 ## Translation Statistics
 
-The Gota 2.3.0 template contains **328 messages**. `msgfmt` recognizes all 328 Spanish entries as non-empty, but this is syntactic coverage, not linguistic QA: several legacy entries still mirror the English source and need review.
-
-To obtain current statistics instead of maintaining counts by hand:
+Calculate current statistics from the catalog instead of maintaining a number in this document:
 
 ```bash
 msgfmt --statistics --check -o /dev/null l10n/es/gota.po
+python3 tests/check_translations.py
 ```
+
+The audit rejects missing/fuzzy Spanish entries, incompatible printf placeholders, and source-equal translations unless the script documents a justified proper-name, protocol, cognate, or abbreviation exception.
 
 ## Testing Translations
 
@@ -142,6 +143,10 @@ Compiles `.po` → `.mo` files using `msgfmt`.
 ./compile_translations.sh es
 ```
 
+### `tests/check_translations.py`
+
+Audits Spanish coverage and placeholder compatibility and prevents new untranslated English strings from being disguised as completed entries. Its small source-equality allowlist is reviewed in code.
+
 ### `replace_strings.py`
 One-time migration script that replaced Spanish strings with English in the source code. Not needed for regular translation work.
 
@@ -188,8 +193,8 @@ msgstr "Token válido!\nUsuario: "
 
 ### Complex Dialog
 ```po
-msgid "Cached content could not be downloaded: "
-msgstr "No se pudo descargar el contenido en caché: "
+msgid "The web copy could not be downloaded; try again"
+msgstr "No se pudo descargar la copia web; inténtalo de nuevo"
 ```
 
 ## Contributing

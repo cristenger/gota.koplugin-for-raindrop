@@ -527,17 +527,17 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
     -- Mensaje de estado del caché
     if not cache_available and raindrop.cache then
         local status_names = {
-            retry = _("Cache is being generated, try again later"),
-            failed = _("Cache generation has failed"),
-            ["invalid-origin"] = _("Could not generate cache due to invalid origin"),
-            ["invalid-timeout"] = _("Could not generate cache due to timeout"),
-            ["invalid-size"] = _("Could not generate cache due to excessive size")
+            retry = _("The web copy is being generated; try again later"),
+            failed = _("Web copy generation has failed"),
+            ["invalid-origin"] = _("Could not generate the web copy due to an invalid origin"),
+            ["invalid-timeout"] = _("Could not generate the web copy before the timeout"),
+            ["invalid-size"] = _("Could not generate the web copy due to excessive size")
         }
         local tracked_state = raindrop._gota_cache_state
         local cache_message
         if tracked_state and tracked_state.download_error then
-            cache_message = _("Cached content could not be downloaded; try again")
-        else cache_message = status_names[raindrop.cache.status] or _("Cache is not available") end
+            cache_message = _("The web copy could not be downloaded; try again")
+        else cache_message = status_names[raindrop.cache.status] or _("The web copy is not available") end
         
         table.insert(items, 1, {
             text = cache_message,
@@ -551,7 +551,7 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
         })
     elseif not cache_available then
         table.insert(items, 1, {
-            text = _("This article has no cached content available"),
+            text = _("This article has no web copy available"),
             enabled = false,
             select_enabled = false,
         })

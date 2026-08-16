@@ -608,10 +608,10 @@ function API:makeRequest(endpoint, method, body, request_options)
                 return nil, _("Unexpected redirect from server: ") .. tostring(status), status, headers
             end
             if redirect_count >= MAX_REDIRECTS then
-                return nil, _("Too many redirects while downloading cached article"), status, headers
+                return nil, _("Too many redirects while downloading the web copy"), status, headers
             end
             if not isSafeHttpsUrl(location) then
-                return nil, _("Refused an unsafe cache redirect"), status, headers
+                return nil, _("Refused an unsafe web-copy redirect"), status, headers
             end
 
             redirect_count = redirect_count + 1

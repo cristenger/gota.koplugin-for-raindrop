@@ -1,5 +1,36 @@
 # Changelog - Gota Plugin for KOReader
 
+## Unreleased - UX and lifecycle hardening
+
+### Added
+
+- Local access-token removal with confirmation and rollback if settings cannot be flushed.
+- Direct «Save original copy» from article details and one post-save choice to remain in Gota or open the destination folder.
+- Session-only advanced-search state with a visible summary of scope, sort, match mode and active filters.
+- Stable article-row identity and source-aware refresh after favorite, note, tag, collection and Trash mutations.
+- Spanish catalog audit for missing/fuzzy entries, printf placeholders and unexplained source-equal translations.
+
+### Changed
+
+- Article and highlight rows now use natural wrapping instead of forced newlines; status badges are written out and remote pagination is available above and below the list.
+- Manual download paths preserve valid spaces and nested folders, reject unsafe input without replacing it with a default, and ask before applying sanitizer changes.
+- Annotated exports convert remote article markup to escaped plain text. Original copies remain byte-faithful web content and are identified separately.
+- Spanish UI terminology now consistently distinguishes copia web, copia original, archivo temporal and resaltados.
+
+### Fixed
+
+- Temporary ReaderUI files are cleaned through `CloseDocument` and startup recovery with an exact canonical-path/name allowlist; `.sdr` sidecars and permanent exports are preserved.
+- Successful bookmark edits close stale detail/collection screens and reload their authoritative source page; failures keep the current detail open.
+- The token dialog and debug view state the actual TLS limitation: encryption is available, remote certificate/hostname authentication is not.
+
+### Validation and open gates
+
+- Expanded the dependency-free suite from 51 to 66 cases and validated plugin startup with the isolated KOReader 2026.07 macOS runtime.
+- Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
+- No release version bump is included until live Raindrop and physical-device gates pass.
+
+---
+
 ## v2.3.0 - Raindrop capabilities for e-readers (August 15, 2026)
 
 ### Added

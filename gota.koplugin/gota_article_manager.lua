@@ -335,7 +335,7 @@ function ArticleManager:loadCacheContent(raindrop)
         return raindrop
     end
 
-    self.callbacks.showProgress(_("Loading cached content..."))
+    self.callbacks.showProgress(_("Loading web copy text..."))
     local cache_content, err = self.api:getRaindropCache(raindrop._id, max_bytes)
     self.callbacks.hideProgress()
 
@@ -375,7 +375,7 @@ function ArticleManager:reloadArticle(raindrop_id, on_success_callback)
 
     if raindrop then
         if not self:getCacheState(raindrop).metadata_available then
-            self.callbacks.notify(_("The article does not yet have cached content available"))
+            self.callbacks.notify(_("The article does not yet have a web copy available"))
         end
         on_success_callback(raindrop)
     else

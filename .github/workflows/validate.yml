@@ -16,17 +16,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install Lua 5.1 and gettext
-        run: sudo apt-get update && sudo apt-get install --yes lua5.1 gettext
+      - name: Install Lua 5.1, LuaJIT and gettext
+        run: sudo apt-get update && sudo apt-get install --yes lua5.1 luajit gettext
 
       - name: Validate Lua and regression tests
         working-directory: gota.koplugin
         run: |
           luac5.1 -p *.lua tests/run.lua
           lua5.1 tests/run.lua
+          luajit tests/run.lua
 
       - name: Validate localization and scripts
         working-directory: gota.koplugin
         run: |
-          python3 -m py_compile extract_strings.py replace_strings.py
+          python3 -m py_compile extract_strings.py replace_strings.py tests/check_translations.py
           msgfmt --check -o /dev/null l10n/es/gota.po
+          python3 tests/check_translations.py
+
+      - name: Reject whitespace errors
+        run: git diff --check

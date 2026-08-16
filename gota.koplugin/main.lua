@@ -294,7 +294,7 @@ function Gota:getSubMenuItems()
         },
         {
             text_func = function()
-                return string.format(_("Cache limits: %d MiB text / %d MiB reader"),
+                return string.format(_("Content limits: %d MiB text / %d MiB reader file"),
                     self.settings:getMaxCacheMemoryBytes() / 1048576,
                     self.settings:getMaxCacheFileBytes() / 1048576)
             end,
@@ -493,7 +493,7 @@ function Gota:showCacheLimitPicker()
         }
     end
     dialog = ButtonDialog:new{
-        title = _("Cache size limits") .. "\n" ..
+        title = _("Content size limits") .. "\n" ..
             _("Text uses the smaller RAM limit; direct reader downloads use the larger file limit."),
         buttons = {
             { presetButton("memory", 2), presetButton("memory", 4) },
@@ -901,7 +901,7 @@ end
 
 function Gota:showRaindropCachedContent(raindrop, source_context)
     if not raindrop.cache or not raindrop.cache.text then
-        self:notify(_("No cached content available"))
+        self:notify(_("No web copy text is loaded"))
         return
     end
     
@@ -931,7 +931,7 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
     }, raindrop)
     
     self.widgets.text_viewer = self.dialogs:showContentViewer(
-        _("Cached content"),
+        _("Web copy text"),
         formatted_content,
         buttons
     )

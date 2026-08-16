@@ -1163,7 +1163,7 @@ function ContentProcessor:formatArticleInfo(raindrop)
 
     if raindrop.cache then
         if raindrop.cache.status == "ready" then
-            content = content .. _("Cache: ") .. _("Available") .. "\n"
+            content = content .. _("Web copy: ") .. _("Available") .. "\n"
             if raindrop.cache.size then
                 local cache_size = humanFileSize(raindrop.cache.size)
                 if cache_size then content = content .. _("Size: ") .. cache_size .. "\n" end
@@ -1179,7 +1179,7 @@ function ContentProcessor:formatArticleInfo(raindrop)
                 ["invalid-timeout"] = _("Timeout"),
                 ["invalid-size"] = _("Invalid size")
             }
-            content = content .. _("Cache status: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n"
+            content = content .. _("Web copy status: ") .. (status_names[raindrop.cache.status] or raindrop.cache.status) .. "\n"
         end
         content = content .. "\n"
     end
