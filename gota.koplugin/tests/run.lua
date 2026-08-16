@@ -189,6 +189,68 @@ test("e-ink HTML cleaning removes active elements and preserves preformatted tex
     contains(cleaned, "<PRE>line 1\n    line 2</PRE>", "preformatted content")
 end)
 
+test("plain text removes hidden page code inside an article", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText([[
+        <article>
+            <h1>VISIBLE_TITLE</h1>
+            <ScRiPt type="module">GOTA_SCRIPT_JUNK</sCrIpT>
+            <STYLE media="screen">GOTA_STYLE_JUNK</STYLE>
+            <template>GOTA_TEMPLATE_JUNK</template>
+            <svg><text>GOTA_SVG_JUNK</text></svg>
+            <iframe>GOTA_IFRAME_JUNK</iframe>
+            <object>GOTA_OBJECT_JUNK</object>
+            <!-- GOTA_COMMENT_JUNK -->
+            <p>VISIBLE_BODY</p>
+        </article>
+    ]])
+
+    contains(plain, "VISIBLE_TITLE", "article title")
+    contains(plain, "VISIBLE_BODY", "article body")
+    for _, marker in ipairs({
+        "GOTA_SCRIPT_JUNK",
+        "GOTA_STYLE_JUNK",
+        "GOTA_TEMPLATE_JUNK",
+        "GOTA_SVG_JUNK",
+        "GOTA_IFRAME_JUNK",
+        "GOTA_OBJECT_JUNK",
+        "GOTA_COMMENT_JUNK",
+    }) do
+        equal(plain:find(marker, 1, true), nil, marker)
+    end
+end)
+
+test("plain text preserves code and escaped tag examples", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText([[
+        <article>
+            <pre><code>if (x &lt; 2) { return "&lt;style&gt;"; }</code></pre>
+            <p>VISIBLE_PROSE</p>
+        </article>
+    ]])
+
+    contains(plain, "if (x < 2)", "code content")
+    contains(plain, "<style>", "escaped tag example")
+    contains(plain, "VISIBLE_PROSE", "article prose")
+end)
+
+test("plain text sanitizes documents without article or main", function()
+    local processor = ContentProcessor:new()
+    local plain = processor:htmlToText([[
+        <body>
+            <script>GOTA_SCRIPT_JUNK</script>
+            <style>GOTA_STYLE_JUNK</style>
+            <template>GOTA_TEMPLATE_JUNK</template>
+            <p>VISIBLE_DOCUMENT_BODY</p>
+        </body>
+    ]])
+
+    contains(plain, "VISIBLE_DOCUMENT_BODY", "document body")
+    equal(plain:find("GOTA_SCRIPT_JUNK", 1, true), nil, "script content")
+    equal(plain:find("GOTA_STYLE_JUNK", 1, true), nil, "style content")
+    equal(plain:find("GOTA_TEMPLATE_JUNK", 1, true), nil, "template content")
+end)
+
 test("generated notes HTML escapes metadata and constrains highlight colors", function()
     local processor = ContentProcessor:new()
     local html = processor:createReaderHTMLWithNotes({

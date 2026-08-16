@@ -142,6 +142,26 @@ local function removePairedElement(content, tag)
     return (content:gsub("<%s*" .. pattern .. "[^>]*>.-</%s*" .. pattern .. "%s*>", ""))
 end
 
+local RAW_TEXT_ELEMENTS = { "script", "style" }
+local PLAIN_TEXT_HIDDEN_ELEMENTS = { "template", "svg", "iframe", "object" }
+
+local function removePairedElements(content, tags)
+    for _, tag in ipairs(tags) do
+        content = removePairedElement(content, tag)
+    end
+    return content
+end
+
+local function stripRawTextElements(content)
+    return removePairedElements(content, RAW_TEXT_ELEMENTS)
+end
+
+local function stripNonTextElements(content)
+    content = stripRawTextElements(content)
+    content = removePairedElements(content, PLAIN_TEXT_HIDDEN_ELEMENTS)
+    return (content:gsub("<!%-%-.-%-%->", ""))
+end
+
 local function removeOpenTag(content, tag)
     local pattern = caseInsensitiveTag(tag)
     return (content:gsub("<%s*/?%s*" .. pattern .. "[^>]*>", ""))
@@ -205,7 +225,7 @@ function ContentProcessor:htmlToText(html_content)
         return ""
     end
     html_content = self:ensureUTF8(html_content)
-    local content = html_content
+    local content = stripNonTextElements(html_content)
     local original_length = #content
     logger.dbg("Gota ContentProcessor: Procesando contenido HTML, longitud original:", original_length)
 
@@ -325,9 +345,7 @@ end
 
 -- Conversión simple de HTML a texto (fallback)
 function ContentProcessor:simpleHtmlToText(html_content)
-    local content = html_content
-    content = removePairedElement(content, "script")
-    content = removePairedElement(content, "style")
+    local content = stripNonTextElements(html_content)
     content = content:gsub("<[Bb][Rr][^>]*>", "\n")
     content = content:gsub("<[Pp][^>]*>", "\n")
     content = content:gsub("</[Pp]%s*>", "\n")
@@ -382,8 +400,7 @@ function ContentProcessor:cleanHTMLForEink(html_content)
     local original_size = #content
 
     -- 1. Remover elementos no renderizables en e-ink
-    content = removePairedElement(content, "script")
-    content = removePairedElement(content, "style")
+    content = stripRawTextElements(content)
     -- Keep useful fallback content from <noscript>, only remove its wrapper.
     content = removeOpenTag(content, "noscript")
 
@@ -638,9 +655,8 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
     -- no source tags or attributes cross this trust boundary.
     if raindrop.cache and raindrop.cache.text and raindrop.cache.text ~= "" then
         local content = self:ensureUTF8(raindrop.cache.text)
-        for _, tag in ipairs({ "script", "style", "iframe", "object", "svg", "math", "template" }) do
-            content = removePairedElement(content, tag)
-        end
+        content = stripNonTextElements(content)
+        content = removePairedElement(content, "math")
         local plain_text = self:ensureUTF8(self:htmlToText(extractHTMLBody(content)))
         body = '<div class="article-text">' .. escapeHTMLMultiline(plain_text) .. '</div>'
     else
