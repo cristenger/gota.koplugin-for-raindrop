@@ -751,13 +751,48 @@ end)
 
 test("cache metadata preflight prevents oversized memory requests", function()
     local calls = 0
+    local notifications = 0
     local manager = ArticleManager:new({
         getRaindropCache = function() calls = calls + 1 return "unexpected" end,
-    }, {}, {}, { showProgress = noop, hideProgress = noop, notify = noop })
+    }, {}, {}, {
+        showProgress = noop,
+        hideProgress = noop,
+        notify = function() notifications = notifications + 1 end,
+    })
     manager:setSettings({ getMaxCacheMemoryBytes = function() return 1024 end })
-    local item = manager:loadCacheContent({ _id = 7, cache = { status = "ready", size = 1025 } })
+    local item, err = manager:loadCacheContent(
+        { _id = 7, cache = { status = "ready", size = 1025 } })
     equal(calls, 0, "network calls")
     equal(item.cache.text, nil, "HTML")
+    contains(err, "configured limit", "specific size error")
+    equal(notifications, 0, "manager notifications")
+end)
+
+test("explicit cache retries bypass a remembered download error", function()
+    local calls = 0
+    local manager = ArticleManager:new({
+        getRaindropCache = function()
+            calls = calls + 1
+            if calls == 1 then return nil, "temporary cache failure" end
+            return "<html>recovered</html>"
+        end,
+    }, {}, {}, { showProgress = noop, hideProgress = noop, notify = noop })
+    manager:setSettings({ getMaxCacheMemoryBytes = function() return 1024 end })
+
+    local item, first_error = manager:loadCacheContent(
+        { _id = 7, cache = { status = "ready", size = 42 } })
+    equal(first_error, "temporary cache failure", "first error")
+    equal(calls, 1, "first attempt")
+
+    local unchanged, remembered_error = manager:loadCacheContent(item)
+    equal(unchanged, item, "remembered item")
+    equal(remembered_error, "temporary cache failure", "remembered error")
+    equal(calls, 1, "automatic retry suppressed")
+
+    local recovered, retry_error = manager:loadCacheContent(item, { retry = true })
+    equal(retry_error, nil, "retry error")
+    equal(recovered.cache.text, "<html>recovered</html>", "retry content")
+    equal(calls, 2, "explicit retry")
 end)
 
 test("reader precondition failure keeps the current menu open", function()
@@ -1221,8 +1256,12 @@ test("settings normalize manipulated paths and unsupported sort values", functio
     equal(settings:getSortOrder(), "-created", "rejected search-only sort")
     settings:setSortOrder("domain")
     equal(settings:getSortOrder(), "domain", "domain sort")
-    equal(settings:getMaxCacheMemoryBytes(), 4 * 1024 * 1024, "memory default")
-    equal(settings:getMaxCacheFileBytes(), 32 * 1024 * 1024, "file default")
+    equal(settings:getMaxCacheMemoryBytes(), 16 * 1024 * 1024, "memory default")
+    equal(settings:getMaxCacheFileBytes(), 128 * 1024 * 1024, "file default")
+    equal(settings:setMaxCacheMemoryBytes(64 * 1024 * 1024),
+        64 * 1024 * 1024, "modern memory preset")
+    equal(settings:setMaxCacheFileBytes(512 * 1024 * 1024),
+        512 * 1024 * 1024, "modern file preset")
     equal(settings:setMaxCacheMemoryBytes(3 * 1024 * 1024), nil, "invalid memory preset")
     truthy(settings:clearToken(), "clear token")
     equal(settings:getToken(), "", "cleared token")

@@ -302,10 +302,11 @@ function ArticleManager:loadFullArticle(raindrop)
 end
 
 -- Carga el contenido del caché si no está presente
-function ArticleManager:loadCacheContent(raindrop)
+function ArticleManager:loadCacheContent(raindrop, options)
     if type(raindrop) ~= "table" then
-        return raindrop
+        return raindrop, _("Invalid article data")
     end
+    options = type(options) == "table" and options or {}
     if not raindrop[DETACHED_FIELD] then
         raindrop = copyRaindrop(raindrop)
     end
@@ -314,43 +315,43 @@ function ArticleManager:loadCacheContent(raindrop)
     -- Si ya tiene HTML cargado o no hay metadatos disponibles, no descargar.
     if state.html_loaded then
         self:setCacheDownloadState(raindrop, nil)
-        return raindrop
+        return raindrop, nil
     end
-    if state.download_error then
+    if state.download_error and not options.retry then
         logger.dbg("ArticleManager: Caché no reintentado automáticamente tras un error")
-        return raindrop
+        return raindrop, state.download_error
     end
     if not state.metadata_available then
         local status = raindrop and raindrop.cache and raindrop.cache.status or "missing"
         logger.dbg("ArticleManager: Caché no está listo, status:", status)
         self:setCacheDownloadState(raindrop, nil)
-        return raindrop
+        return raindrop, _("The web copy is not available")
     end
 
-    local max_bytes = self.settings and self.settings:getMaxCacheMemoryBytes() or 4 * 1024 * 1024
+    local max_bytes = self.settings and self.settings:getMaxCacheMemoryBytes() or 16 * 1024 * 1024
     local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
     if not fits then
         self:setCacheDownloadState(raindrop, size_error)
-        self.callbacks.notify(size_error)
-        return raindrop
+        return raindrop, size_error
     end
 
     self.callbacks.showProgress(_("Loading web copy text..."))
     local cache_content, err = self.api:getRaindropCache(raindrop._id, max_bytes)
     self.callbacks.hideProgress()
 
+    local load_error
     if hasContent(cache_content) then
         raindrop.cache.text = cache_content
         self:setCacheDownloadState(raindrop, nil)
         logger.dbg("ArticleManager: Contenido HTML cargado, longitud:", #cache_content)
     else
-        local load_error = err or "contenido vacío"
+        load_error = err or _("Empty server response")
         raindrop.cache.text = nil
         self:setCacheDownloadState(raindrop, load_error)
         logger.warn("ArticleManager: No se pudo cargar caché:", load_error)
     end
 
-    return raindrop
+    return raindrop, load_error
 end
 
 -- Verifica si un artículo tiene caché disponible
@@ -403,7 +404,7 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     end
 
     local filename = self:getReaderCachePath(raindrop._id)
-    local max_bytes = self.settings and self.settings:getMaxCacheFileBytes() or 32 * 1024 * 1024
+    local max_bytes = self.settings and self.settings:getMaxCacheFileBytes() or 128 * 1024 * 1024
     local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
     if not fits then
         self.callbacks.notify(size_error)

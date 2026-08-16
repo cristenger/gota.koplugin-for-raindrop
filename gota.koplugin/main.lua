@@ -497,8 +497,10 @@ function Gota:showCacheLimitPicker()
         buttons = {
             { presetButton("memory", 2), presetButton("memory", 4) },
             { presetButton("memory", 8), presetButton("memory", 16) },
+            { presetButton("memory", 32), presetButton("memory", 64) },
             { presetButton("file", 16), presetButton("file", 32) },
             { presetButton("file", 64), presetButton("file", 128) },
+            { presetButton("file", 256), presetButton("file", 512) },
             {{ text = _("Close"), id = "close", callback = function() UIManager:close(dialog) end }},
         },
     }
@@ -831,10 +833,22 @@ function Gota:showRaindropContent(raindrop, source_context)
             end
         end,
         show_text = function()
-            local loaded = self.article_manager:loadCacheContent(raindrop)
+            local loaded, load_error = self.article_manager:loadCacheContent(
+                raindrop, { retry = true })
             if self.article_manager:hasValidCache(loaded) then
                 self:showRaindropCachedContent(loaded, source_context)
-            else self:notify(_("Content exceeds the text limit or is unavailable")) end
+            else
+                local message = _("Could not load web copy text: ") ..
+                    (load_error or _("unknown error"))
+                local cache_size = loaded and loaded.cache and tonumber(loaded.cache.size)
+                local reader_limit = self.settings:getMaxCacheFileBytes()
+                local text_limit = self.settings:getMaxCacheMemoryBytes()
+                if cache_size and cache_size > text_limit and cache_size <= reader_limit then
+                    message = message .. "\n" ..
+                        _("Try Open in full reader or increase the text limit.")
+                end
+                self:notify(message)
+            end
         end,
         show_info = function()
             self:showRaindropInfo(raindrop)

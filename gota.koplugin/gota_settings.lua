@@ -7,10 +7,24 @@ local Settings = {}
 local DEFAULT_DOWNLOAD_PATH = "gota_articles"
 local DEFAULT_SORT_ORDER = "-created"
 local MIB = 1024 * 1024
-local DEFAULT_CACHE_MEMORY_BYTES = 4 * MIB
-local DEFAULT_CACHE_FILE_BYTES = 32 * MIB
-local CACHE_MEMORY_PRESETS = { [2 * MIB] = true, [4 * MIB] = true, [8 * MIB] = true, [16 * MIB] = true }
-local CACHE_FILE_PRESETS = { [16 * MIB] = true, [32 * MIB] = true, [64 * MIB] = true, [128 * MIB] = true }
+local DEFAULT_CACHE_MEMORY_BYTES = 16 * MIB
+local DEFAULT_CACHE_FILE_BYTES = 128 * MIB
+local CACHE_MEMORY_PRESETS = {
+    [2 * MIB] = true,
+    [4 * MIB] = true,
+    [8 * MIB] = true,
+    [16 * MIB] = true,
+    [32 * MIB] = true,
+    [64 * MIB] = true,
+}
+local CACHE_FILE_PRESETS = {
+    [16 * MIB] = true,
+    [32 * MIB] = true,
+    [64 * MIB] = true,
+    [128 * MIB] = true,
+    [256 * MIB] = true,
+    [512 * MIB] = true,
+}
 local ALLOWED_SORT_ORDERS = {
     ["-created"] = true,
     created = true,
