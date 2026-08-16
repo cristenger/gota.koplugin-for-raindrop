@@ -11,6 +11,7 @@ local socketutil = require("socketutil")
 local JSON = require("json")
 local logger = require("logger")
 local _ = require("gettext")
+local Compression = require("gota_compression")
 local Version = require("gota_version")
 
 local API = {}
@@ -19,6 +20,7 @@ local MAX_REDIRECTS = 3
 local MAX_RETRY_DELAY = 30
 local MAX_BLOCKING_RETRY_DELAY = 3
 local MAX_PER_PAGE = 50
+local DEFAULT_DECOMPRESSED_RESPONSE_BYTES = 16 * 1024 * 1024
 local RESPONSE_TOO_LARGE = "gota_response_too_large"
 
 local CONTENT_TYPES = {
@@ -352,6 +354,17 @@ local function fileHasGzipSignature(path)
     return signature and signature:byte(1) == 31 and signature:byte(2) == 139 or false
 end
 
+local function normalizedContentEncoding(headers, has_gzip_signature)
+    local encoding = trim(getHeader(headers, "Content-Encoding")):lower()
+    if encoding == "" or encoding == "identity" then
+        return has_gzip_signature and "gzip" or nil
+    end
+    if encoding == "gzip" or encoding == "x-gzip" then
+        return "gzip"
+    end
+    return nil, encoding:gsub("[%c]", "?"):sub(1, 64)
+end
+
 local function compactText(value, max_length)
     value = trim(value):gsub("[%c]+", " ")
     max_length = max_length or 180
@@ -565,6 +578,9 @@ local function cleanupTransfer(transfer)
     if transfer and transfer.temporary_path then
         os.remove(transfer.temporary_path)
     end
+    if transfer and transfer.decoded_path then
+        os.remove(transfer.decoded_path)
+    end
 end
 
 local function readFilePrefix(path, max_bytes)
@@ -667,16 +683,73 @@ function API:makeRequest(endpoint, method, body, request_options)
                     return nil, _("Empty server response"), status, headers
                 end
 
-                local content_encoding = trim(getHeader(headers, "Content-Encoding")):lower()
                 local has_gzip_signature
                 if transfer and transfer.response_mode == "file" then
                     has_gzip_signature = fileHasGzipSignature(transfer.temporary_path)
                 else
                     has_gzip_signature = payload:byte(1) == 31 and payload:byte(2) == 139
                 end
-                if (content_encoding ~= "" and content_encoding ~= "identity") or has_gzip_signature then
+                local content_encoding, unsupported_encoding =
+                    normalizedContentEncoding(headers, has_gzip_signature)
+                if unsupported_encoding then
                     cleanupTransfer(transfer)
-                    return nil, _("Server ignored the requested identity content encoding"), status, headers
+                    return nil, _("Unsupported server content encoding: ") ..
+                        unsupported_encoding, status, headers
+                end
+                if content_encoding == "gzip" then
+                    local decompressed_limit = request_options.max_response_bytes or
+                        DEFAULT_DECOMPRESSED_RESPONSE_BYTES
+                    if transfer and transfer.response_mode == "file" then
+                        transfer.decoded_path = transfer.temporary_path .. ".decoded"
+                        local decoded_path, decode_error, limit_exceeded, decoded_size =
+                            Compression.inflateGzipFile(
+                                transfer.temporary_path,
+                                transfer.decoded_path,
+                                decompressed_limit
+                            )
+                        if not decoded_path then
+                            cleanupTransfer(transfer)
+                            if limit_exceeded then
+                                return nil, _("Decompressed response exceeds the configured size limit"),
+                                    status, headers
+                            end
+                            return nil, _("Could not decode gzip response: ") ..
+                                tostring(decode_error), status, headers
+                        end
+                        os.remove(transfer.temporary_path)
+                        local replace_ok, replace_error = os.rename(
+                            decoded_path,
+                            transfer.temporary_path
+                        )
+                        if not replace_ok then
+                            cleanupTransfer(transfer)
+                            return nil, _("Could not finalize decompressed response: ") ..
+                                tostring(replace_error), status, headers
+                        end
+                        transfer.decoded_path = nil
+                        payload_size = decoded_size or 0
+                    else
+                        local decoded, decode_error, limit_exceeded =
+                            Compression.inflateGzipString(
+                                payload,
+                                decompressed_limit
+                            )
+                        if not decoded then
+                            cleanupTransfer(transfer)
+                            if limit_exceeded then
+                                return nil, _("Decompressed response exceeds the configured size limit"),
+                                    status, headers
+                            end
+                            return nil, _("Could not decode gzip response: ") ..
+                                tostring(decode_error), status, headers
+                        end
+                        payload = decoded
+                        payload_size = #payload
+                    end
+                end
+                if payload_size == 0 then
+                    cleanupTransfer(transfer)
+                    return nil, _("Empty server response"), status, headers
                 end
 
                 if is_file_download then

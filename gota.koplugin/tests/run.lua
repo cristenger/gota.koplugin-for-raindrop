@@ -149,6 +149,12 @@ local function contains(value, expected, label)
     end
 end
 
+local function hexBytes(value)
+    return (value:gsub("%x%x", function(pair)
+        return string.char(tonumber(pair, 16))
+    end))
+end
+
 local ContentProcessor = require("gota_content_processor")
 
 test("UTF-8 sanitizer preserves valid multilingual text", function()
@@ -494,6 +500,100 @@ test("permanent copy file mode streams atomically and cleans oversized parts", f
     equal(oversized, nil, "oversized result")
     contains(oversized_error, "size limit", "oversized error")
     equal(io.open(target .. ".part", "rb"), nil, "temporary cleanup")
+end)
+
+test("gzip cache responses are decoded for text and atomic file modes", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local expected = "<html><body>compressed copy</body></html>"
+    local compressed = hexBytes(
+        "1f8b0800000000000003b3c928c9cdb1b349ca4fa9b44bcecf2d284a2d2e4e4d" ..
+        "5148ce2fa8b4d1078bdae883950000c741952029000000"
+    )
+    https.request = function(request)
+        request.sink(compressed)
+        request.sink(nil)
+        return 1, 200, { ["Content-Encoding"] = "gzip" }, "HTTP/1.1 200 OK"
+    end
+
+    local api = API:new({ getToken = function() return "secret" end })
+    local text_result, text_error = api:getRaindropCache(7, 1024)
+    equal(text_error, nil, "text error")
+    equal(text_result, expected, "decoded text")
+
+    local target = "/tmp/gota_test_gzip_download.html"
+    os.remove(target)
+    os.remove(target .. ".part")
+    os.remove(target .. ".part.decoded")
+    local file_result, file_error = api:downloadRaindropCache(7, target, 1024)
+    https.request = original_request
+    equal(file_error, nil, "file error")
+    equal(file_result, target, "file result")
+    local file = assert(io.open(target, "rb"))
+    equal(file:read("*a"), expected, "decoded file")
+    file:close()
+    os.remove(target)
+    equal(io.open(target .. ".part", "rb"), nil, "compressed part cleanup")
+    equal(io.open(target .. ".part.decoded", "rb"), nil, "decoded part cleanup")
+end)
+
+test("gzip expansion respects the decompressed limit and cleans partial files", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local compressed = hexBytes("1f8b08000000000000034b4ca43d0000647a70af64000000")
+    https.request = function(request)
+        request.sink(compressed)
+        request.sink(nil)
+        return 1, 200, { ["content-encoding"] = "gzip" }, "HTTP/1.1 200 OK"
+    end
+
+    local target = "/tmp/gota_test_gzip_limit.html"
+    os.remove(target)
+    os.remove(target .. ".part")
+    os.remove(target .. ".part.decoded")
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:downloadRaindropCache(7, target, 30)
+    https.request = original_request
+    equal(result, nil, "oversized decoded result")
+    contains(err, "Decompressed response exceeds", "decoded limit error")
+    equal(io.open(target, "rb"), nil, "target cleanup")
+    equal(io.open(target .. ".part", "rb"), nil, "compressed cleanup")
+    equal(io.open(target .. ".part.decoded", "rb"), nil, "decoded cleanup")
+end)
+
+test("unsupported cache encodings report the received value", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    https.request = function(request)
+        request.sink("encoded payload")
+        request.sink(nil)
+        return 1, 200, { ["Content-Encoding"] = "br" }, "HTTP/1.1 200 OK"
+    end
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:getRaindropCache(7, 1024)
+    https.request = original_request
+    equal(result, nil, "unsupported result")
+    contains(err, "Unsupported server content encoding: br", "unsupported error")
+end)
+
+test("gzip signatures are decoded when a CDN omits the encoding header", function()
+    local https = require("ssl.https")
+    local original_request = https.request
+    local expected = "<html><body>compressed copy</body></html>"
+    local compressed = hexBytes(
+        "1f8b0800000000000003b3c928c9cdb1b349ca4fa9b44bcecf2d284a2d2e4e4d" ..
+        "5148ce2fa8b4d1078bdae883950000c741952029000000"
+    )
+    https.request = function(request)
+        request.sink(compressed)
+        request.sink(nil)
+        return 1, 200, {}, "HTTP/1.1 200 OK"
+    end
+    local api = API:new({ getToken = function() return "secret" end })
+    local result, err = api:getRaindropCache(7, 1024)
+    https.request = original_request
+    equal(err, nil, "signature decode error")
+    equal(result, expected, "signature decoded response")
 end)
 
 test("mutating requests never retry automatically", function()
