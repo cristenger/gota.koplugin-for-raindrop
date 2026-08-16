@@ -211,11 +211,19 @@ El ajuste `download_path` conserva su clave en `gota.lua` por compatibilidad, pe
 
 ### Lectura offline y reanudación
 
-KOReader asocia la posición de lectura a la ruta del documento mediante un sidecar `.sdr`, así que reanudar solo necesita una ruta estable. Por eso la copia offline usa un nombre determinista `<id>_<título>.html` sin el contador de colisiones que `getUniqueFilename` aplica al resto de exportaciones, y una descarga repetida sobrescribe en el sitio en lugar de acumular duplicados.
+KOReader guarda la posición de lectura en un sidecar cuya ubicación depende del ajuste `document_metadata_folder`. Con los valores `doc` (por defecto) y `dir` la clave es la **ruta** del documento; con `hash` es el `partialMD5` del **contenido**. Por eso la copia offline usa un nombre determinista `<id>_<título>.html` sin el contador de colisiones que `getUniqueFilename` aplica al resto de exportaciones, y una descarga repetida sobrescribe en el sitio en lugar de acumular duplicados.
+
+En modo `hash` la ruta estable no basta por sí sola, pero la reanudación se conserva igualmente porque el archivo web de Raindrop se genera una sola vez —no existe re-archivado, solo borrar y volver a guardar, lo que produce un `_id` distinto— y porque `partialMD5` muestrea unos 12 KiB en offsets fijos. La ruta estable sigue siendo necesaria: es la única clave en los modos `doc` y `dir`, que son los predeterminados.
+
+Antes de sobrescribir se comprueba que el documento no esté abierto en `ReaderUI`. Un `os.rename` sobre el archivo en uso dejaría al lector sobre el inodo anterior y luego escribiría en el sidecar una posición medida contra el DOM antiguo.
+
+La lectura del progreso usa `findSidecarFile` más `openSettingsFile`, no `DocSettings:open`: esta última ejecuta con `dofile` todas las ubicaciones candidatas y borra con `os.remove` las que considera inválidas, y la consulta ocurre en el menú de artículo sobre documentos que quizá nunca se abrieron.
 
 `gota_offline_library.lua` resuelve la copia en dos pasos: primero la ruta canónica, y si no existe, un escaneo del directorio por el prefijo `<id>_`. El escaneo recupera copias guardadas antes de esta función —que llevan contador— y copias cuyo título cambió después en Raindrop; gana la de modificación más reciente. No se persiste ningún índice: el sistema de archivos es la única fuente de verdad, así que nada queda obsoleto cuando el usuario mueve o borra un archivo desde el gestor.
 
-Dos reglas que el escaneo debe respetar. Las exportaciones anotadas se llaman `<id>_<título>_notes.html` y comparten el prefijo, así que se excluyen explícitamente. Y el guion bajo delimita el ID, de modo que `12_` nunca captura `123_…`.
+Dos reglas que el escaneo debe respetar. El guion bajo delimita el ID, de modo que `12_` nunca captura `123_…`. Y las exportaciones anotadas se llaman `<id>_<título>_notes.html` y comparten el prefijo: el sufijo es solo un indicio, no una prueba, porque un título que sanea a algo terminado en `_notes` («Release notes») produce la misma forma. Por eso el escaneo **ordena** en vez de descartar: prefiere la copia original y solo ofrece una exportación anotada cuando no hay ninguna otra candidata. `find` devuelve además si el resultado parece anotado, para que no se le imponga la política de estilos de editores a un documento que escribió Gota.
+
+El desempate entre candidatas con el mismo `mtime` —habitual, porque la granularidad es de segundos enteros— usa el orden de nombre, nunca el orden de enumeración del directorio, que varía entre sistemas de archivos.
 
 `percent_finished` se guarda como fracción `0..1`; el progreso se trunca con `math.floor`, que nunca exagera lo leído, y se degrada a «sin porcentaje» ante cualquier fallo de `DocSettings`.
 
@@ -233,7 +241,7 @@ luac -p *.lua tests/run.lua
 git diff --check
 ```
 
-Cubre 112 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+Cubre 123 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
 
 Los tres casos de gzip requieren el FFI de LuaJIT. Un intérprete sin JIT los falla con `LuaJIT FFI is unavailable`; esa es una limitación del intérprete, no del plugin.
 
