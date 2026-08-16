@@ -21,12 +21,12 @@ end
 
 -- Type abbreviations for the mandatory field
 local TYPE_ABBREV = {
-    article  = "Art",
-    link     = "Lnk",
-    image    = "Img",
-    video    = "Vid",
-    document = "Doc",
-    audio    = "Aud",
+    article  = _("Art."),
+    link     = _("Link"),
+    image    = _("Img."),
+    video    = _("Vid."),
+    document = _("Doc."),
+    audio    = _("Aud."),
 }
 
 local HIGHLIGHT_COLORS = {
@@ -77,36 +77,24 @@ local function handleMenuHold(_, item)
     return true
 end
 
--- Build status badge string for a raindrop (right-aligned in menu)
-local function buildBadge(raindrop)
-    local parts = {}
-    -- Type indicator
-    local type_abbr = TYPE_ABBREV[raindrop.type] or ""
-    if type_abbr ~= "" then
-        table.insert(parts, type_abbr)
-    end
-    if raindrop.broken then
-        table.insert(parts, _("Broken"))
-    elseif raindrop.reminder and raindrop.reminder.data then
-        table.insert(parts, _("Reminder"))
-    elseif raindrop.file and raindrop.file.name then
-        table.insert(parts, _("File"))
-    elseif raindrop.cache and raindrop.cache.status == "ready" then
-        table.insert(parts, _("Cached"))
-    end
-    -- Favorite
-    if raindrop.important then
-        table.insert(parts, "*")
-    end
-    -- Has note
-    if raindrop.note and raindrop.note ~= "" then
-        table.insert(parts, "N")
-    end
-    -- Raindrop documents highlights as an array.
+local function normalizeMenuText(value)
+    return tostring(value or ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function buildRowStatuses(raindrop)
+    local statuses = {}
+    if raindrop.important then statuses[#statuses + 1] = _("Favorite") end
+    if raindrop.note and raindrop.note ~= "" then statuses[#statuses + 1] = _("Note") end
     if hasHighlights(raindrop) then
-        table.insert(parts, "H")
+        statuses[#statuses + 1] = string.format(_("%d highlights"), #raindrop.highlights)
     end
-    return table.concat(parts, " ")
+    if raindrop.file and raindrop.file.name then statuses[#statuses + 1] = _("File") end
+    if raindrop.reminder and raindrop.reminder.data then statuses[#statuses + 1] = _("Reminder") end
+    if raindrop.broken then statuses[#statuses + 1] = _("Broken link") end
+    if raindrop.cache and raindrop.cache.status == "ready" then
+        statuses[#statuses + 1] = _("Web copy")
+    end
+    return statuses
 end
 
 local function collectionParentID(collection)
@@ -323,21 +311,27 @@ function UIBuilder:buildRaindropItems(raindrops, on_select_callback, on_hold_cal
     end
 
     for _, raindrop in ipairs(raindrops.items) do
-        local title = tostring(raindrop.title or _("Untitled"))
-        local domain = tostring(raindrop.domain or "")
+        local title = normalizeMenuText(raindrop.title or _("Untitled"))
+        local domain = normalizeMenuText(raindrop.domain)
         local excerpt = ""
         if type(raindrop.excerpt) == "string" and raindrop.excerpt ~= "" then
-            local normalized = raindrop.excerpt:gsub("%s+", " ")
-                :gsub("^%s+", ""):gsub("%s+$", "")
+            local normalized = normalizeMenuText(raindrop.excerpt)
             local preview, truncated = truncateUTF8ByCharacters(normalized, 50)
             if preview ~= "" then
-                excerpt = "\n" .. preview .. (truncated and "..." or "")
+                excerpt = preview .. (truncated and "..." or "")
             end
         end
 
+        local text = title
+        if domain ~= "" then text = text .. " — " .. domain end
+        if excerpt ~= "" then text = text .. " · " .. excerpt end
+        local statuses = buildRowStatuses(raindrop)
+        if #statuses > 0 then text = text .. " · " .. table.concat(statuses, " · ") end
+
         local item = {
-            text = title .. "\n" .. domain .. excerpt,
-            mandatory = buildBadge(raindrop),
+            text = text,
+            mandatory = TYPE_ABBREV[raindrop.type] or "",
+            gota_raindrop_id = tostring(raindrop._id),
             callback = function()
                 on_select_callback(raindrop)
             end,
@@ -530,64 +524,77 @@ end
 -- ========== PAGINACIÓN ==========
 
 -- Añade items de paginación a un menú existente
-function UIBuilder:addPagination(menu_items, data, page, perpage, callback)
+function UIBuilder:buildRemotePagination(data, page, perpage, callback)
     local total_count = data.count
     local item_count = type(data.items) == "table" and #data.items or 0
     local has_previous = page > 0
     local has_next = total_count ~= nil and ((page + 1) * perpage < total_count)
         or (total_count == nil and item_count == perpage)
-    if not has_previous and not has_next and total_count ~= nil and total_count <= perpage then
-        return
-    end
     local total_pages = total_count and math.ceil(total_count / perpage) or nil
     local current_page = page + 1
-    
-    table.insert(menu_items, {
-        text = "──────────────────",
-        enabled = false,
-        select_enabled = false,
-    })
-    
-    -- Primera página
-    if total_pages and current_page > 3 then
-        table.insert(menu_items, {
-            text = _("« First page"),
-            callback = function() callback(0) end,
-        })
-    end
-    
-    -- Página anterior
-    if page > 0 then
-        table.insert(menu_items, {
-            text = _("← Previous page"),
-            callback = function() callback(page - 1) end,
-        })
-    end
-    
-    -- Página siguiente
-    if has_next then
-        table.insert(menu_items, {
-            text = _("Next page →"),
-            callback = function() callback(page + 1) end,
-        })
-    end
-    
-    -- Última página
-    if total_pages and current_page < total_pages - 2 then
-        table.insert(menu_items, {
-            text = _("» Last page"),
-            callback = function() callback(total_pages - 1) end,
-        })
-    end
-    
-    local status_text = total_count and string.format(_("Showing %d-%d of %d articles"),
-        page * perpage + 1, math.min((page + 1) * perpage, total_count), total_count)
-        or string.format(_("Page %d (%d items)"), current_page, item_count)
-    table.insert(menu_items, {
+    local controls = {}
+    local status_text = total_pages and string.format(_("Raindrop page %d of %d"), current_page,
+        math.max(total_pages, 1)) or string.format(_("Raindrop page %d"), current_page)
+    controls[#controls + 1] = {
         text = status_text,
         enabled = false,
         select_enabled = false,
+    }
+
+    if total_pages and current_page > 3 then
+        controls[#controls + 1] = {
+            text = _("Raindrop: first page"),
+            callback = function() callback(0) end,
+        }
+    end
+
+    if has_previous then
+        controls[#controls + 1] = {
+            text = _("Raindrop: previous page"),
+            callback = function() callback(page - 1) end,
+        }
+    end
+
+    if has_next then
+        controls[#controls + 1] = {
+            text = _("Raindrop: next page"),
+            callback = function() callback(page + 1) end,
+        }
+    end
+
+    if total_pages and current_page < total_pages - 2 then
+        controls[#controls + 1] = {
+            text = _("Raindrop: last page"),
+            callback = function() callback(total_pages - 1) end,
+        }
+    end
+
+    local subtitle
+    if total_count ~= nil then
+        local first = total_count == 0 and 0 or page * perpage + 1
+        local last = math.min((page + 1) * perpage, total_count)
+        subtitle = string.format(_("%d–%d of %d articles · Raindrop page %d/%d"),
+            first, last, total_count, current_page, math.max(total_pages, 1))
+    else
+        subtitle = string.format(_("%d articles · Raindrop page %d"), item_count, current_page)
+    end
+    return controls, subtitle, has_previous or has_next
+end
+
+function UIBuilder:addPagination(menu_items, data, page, perpage, callback)
+    local top, subtitle, navigable = self:buildRemotePagination(data, page, perpage, callback)
+    if not navigable then return subtitle end
+
+    for index = #top, 1, -1 do table.insert(menu_items, 1, top[index]) end
+    table.insert(menu_items, #top + 1, {
+        text = "──────────────────", enabled = false, select_enabled = false,
     })
+    menu_items[#menu_items + 1] = {
+        text = "──────────────────", enabled = false, select_enabled = false,
+    }
+    local bottom = self:buildRemotePagination(data, page, perpage, callback)
+    for _, item in ipairs(bottom) do menu_items[#menu_items + 1] = item end
+    return subtitle
 end
 
 -- Paginación simple para búsqueda
@@ -602,13 +609,13 @@ function UIBuilder:buildHighlightItems(response, on_select_callback)
     local items = {}
     for _, highlight in ipairs(response and response.items or {}) do
         local preview, truncated = truncateUTF8ByCharacters(
-            tostring(highlight.text or _("Highlight without text")):gsub("%s+", " "), 90)
+            normalizeMenuText(highlight.text or _("Highlight without text")), 90)
         local details = {}
         local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or {}
         local source_title = highlight.title or reference.title
         if source_title and source_title ~= "" then
             local title_preview, title_truncated = truncateUTF8ByCharacters(
-                tostring(source_title):gsub("%s+", " "), 45)
+                normalizeMenuText(source_title), 45)
             details[#details + 1] = title_preview .. (title_truncated and "..." or "")
         end
         if highlight.note and highlight.note ~= "" then details[#details + 1] = _("Note") end
@@ -617,7 +624,8 @@ function UIBuilder:buildHighlightItems(response, on_select_callback)
         end
         items[#items + 1] = {
             text = preview .. (truncated and "..." or "") ..
-                (#details > 0 and ("\n" .. table.concat(details, " · ")) or ""),
+                (#details > 0 and (" — " .. table.concat(details, " · ")) or ""),
+            gota_raindrop_id = reference._id and tostring(reference._id) or nil,
             callback = function() on_select_callback(highlight) end,
         }
     end
@@ -630,14 +638,24 @@ end
 -- ========== MENU CREATION ==========
 
 -- Crea un menú completo con items
-function UIBuilder:createMenu(title, items)
-    return Menu:new{
+function UIBuilder:createMenu(title, items, options)
+    options = options or {}
+    local menu = Menu:new{
         title = title,
+        subtitle = options.subtitle,
         item_table = items,
         onMenuHold = handleMenuHold,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
+        items_max_lines = options.items_max_lines,
+        multilines_forced = options.multilines_forced,
     }
+    if options.focus_raindrop_id ~= nil and type(menu.switchItemTable) == "function" then
+        menu:switchItemTable(nil, nil, 0, {
+            gota_raindrop_id = tostring(options.focus_raindrop_id),
+        })
+    end
+    return menu
 end
 
 -- Crea menú con ancho/alto personalizado

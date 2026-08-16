@@ -43,14 +43,21 @@ package.preload["ui/uimanager"] = function()
     }
 end
 package.preload["ui/widget/menu"] = function()
-    return { new = function(_, options) return options end }
+    return { new = function(_, options)
+        options.switchItemTable = function(self, new_title, new_items, itemnumber, itemmatch)
+            self.switch_call = { new_title, new_items, itemnumber, itemmatch }
+        end
+        return options
+    end }
 end
 package.preload["ui/widget/inputdialog"] = function() return { new = function(_, value) return value end } end
 package.preload["ui/widget/textviewer"] = function() return { new = function(_, value) return value end } end
 package.preload["ui/network/manager"] = function()
     return { runWhenOnline = function(_, callback) callback() end }
 end
-package.preload["device"] = function() return {} end
+package.preload["device"] = function()
+    return { screen = { getWidth = function() return 600 end, getHeight = function() return 800 end } }
+end
 package.preload["ssl.https"] = function() return { request = noop } end
 package.preload["ltn12"] = function()
     return { source = { string = function(value) return value end } }
@@ -793,11 +800,74 @@ test("open pagination works without a documented total", function()
     builder:addPagination(items, { items = page_items }, 0, 25, noop)
     local found_next, found_last = false, false
     for _, item in ipairs(items) do
-        if item.text == "Next page →" then found_next = true end
-        if item.text == "» Last page" then found_last = true end
+        if item.text == "Raindrop: next page" then found_next = true end
+        if item.text == "Raindrop: last page" then found_last = true end
     end
     equal(found_next, true, "next page")
     equal(found_last, false, "no last page")
+end)
+
+test("article rows are linear, descriptive, and carry stable identity", function()
+    local builder = UIBuilder:new()
+    local items = builder:buildRaindropItems({ items = {{
+        _id = 42,
+        title = "A\nlong title",
+        domain = "example.test",
+        excerpt = "first\nsecond",
+        type = "article",
+        important = true,
+        note = "note",
+        highlights = {{ text = "one" }},
+        cache = { status = "ready" },
+    }}}, noop)
+    equal(items[1].text:find("\n", 1, true), nil, "no forced line break")
+    contains(items[1].text, "A long title — example.test · first second", "linear content")
+    contains(items[1].text, "Favorite · Note · 1 highlights · Web copy", "full statuses")
+    equal(items[1].mandatory, "Art.", "type only")
+    equal(items[1].gota_raindrop_id, "42", "stable identity")
+end)
+
+test("remote pagination is repeated above and below with zero-based callbacks", function()
+    local builder = UIBuilder:new()
+    local pages = {}
+    local rows = {{ text = "row" }}
+    local subtitle = builder:addPagination(rows, { count = 200, items = {{}} }, 4, 25,
+        function(page) pages[#pages + 1] = page end)
+    equal(rows[1].text, "Raindrop page 5 of 8", "top status")
+    contains(subtitle, "101–125 of 200 articles", "range subtitle")
+    local first, previous, next_page, last
+    local next_count = 0
+    for _, item in ipairs(rows) do
+        if item.text == "Raindrop: first page" then first = item end
+        if item.text == "Raindrop: previous page" then previous = item end
+        if item.text == "Raindrop: next page" then
+            next_page = item
+            next_count = next_count + 1
+        end
+        if item.text == "Raindrop: last page" then last = item end
+    end
+    equal(next_count, 2, "top and bottom next")
+    first.callback()
+    previous.callback()
+    next_page.callback()
+    last.callback()
+    equal(table.concat(pages, ","), "0,3,5,7", "remote indices")
+end)
+
+test("menu focus uses public item matching and tolerates absent IDs", function()
+    local builder = UIBuilder:new()
+    local menu = builder:createMenu("Articles", {{ gota_raindrop_id = "7" }}, {
+        subtitle = "1–1 of 1 articles",
+        focus_raindrop_id = 7,
+        items_max_lines = 2,
+        multilines_forced = true,
+    })
+    equal(menu.subtitle, "1–1 of 1 articles", "subtitle")
+    equal(menu.items_max_lines, 2, "line limit")
+    equal(menu.switch_call[3], 0, "public focus start")
+    equal(menu.switch_call[4].gota_raindrop_id, "7", "focus match")
+    local absent = builder:createMenu("Articles", {}, { focus_raindrop_id = 99 })
+    equal(absent.switch_call[4].gota_raindrop_id, "99", "absent match remains safe")
 end)
 
 test("original-copy action exists only for ready cache metadata", function()

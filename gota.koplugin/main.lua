@@ -665,8 +665,12 @@ function Gota:formatRaindropQuickInfo(raindrop)
     if raindrop.file and raindrop.file.name then
         info = info .. (_("File") .. ": " .. tostring(raindrop.file.name)) .. "\n"
     end
+    if raindrop.note and raindrop.note ~= "" then info = info .. _("Note") .. "\n" end
+    if type(raindrop.highlights) == "table" and #raindrop.highlights > 0 then
+        info = info .. string.format(_("Highlights: %d"), #raindrop.highlights) .. "\n"
+    end
     if raindrop.cache then
-        info = info .. (_("Cache") .. ": " .. (raindrop.cache.status or "unknown"))
+        info = info .. (_("Web copy") .. ": " .. (raindrop.cache.status or "unknown"))
     end
     return info
 end
@@ -947,7 +951,7 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
     )
     
     -- Añadir paginación simple
-    self.ui_builder:addPagination(
+    local subtitle = self.ui_builder:addPagination(
         items,
         results,
         page,
