@@ -423,10 +423,19 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
             callback = callbacks.show_text,
         },
         {
+            text = _("Save original copy"),
+            enabled = cache_available,
+            select_enabled = cache_available,
+            callback = callbacks.save_html,
+        },
+        {
             text = _("View article information"),
             callback = callbacks.show_info,
         },
     }
+    if not cache_available or not callbacks.save_html then
+        table.remove(items, 3)
+    end
 
     if callbacks.toggle_favorite then
         table.insert(items, { text = raindrop.important and _("Remove from favorites") or
@@ -462,7 +471,7 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks)
     if (raindrop.note and raindrop.note ~= "") or
        hasHighlights(raindrop) then
         table.insert(items, {
-            text = _("Save HTML with notes & highlights"),
+            text = _("Export with notes & highlights"),
             enabled = true,
             select_enabled = true,
             callback = callbacks.save_html_with_notes,
@@ -666,7 +675,7 @@ function UIBuilder:buildContentViewerButtons(callbacks, raindrop)
                 callback = callbacks.show_link,
             },
             {
-                text = _("Save HTML"),
+                text = _("Save original copy"),
                 callback = callbacks.save_html,
             },
         },
@@ -677,7 +686,7 @@ function UIBuilder:buildContentViewerButtons(callbacks, raindrop)
        ((raindrop.note and raindrop.note ~= "") or hasHighlights(raindrop)) then
         table.insert(buttons, {
             {
-                text = _("Save HTML with notes & highlights"),
+                text = _("Export with notes & highlights"),
                 callback = callbacks.save_html_with_notes,
             },
         })

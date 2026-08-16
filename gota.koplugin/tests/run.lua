@@ -800,6 +800,22 @@ test("open pagination works without a documented total", function()
     equal(found_last, false, "no last page")
 end)
 
+test("original-copy action exists only for ready cache metadata", function()
+    local builder = UIBuilder:new()
+    local callback = noop
+    local ready = builder:buildArticleMenu({ cache = { status = "ready" } }, true, {
+        save_html = callback,
+    })
+    local unavailable = builder:buildArticleMenu({}, false, { save_html = callback })
+    local ready_action, unavailable_action
+    for _, item in ipairs(ready) do if item.text == "Save original copy" then ready_action = item end end
+    for _, item in ipairs(unavailable) do
+        if item.text == "Save original copy" then unavailable_action = item end
+    end
+    equal(ready_action.callback, callback, "direct callback")
+    equal(unavailable_action, nil, "unavailable action")
+end)
+
 test("article excerpts remain valid UTF-8 and only show ellipsis when truncated", function()
     local builder = UIBuilder:new()
     local short = builder:buildRaindropItems({ items = {
@@ -820,7 +836,7 @@ test("notes export remains enabled without Raindrop PRO HTML", function()
     local menu = builder:buildArticleMenu({ note = "local note" }, false, {})
     local export_item
     for _, item in ipairs(menu) do
-        if item.text == "Save HTML with notes & highlights" then export_item = item end
+        if item.text == "Export with notes & highlights" then export_item = item end
     end
     truthy(export_item, "export item")
     equal(export_item.enabled, true, "export enabled")
@@ -1178,6 +1194,15 @@ test("Trash closes stale navigation and reloads without reopening the item", fun
     equal(closed.article_menu, true, "detail closed")
     equal(closed.collections_menu, true, "collection counts closed")
     equal(closed.collection_actions_menu, true, "collection actions closed")
+end)
+
+test("saved-file result uses one shared action entry point", function()
+    local Gota = require("main")
+    local shown
+    local fake = { showSavedFileActions = function(_, filename) shown = filename end }
+    equal(Gota.handleSavedFile(fake, nil), false, "cancelled save")
+    truthy(Gota.handleSavedFile(fake, "/tmp/articles/item.html"), "successful save")
+    equal(shown, "/tmp/articles/item.html", "shared filename")
 end)
 
 test("collection screen reads documented nested user statistics counts", function()

@@ -175,7 +175,7 @@ function Gota:closeAllWidgets()
     local widget_names = {"progress", "token_dialog", "collections_menu", "collection_actions_menu", "raindrops_menu",
                           "article_menu", "search_dialog", "search_menu", "advanced_search_dialog",
                           "text_viewer", "sort_dialog", "highlights_menu", "highlight_actions_menu",
-                          "collection_picker", "remove_token_dialog"}
+                          "collection_picker", "remove_token_dialog", "saved_file_dialog"}
     for _, name in ipairs(widget_names) do
         self:closeWidget(name)
     end
@@ -220,6 +220,44 @@ function Gota:buildHighlightsSourceContext(collection_id, collection_name, page)
             self:showHighlights(captured_id, captured_name, captured_page, focus_raindrop_id)
         end,
     }
+end
+
+function Gota:handleSavedFile(filename)
+    if type(filename) ~= "string" or filename == "" then return false end
+    self:showSavedFileActions(filename)
+    return true
+end
+
+function Gota:showSavedFileActions(filename)
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local display_name = filename:match("([^/]+)$") or filename
+    local directory = filename:match("^(.*)/[^/]+$")
+    self:closeWidget("saved_file_dialog")
+    self.widgets.saved_file_dialog = ButtonDialog:new{
+        title = _("Saved: ") .. display_name,
+        title_align = "center",
+        buttons = {{
+            {
+                text = _("Stay in Gota"),
+                callback = function() self:closeWidget("saved_file_dialog") end,
+            },
+            {
+                text = _("Open folder"),
+                enabled = directory ~= nil,
+                select_enabled = directory ~= nil,
+                callback = function()
+                    if not directory then return end
+                    self:closeAllWidgets()
+                    UIManager:nextTick(function()
+                        local FileManager = require("apps/filemanager/filemanager")
+                        if FileManager.instance then FileManager.instance:reinit(directory)
+                        else FileManager:showFiles(directory) end
+                    end)
+                end,
+            },
+        }},
+    }
+    UIManager:show(self.widgets.saved_file_dialog)
 end
 
 -- ========== MAIN MENU ==========
@@ -788,24 +826,11 @@ function Gota:showRaindropContent(raindrop, source_context)
         show_highlights = function()
             self:showRaindropHighlights(raindrop)
         end,
+        save_html = function()
+            self:handleSavedFile(self.article_manager:downloadHTML(raindrop))
+        end,
         save_html_with_notes = function()
-            local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
-            if filename then
-                self:closeAllWidgets()
-                -- Extraer el directorio del archivo
-                local directory = filename:match("(.*/)")
-                if directory then
-                    -- Abrir FileManager mostrando el directorio de descarga
-                    UIManager:nextTick(function()
-                        local FileManager = require("apps/filemanager/filemanager")
-                        if FileManager.instance then
-                            FileManager.instance:reinit(directory)
-                        else
-                            FileManager:showFiles(directory)
-                        end
-                    end)
-                end
-            end
+            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop))
         end,
         show_link = function()
             self.dialogs:showLinkInfo(raindrop)
@@ -878,31 +903,10 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
             self.dialogs:showLinkInfo(raindrop)
         end,
         save_html = function()
-            local filename = self.article_manager:downloadHTML(raindrop)
-            if filename then
-                self:closeWidget("text_viewer")
-                local display_name = filename:match("([^/]+)$") or filename
-                self:toast(_("Article saved: ") .. display_name)
-            end
+            self:handleSavedFile(self.article_manager:downloadHTML(raindrop))
         end,
         save_html_with_notes = function()
-            local filename = self.article_manager:downloadHTMLWithNotes(raindrop)
-            if filename then
-                self:closeAllWidgets()
-                -- Extraer el directorio del archivo
-                local directory = filename:match("(.*/)")
-                if directory then
-                    -- Abrir FileManager mostrando el directorio de descarga
-                    UIManager:nextTick(function()
-                        local FileManager = require("apps/filemanager/filemanager")
-                        if FileManager.instance then
-                            FileManager.instance:reinit(directory)
-                        else
-                            FileManager:showFiles(directory)
-                        end
-                    end)
-                end
-            end
+            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop))
         end,
     }, raindrop)
     
