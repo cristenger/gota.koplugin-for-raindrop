@@ -20,7 +20,7 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Highlights**: Review highlights globally or by collection without requiring PRO
 - **Bookmark Editing**: Update favorite, note, tags and collection; move safely to/from Trash
 - **Content Limits**: Separate presets up to 64 MiB for text-in-RAM and 512 MiB for reader-file downloads
-- **Save Offline**: Save a byte-faithful original copy or a safer text-based annotated export
+- **Read Offline**: Download an article to your folder and resume it later at the page where you stopped, or create a safer text-based annotated export
 - **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
 - **Configurable**: Customizable export folder with visual folder picker
 - **KOReader Compatibility**: Targets KOReader 2026.07 and later
@@ -100,7 +100,8 @@ Select any article to see its available actions:
 - **View information**: Metadata, tags, URL, web-copy status, notes, and highlights
 - **Show article URL**: Display the article link for manual use
 - **Edit bookmark**: Change favorite, note, tags or collection; Trash is guarded against permanent deletion
-- **Save original copy**: Stream Raindrop's byte-faithful web copy directly to disk without first loading it into RAM
+- **Continue reading**: Reopen an article you already downloaded, at the page where you stopped. Shown with the percentage read, and available even when Raindrop no longer serves the web copy
+- **Download to read offline**: Stream Raindrop's byte-faithful web copy directly to disk without first loading it into RAM, and keep it in your export folder. Becomes **Update offline copy** once a copy exists
 - **Export with notes & highlights**: Create a Gota-owned text-based HTML export when the bookmark has a note or highlights
 - **Reload article metadata**: Refresh web-copy state and bookmark details without downloading the full HTML
 
@@ -120,13 +121,15 @@ Use **All highlights** to review the whole library. A collection's action menu a
 
 `Menu → Gota → Configuration → Configure export folder`
 
-This folder holds the files Gota keeps: **Save original copy** and **Export with notes & highlights**. It is not used by **Open in full reader**, which streams the article to a temporary file and removes it when you close the document.
+This folder holds the files Gota keeps: **Download to read offline** and **Export with notes & highlights**. It is not used by **Open in full reader**, which streams the article to a temporary file and removes it when you close the document.
 
 Choose between the visual picker—long-press a folder name to select it—or manual relative-path entry. Manual paths may contain spaces and nested segments; Gota shows sanitizer changes before saving and confines the result to KOReader's data directory.
 
 ### Save Articles Offline
 
-Open an article and select **Save original copy** to download Raindrop's permanent web copy. If it has a note or highlights, **Export with notes & highlights** creates an annotated file directly from the same menu. A successful save stays in Gota unless you explicitly choose **Open folder**.
+Open an article and select **Download to read offline** to download Raindrop's permanent web copy into your export folder. If it has a note or highlights, **Export with notes & highlights** creates an annotated file directly from the same menu. After saving you can choose **Read now**, **Stay in Gota** or **Open folder**.
+
+Once downloaded, the article's menu shows **Continue reading** with how far you got. Selecting it reopens the saved file at that position, so you can put the device down mid-article and pick it up later without downloading anything again. Downloading the same article a second time updates that file in place, which is what keeps your position.
 
 Original-copy downloads require Raindrop PRO and are limited by the configured reader-file size. They preserve remote HTML and may therefore contain code or resources from the source site. Annotated exports convert the article body to escaped plain text and prioritize safety/readability over visual fidelity; notes-only and highlights-only exports remain available without PRO content.
 
@@ -171,9 +174,9 @@ Gota asks Raindrop for an identity response but also decodes gzip in-process whe
 
 ### An article I opened in the full reader is not in my export folder
 
-That is expected. **Open in full reader** writes a temporary file under `cache/gota/` and deletes it when you close the document, so opening an article never overwrites a copy you saved on purpose and large web copies do not accumulate silently.
+That is expected. **Open in full reader** is a quick look: it writes a temporary file under `cache/gota/` and deletes it when you close the document, so opening an article never overwrites a copy you saved on purpose and large web copies do not accumulate silently. It also does not remember your position, because the file is gone.
 
-To keep a file, use **Save original copy** (byte-faithful web copy) or **Export with notes & highlights** (annotated text export). Only those two write to the export folder, and both offer **Open folder** right after saving.
+Use **Download to read offline** when you want to keep the article and finish it later. That writes to your export folder, and afterwards the menu offers **Continue reading** with your progress. **Export with notes & highlights** also writes there, as an annotated text export.
 
 ### Text in the full reader looks too big, too small or uneven
 
@@ -235,6 +238,7 @@ gota.koplugin/
 ├── gota_article_manager.lua  # Article operations
 ├── gota_reader.lua           # Reader integration
 ├── gota_reader_styles.lua    # Full-reader presentation stylesheet
+├── gota_offline_library.lua  # Locating downloaded offline copies
 ├── gota_version.lua          # Version and compatibility metadata
 ├── ARCHITECTURE.md           # Maintained architecture and contracts
 ├── tests/run.lua             # Dependency-free regression tests

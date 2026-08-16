@@ -20,6 +20,7 @@ flowchart LR
     A --> C["gota_content_processor.lua<br/>texto y HTML"]
     A --> R["gota_reader.lua<br/>ReaderUI"]
     R --> Y["gota_reader_styles.lua<br/>política CSS pura"]
+    A --> O["gota_offline_library.lua<br/>localización de copias"]
     A --> P["gota_api.lua<br/>Raindrop REST v1"]
     P --> Z["gota_compression.lua<br/>gzip acotado"]
     P --> X["api.raindrop.io"]
@@ -37,6 +38,7 @@ flowchart LR
 | `gota_content_processor.lua` | Sanear UTF-8, convertir HTML a texto y generar documentos locales | Hacer red |
 | `gota_reader.lua` | Abrir/cambiar documento, volver a Gota mediante APIs públicas de KOReader y aplicar la hoja transitoria en pre-render | Preabrir documentos, modificar tablas internas del menú o mutar ajustes persistentes |
 | `gota_reader_styles.lua` | Componer el CSS de presentación y detectar los tweaks oficiales de tamaño | Requerir módulos de KOReader, tocar disco o guardar estado |
+| `gota_offline_library.lua` | Nombrar de forma determinista y localizar copias offline; leer el progreso | Descargar, escribir archivos o requerir módulos de KOReader |
 | `gota_ui_builder.lua` | Crear items, jerarquías de colecciones y paginación | Hacer red o persistir configuración |
 | `gota_dialogs.lua` | Construir diálogos y recoger entradas | Guardar directamente ajustes |
 | `gota_settings.lua` | Leer y escribir `gota.lua` mediante `LuaSettings` | Registrar UI |
@@ -205,7 +207,21 @@ El diálogo muestra el token como contraseña, pero `LuaSettings` lo guarda en t
 
 La allowlist de limpieza exige el directorio canónico y el nombre exacto. Nunca borra exports, otros archivos de caché ni directorios `.sdr`; los sidecars de lectura se conservan. La carpeta de exportación siempre queda bajo `DataStorage`, acepta espacios y segmentos anidados y rechaza rutas absolutas, `.`/`..`, controles y escapes mediante symlink.
 
-El ajuste `download_path` conserva su clave en `gota.lua` por compatibilidad, pero la UI lo llama «carpeta de exportación» porque solo gobierna «Guardar copia original» y «Exportar con notas y resaltados». El lector completo escribe en `cache/gota/` y borra su archivo al cerrar, de modo que abrir un artículo nunca sobrescribe una copia guardada a propósito. La UI evita el verbo «descargar» en esa acción para no prometer un archivo persistente.
+El ajuste `download_path` conserva su clave en `gota.lua` por compatibilidad, pero la UI lo llama «carpeta de exportación» porque solo gobierna «Descargar para leer sin conexión» y «Exportar con notas y resaltados». El lector completo escribe en `cache/gota/` y borra su archivo al cerrar, de modo que abrir un artículo nunca sobrescribe una copia guardada a propósito. La UI evita el verbo «descargar» en esa acción para no prometer un archivo persistente.
+
+### Lectura offline y reanudación
+
+KOReader asocia la posición de lectura a la ruta del documento mediante un sidecar `.sdr`, así que reanudar solo necesita una ruta estable. Por eso la copia offline usa un nombre determinista `<id>_<título>.html` sin el contador de colisiones que `getUniqueFilename` aplica al resto de exportaciones, y una descarga repetida sobrescribe en el sitio en lugar de acumular duplicados.
+
+`gota_offline_library.lua` resuelve la copia en dos pasos: primero la ruta canónica, y si no existe, un escaneo del directorio por el prefijo `<id>_`. El escaneo recupera copias guardadas antes de esta función —que llevan contador— y copias cuyo título cambió después en Raindrop; gana la de modificación más reciente. No se persiste ningún índice: el sistema de archivos es la única fuente de verdad, así que nada queda obsoleto cuando el usuario mueve o borra un archivo desde el gestor.
+
+Dos reglas que el escaneo debe respetar. Las exportaciones anotadas se llaman `<id>_<título>_notes.html` y comparten el prefijo, así que se excluyen explícitamente. Y el guion bajo delimita el ID, de modo que `12_` nunca captura `123_…`.
+
+`percent_finished` se guarda como fracción `0..1`; el progreso se trunca con `math.floor`, que nunca exagera lo leído, y se degrada a «sin porcentaje» ante cualquier fallo de `DocSettings`.
+
+«Continuar leyendo» no depende de `cache_available`: el archivo ya está en disco y debe seguir siendo legible aunque Raindrop deje de servir la copia web o la cuenta pierda PRO. Es el único punto del menú de artículo que no está gobernado por el estado remoto.
+
+Estas copias viven en la carpeta de exportación, así que `isManagedReaderPath` las rechaza y `CloseDocument` no borra ni el archivo ni su sidecar. La normalización tipográfica se aplica igual que en el lector transitorio, de modo que la experiencia de lectura es idéntica en ambos modos.
 
 ## Pruebas y validación
 
@@ -217,7 +233,7 @@ luac -p *.lua tests/run.lua
 git diff --check
 ```
 
-Cubre 94 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+Cubre 112 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
 
 Los tres casos de gzip requieren el FFI de LuaJIT. Un intérprete sin JIT los falla con `LuaJIT FFI is unavailable`; esa es una limitación del intérprete, no del plugin.
 

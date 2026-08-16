@@ -5,11 +5,12 @@
 ### Added
 
 - Local access-token removal with confirmation and rollback if settings cannot be flushed.
-- Direct «Save original copy» from article details and one post-save choice to remain in Gota or open the destination folder.
+- Direct offline download from article details and one post-save choice to read the file, remain in Gota or open the destination folder.
 - Session-only advanced-search state with a visible summary of scope, sort, match mode and active filters.
 - Stable article-row identity and source-aware refresh after favorite, note, tag, collection and Trash mutations.
 - Spanish catalog audit for missing/fuzzy entries, printf placeholders and unexplained source-equal translations.
 - Bounded in-process gzip decoding for Raindrop web copies, including CDN responses that omit the encoding header.
+- Offline article reading: «Download to read offline» keeps the web copy in the export folder, and the article menu then offers «Continue reading» with the percentage read, reopening the saved file where you stopped. The entry stays available when Raindrop no longer serves the web copy, because the file is already on disk. «Read now» was added to the post-download dialog.
 - Normalized extreme publisher font sizes in the transient full reader without loading or rewriting large Raindrop web copies. Body text follows KOReader's base size and headings stay within a bounded scale; images, lists, tables, `pre` and `code` are preserved.
 
 ### Changed
@@ -18,6 +19,7 @@
 - Manual download paths preserve valid spaces and nested folders, reject unsafe input without replacing it with a default, and ask before applying sanitizer changes.
 - Annotated exports convert remote article markup to escaped plain text. Original copies remain byte-faithful web content and are identified separately.
 - Spanish UI terminology now consistently distinguishes copia web, copia original, archivo temporal and resaltados.
+- Downloaded copies now use a deterministic path instead of a collision counter, so repeated downloads update one file in place rather than piling up numbered duplicates, and KOReader keeps the reading position across them. Copies saved by earlier versions are detected without migration.
 - The configurable folder is now called "export folder" everywhere, and its dialog states that it holds saved copies and annotated exports while the full reader uses a temporary file. Opening an article shows "Preparing article..." instead of "Downloading article for reader...", which wrongly implied a file kept in that folder. The stored `download_path` setting key is unchanged, so existing configurations keep working.
 - New installations use 16 MiB for plain-text memory and 128 MiB for reader files. Presets now reach 64 MiB and 512 MiB, while saved legacy selections remain valid.
 
@@ -32,7 +34,7 @@
 
 ### Validation and open gates
 
-- Expanded the dependency-free suite from 51 to 94 cases, including gzip, decompressed-size, explicit-retry, plain-text sanitization and full-reader style normalization coverage, and validated plugin startup with the isolated macOS Kindle profile.
+- Expanded the dependency-free suite from 51 to 112 cases, including gzip, decompressed-size, explicit-retry, plain-text sanitization and full-reader style normalization coverage, and validated plugin startup with the isolated macOS Kindle profile.
 - Full-reader style normalization is verified against KOReader v2026.07 sources (`PreRenderDocument` ordering, `CreDocument:setStyleSheet` argument contract, `ReaderTypeset`/`ReaderStyleTweak` behavior) and by unit tests, but the local emulator runs a v2025.08 runtime; the on-device 2026.07+ cascade check remains an open gate.
 - Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
 - No release version bump is included until live Raindrop and physical-device gates pass.
