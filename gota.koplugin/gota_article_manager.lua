@@ -148,31 +148,45 @@ function ArticleManager:getDocSettings()
     return ok and docsettings or nil
 end
 
--- Resolve the offline copy's path: the one already on disk when there is one,
--- otherwise the deterministic name a download should create.
+-- Raindrop documents _id as an Integer. Anything else would collapse through
+-- sanitizeID into a shared name ("12345.5" and "1234.55" both yield "123455",
+-- and any id without alphanumerics yields "unknown"), letting one article
+-- overwrite another's offline copy and inherit its reading position.
+local function offlineIdFor(raw_id)
+    if type(raw_id) ~= "number" and type(raw_id) ~= "string" then return nil end
+    local numeric = tonumber(raw_id)
+    if not numeric or numeric < 0 or numeric ~= math.floor(numeric) then return nil end
+    return string.format("%d", numeric)
+end
+
+-- Resolve the offline copy: the one already on disk when there is one,
+-- otherwise the deterministic name a download should create. Also reports
+-- whether the resolved file is one of Gota's own annotated exports.
 function ArticleManager:getOfflinePath(raindrop, for_download)
-    if not raindrop or raindrop._id == nil then return nil end
+    if not raindrop then return nil end
+    local safe_id = offlineIdFor(raindrop._id)
+    if not safe_id then return nil end
     local dir = self.settings and self.settings:getFullDownloadPath() or nil
     if type(dir) ~= "string" or dir == "" then return nil end
 
-    local safe_id = self:sanitizeID(raindrop._id)
     local safe_title = self:sanitizeFilename(raindrop.title or "article", 80)
     local lfs = require("libs/libkoreader-lfs")
 
-    local existing = OfflineLibrary.find(dir, safe_id, safe_title, lfs)
-    if existing then return existing end
+    local existing, annotated = OfflineLibrary.find(dir, safe_id, safe_title, lfs)
+    if existing then return existing, annotated end
     if not for_download then return nil end
 
     local name = OfflineLibrary.canonicalName(safe_id, safe_title)
     if not name then return nil end
-    return (dir:gsub("/+$", "")) .. "/" .. name
+    return (dir:gsub("/+$", "")) .. "/" .. name, false
 end
 
 function ArticleManager:getOfflineState(raindrop)
-    local path = self:getOfflinePath(raindrop, false)
+    local path, annotated = self:getOfflinePath(raindrop, false)
     if not path then return nil end
     return {
         path = path,
+        annotated = annotated == true,
         percent = OfflineLibrary.progress(path, self:getDocSettings()),
     }
 end
@@ -180,27 +194,35 @@ end
 -- Opens a kept file. No cleanup is registered: the path lives in the export
 -- folder, so isManagedReaderPath rejects it and CloseDocument leaves both the
 -- file and KOReader's reading-position sidecar alone.
-function ArticleManager:openSavedFile(path, close_all_callback, on_return_callback)
+-- options.normalize_styles must be set by the caller: only files carrying
+-- third-party publisher CSS want the presentation policy. Gota's own annotated
+-- exports ship a tuned stylesheet that it would flatten.
+function ArticleManager:openSavedFile(path, options)
     if type(path) ~= "string" or path == "" then return false end
+    options = options or {}
     return self.gota_reader:show({
         path = path,
-        -- Same reading experience as the transient full reader.
-        normalize_styles = true,
-        before_open_callback = close_all_callback,
-        on_return_callback = on_return_callback,
+        normalize_styles = options.normalize_styles == true,
+        before_open_callback = options.before_open_callback,
+        on_return_callback = options.on_return_callback,
     }) == true
 end
 
 function ArticleManager:openOfflineCopy(raindrop, close_all_callback, on_return_callback)
-    local path = self:getOfflinePath(raindrop, false)
-    if not path then
+    local state = self:getOfflineState(raindrop)
+    if not state then
         self.callbacks.notify(_("The offline copy is no longer available; download it again"))
         return false
     end
 
-    return self:openSavedFile(path, close_all_callback, function()
-        if on_return_callback then on_return_callback(raindrop) end
-    end)
+    return self:openSavedFile(state.path, {
+        -- An annotated export is Gota's own document, not a publisher's page.
+        normalize_styles = not state.annotated,
+        before_open_callback = close_all_callback,
+        on_return_callback = function()
+            if on_return_callback then on_return_callback(raindrop) end
+        end,
+    })
 end
 
 function ArticleManager:setSettings(settings)
@@ -646,7 +668,17 @@ function ArticleManager:downloadHTML(raindrop)
     -- and it stops repeated saves from piling up numbered duplicates.
     local filename = self:getOfflinePath(raindrop, true)
     if not filename then
-        self.callbacks.notify(_("Error creating export directory"))
+        -- The directory check above already passed; the article itself lacks a
+        -- usable identifier.
+        self.callbacks.notify(_("This article cannot be saved: invalid identifier"))
+        return nil
+    end
+
+    -- Finalizing with os.rename over an open document leaves the reader on the
+    -- previous inode and then stores a position measured against the old DOM.
+    if self.gota_reader and type(self.gota_reader.isDocumentOpen) == "function" and
+       self.gota_reader:isDocumentOpen(filename) then
+        self.callbacks.notify(_("Close this article before updating its offline copy"))
         return nil
     end
 

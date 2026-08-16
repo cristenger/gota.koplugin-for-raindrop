@@ -222,35 +222,55 @@ function Gota:buildHighlightsSourceContext(collection_id, collection_name, page)
     }
 end
 
-function Gota:handleSavedFile(filename)
+function Gota:handleSavedFile(filename, options)
     if type(filename) ~= "string" or filename == "" then return false end
-    self:showSavedFileActions(filename)
+    self:showSavedFileActions(filename, options)
     return true
 end
 
-function Gota:showSavedFileActions(filename)
+--[[
+    options.on_return rebuilds the screen the save came from. It runs both when
+    the user stays in Gota and when they come back from reading, so the article
+    menu recomputes its offline state and starts offering "Continue reading".
+
+    options.normalize_styles says whether the saved file carries third-party
+    publisher CSS. Gota's own annotated exports ship a tuned stylesheet that the
+    normalization policy would flatten, so they opt out.
+]]
+function Gota:showSavedFileActions(filename, options)
     local ButtonDialog = require("ui/widget/buttondialog")
+    options = options or {}
     local display_name = filename:match("([^/]+)$") or filename
     local directory = filename:match("^(.*)/[^/]+$")
+    local function refresh()
+        if type(options.on_return) == "function" then options.on_return() end
+    end
     self:closeWidget("saved_file_dialog")
     self.widgets.saved_file_dialog = ButtonDialog:new{
         title = _("Saved: ") .. display_name,
         title_align = "center",
         buttons = {{
             {
-                -- Opens the file just written, so this works for the original
-                -- copy and for an annotated export alike.
                 text = _("Read now"),
                 callback = function()
                     self:closeWidget("saved_file_dialog")
-                    self:closeAllWidgets()
-                    self.article_manager:openSavedFile(filename)
+                    -- Teardown is deferred to before_open_callback: GotaReader
+                    -- runs it only after the file and provider checks pass, so
+                    -- a failed open leaves Gota's navigation intact.
+                    self.article_manager:openSavedFile(filename, {
+                        normalize_styles = options.normalize_styles == true,
+                        before_open_callback = function() self:closeAllWidgets() end,
+                        on_return_callback = refresh,
+                    })
                 end,
             },
         }, {
             {
                 text = _("Stay in Gota"),
-                callback = function() self:closeWidget("saved_file_dialog") end,
+                callback = function()
+                    self:closeWidget("saved_file_dialog")
+                    refresh()
+                end,
             },
             {
                 text = _("Open folder"),
@@ -900,10 +920,17 @@ function Gota:showRaindropContent(raindrop, source_context)
             self:showRaindropHighlights(raindrop)
         end,
         save_html = function()
-            self:handleSavedFile(self.article_manager:downloadHTML(raindrop))
+            self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
+                normalize_styles = true,
+                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+            })
         end,
         save_html_with_notes = function()
-            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop))
+            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop), {
+                -- Gota authors this document; its own stylesheet must survive.
+                normalize_styles = false,
+                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+            })
         end,
         show_link = function()
             self.dialogs:showLinkInfo(raindrop)
@@ -976,10 +1003,16 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
             self.dialogs:showLinkInfo(raindrop)
         end,
         save_html = function()
-            self:handleSavedFile(self.article_manager:downloadHTML(raindrop))
+            self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
+                normalize_styles = true,
+                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+            })
         end,
         save_html_with_notes = function()
-            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop))
+            self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop), {
+                normalize_styles = false,
+                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+            })
         end,
     }, raindrop)
     

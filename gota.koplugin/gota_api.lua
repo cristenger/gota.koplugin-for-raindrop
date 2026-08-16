@@ -24,6 +24,9 @@ local DEFAULT_DECOMPRESSED_RESPONSE_BYTES = 16 * 1024 * 1024
 local RESPONSE_TOO_LARGE = "gota_response_too_large"
 
 local CONTENT_TYPES = {
+    -- Raindrop documents six types; "link" was missing, so selecting it
+    -- silently dropped the filter and returned unfiltered results.
+    link = true,
     article = true,
     image = true,
     video = true,

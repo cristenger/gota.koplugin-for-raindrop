@@ -619,7 +619,7 @@ function Dialogs:showAdvancedSearchDialog(filters_data, initial_state, callbacks
             },
             {
                 text = state.type,
-                hint = _("Type (article/image/video/audio/document)"),
+                hint = _("Type (link/article/image/video/audio/document)"),
             },
         },
         buttons = {

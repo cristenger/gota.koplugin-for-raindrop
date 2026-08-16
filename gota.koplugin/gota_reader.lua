@@ -106,6 +106,14 @@ function GotaReader:show(options)
     return true
 end
 
+-- Whether ReaderUI currently holds this exact document open. Used before
+-- replacing a file on disk that the user may be reading right now.
+function GotaReader:isDocumentOpen(path)
+    if type(path) ~= "string" or path == "" then return false end
+    local reader = ReaderUI.instance
+    return reader ~= nil and reader.document ~= nil and reader.document.file == path
+end
+
 function GotaReader:shouldNormalize(path)
     return self.normalize_styles == true
         and type(path) == "string"

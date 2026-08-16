@@ -27,6 +27,15 @@ package.preload["util"] = function()
 
     return {
         makePath = function() return true end,
+        -- Mirrors KOReader's util.getSafeFilename on a non-VFAT filesystem:
+        -- only "/" is replaced, and spaces are PRESERVED. Without this the
+        -- suite would only ever exercise Gota's legacy fallback branch, which
+        -- turns every space into "_" and never runs on a real device.
+        getSafeFilename = function(str, _, limit)
+            str = tostring(str or ""):gsub("\r?\n", " "):gsub("\t", " ")
+            if limit then str = str:sub(1, limit) end
+            return (str:gsub("/", "_"))
+        end,
         htmlEscape = function(value)
             return tostring(value or "")
                 :gsub("&", "&amp;")
@@ -518,15 +527,23 @@ local function offlineLfs(dir, entries)
     }
 end
 
+-- Mirrors the read-only DocSettings API: findSidecarFile is a method taking the
+-- document path, openSettingsFile is a plain function taking the sidecar path.
+-- DocSettings:open() is deliberately NOT used: it dofile()s every candidate and
+-- os.remove()s the ones it judges invalid.
 local function offlineDocSettings(percent, options)
     options = options or {}
+    local sidecars = options.sidecars or { ["/tmp/a.html"] = "/tmp/a.sdr/metadata.html.lua" }
     return {
-        hasSidecarFile = function()
-            if options.throws_has then error("no sidecar access") end
-            return not options.no_sidecar
+        findSidecarFile = function(_, doc_path)
+            if options.throws_find then error("no sidecar access") end
+            return sidecars[doc_path]
         end,
-        open = function()
+        openSettingsFile = function(sidecar_file)
             if options.throws_open then error("cannot open settings") end
+            if options.expect_sidecar then
+                equal(sidecar_file, options.expect_sidecar, "sidecar of the requested document")
+            end
             return {
                 readSetting = function(_, key)
                     if options.throws_read then error("cannot read setting") end
@@ -537,6 +554,19 @@ local function offlineDocSettings(percent, options)
         end,
     }
 end
+
+test("offline progress is read for the requested document only", function()
+    local docsettings = offlineDocSettings(0.43, {
+        sidecars = {
+            ["/tmp/wanted.html"] = "/tmp/wanted.sdr/metadata.html.lua",
+            ["/tmp/other.html"] = "/tmp/other.sdr/metadata.html.lua",
+        },
+        expect_sidecar = "/tmp/wanted.sdr/metadata.html.lua",
+    })
+    equal(OfflineLibrary.progress("/tmp/wanted.html", docsettings), 43, "progress of that file")
+    -- A document with no sidecar must not borrow another one's progress.
+    equal(OfflineLibrary.progress("/tmp/never-opened.html", docsettings), nil, "unknown document")
+end)
 
 test("offline copies use a deterministic name", function()
     -- Callers pass components already sanitized by ArticleManager, so the name
@@ -568,14 +598,45 @@ test("offline lookup falls back to legacy numbered copies", function()
     equal(OfflineLibrary.find(dir, 999, "Missing", offlineLfs(dir, {})), nil, "no copy")
 end)
 
-test("offline lookup ignores annotated exports", function()
+test("offline lookup prefers the original copy over an annotated export", function()
     local dir = "/tmp/exports"
     local lfs = offlineLfs(dir, {
-        ["123_Title_notes.html"] = 30,
-        ["123_Title_notes_1.html"] = 40,
+        ["123_Old_1.html"] = 10,
+        ["123_Old_notes.html"] = 99,      -- newer, but Gota-authored
+        ["123_Old_notes_1.html"] = 98,
     })
-    equal(OfflineLibrary.find(dir, 123, "Title", lfs), nil,
-        "annotated exports are not offline copies")
+    local path, annotated = OfflineLibrary.find(dir, 123, "Absent", lfs)
+    equal(path, dir .. "/123_Old_1.html", "original copy wins over annotated exports")
+    equal(annotated, false, "reported as a publisher document")
+end)
+
+test("an annotated export is still readable when it is the only copy", function()
+    -- A title that sanitizes to something ending in "_notes" (for example
+    -- "Release notes") must not make its own copy invisible.
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["123_Release_notes.html"] = 10 })
+    local path, annotated = OfflineLibrary.find(dir, 123, "Absent", lfs)
+    equal(path, dir .. "/123_Release_notes.html", "sole candidate is offered")
+    equal(annotated, true, "flagged so publisher styling is not forced on it")
+end)
+
+test("offline lookup breaks modification-time ties deterministically", function()
+    -- Real lfs reports whole seconds, so sibling copies routinely tie and the
+    -- winner must not depend on readdir order.
+    local dir = "/tmp/exports"
+    local entries = { ["123_T_1.html"] = 50, ["123_T_2.html"] = 50, ["123_T_3.html"] = 50 }
+    local first = OfflineLibrary.find(dir, 123, "Absent", offlineLfs(dir, entries))
+    local reversed = offlineLfs(dir, entries)
+    local original_dir = reversed.dir
+    reversed.dir = function(target)
+        local names = {}
+        for name in original_dir(target) do table.insert(names, 1, name) end
+        local index = 0
+        return function() index = index + 1; return names[index] end
+    end
+    equal(OfflineLibrary.find(dir, 123, "Absent", reversed), first,
+        "same answer regardless of enumeration order")
+    equal(first, dir .. "/123_T_3.html", "highest name wins the tie")
 end)
 
 test("offline lookup does not confuse id prefixes", function()
@@ -607,9 +668,10 @@ end)
 test("offline progress degrades when document settings fail", function()
     local path = "/tmp/a.html"
     equal(OfflineLibrary.progress(path, nil), nil, "missing module")
+    equal(OfflineLibrary.progress(path, {}), nil, "module without the read-only API")
     equal(OfflineLibrary.progress(path, offlineDocSettings(nil)), nil, "no stored progress")
-    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { no_sidecar = true })), nil, "no sidecar")
-    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_has = true })), nil, "throwing check")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { sidecars = {} })), nil, "no sidecar")
+    equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_find = true })), nil, "throwing lookup")
     equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_open = true })), nil, "throwing open")
     equal(OfflineLibrary.progress(path, offlineDocSettings(0.5, { throws_read = true })), nil, "throwing read")
     equal(OfflineLibrary.progress(path, offlineDocSettings(1.5)), nil, "out of range")
@@ -624,6 +686,18 @@ test("Raindrop search expression quotes tags and embeds type", function()
         'swift #"coffee beans" type:article'
     )
     equal(API.buildSearchExpression("", { tag = 'a"b\\c' }), [=[#"a\"b\\c"]=])
+end)
+
+test("every documented content type is accepted as a filter", function()
+    -- Raindrop documents: link, article, image, video, document, audio.
+    -- An unrecognized type is dropped silently, so the user would get
+    -- unfiltered results with no indication the filter was ignored.
+    for _, content_type in ipairs({ "link", "article", "image", "video", "document", "audio" }) do
+        equal(API.buildSearchExpression("", { type = content_type }),
+            "type:" .. content_type, content_type .. " filter")
+        equal(API.buildSearchExpression("", { exclude_type = content_type }),
+            "-type:" .. content_type, content_type .. " exclusion")
+    end
 end)
 
 test("structured search operators are allowlisted and deterministic", function()
@@ -1254,10 +1328,11 @@ test("offline download writes a deterministic path", function()
             cache = { status = "ready" } })
         -- The name comes from the existing sanitizer, so it matches what
         -- downloadHTML has always written and legacy copies stay recognizable.
-        equal(saved, "/tmp/exports/123_Aristotle_Quotes.html", "returned path")
+        -- KOReader's getSafeFilename keeps spaces, so the device does too.
+        equal(saved, "/tmp/exports/123_Aristotle Quotes.html", "returned path")
     end)
     -- No collision counter: the path must stay stable for KOReader's sidecar.
-    equal(written, "/tmp/exports/123_Aristotle_Quotes.html", "written path")
+    equal(written, "/tmp/exports/123_Aristotle Quotes.html", "written path")
 end)
 
 test("offline download reuses an existing copy instead of duplicating", function()
@@ -1273,15 +1348,94 @@ test("offline download reuses an existing copy instead of duplicating", function
         "reuses the located copy so the reading position survives")
 end)
 
+test("offline paths require a documented integer id", function()
+    withExportFolder({}, function()
+        local manager = offlineManager({})
+        -- Raindrop documents _id as Integer. Anything else would collapse
+        -- through sanitizeID into a shared name and let one article overwrite
+        -- another's copy and inherit its reading position.
+        equal(manager:getOfflinePath({ _id = "12345.5", title = "A" }, true), nil, "float-like id")
+        equal(manager:getOfflinePath({ _id = false, title = "A" }, true), nil, "boolean id")
+        equal(manager:getOfflinePath({ _id = {}, title = "A" }, true), nil, "table id")
+        equal(manager:getOfflinePath({ _id = "abc", title = "A" }, true), nil, "non-numeric id")
+        equal(manager:getOfflinePath({ _id = 123, title = "A" }, true),
+            "/tmp/exports/123_A.html", "integer id")
+        equal(manager:getOfflinePath({ _id = "123", title = "A" }, true),
+            "/tmp/exports/123_A.html", "numeric string id")
+    end)
+end)
+
+test("re-downloading refuses to overwrite the document being read", function()
+    withExportFolder({ ["123_Title.html"] = 10 }, function()
+        local downloads, notices = 0, 0
+        local manager = ArticleManager:new(
+            { downloadRaindropCache = function(_, _, path) downloads = downloads + 1; return path end },
+            {},
+            { isDocumentOpen = function(_, path) return path == "/tmp/exports/123_Title.html" end },
+            { showProgress = noop, hideProgress = noop,
+              notify = function() notices = notices + 1 end })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        -- os.rename over an open document leaves the reader on a stale inode and
+        -- then writes a position measured against the old DOM into the sidecar.
+        equal(manager:downloadHTML({ _id = 123, title = "Title",
+            cache = { status = "ready" } }), nil, "refused")
+        equal(downloads, 0, "nothing downloaded")
+        equal(notices, 1, "user told why")
+    end)
+end)
+
+test("a failed refresh targets the existing copy and reports the error", function()
+    withExportFolder({ ["123_T.html"] = 10 }, function()
+        local target, message
+        local manager = ArticleManager:new(
+            { downloadRaindropCache = function(_, _, path)
+                target = path
+                return nil, "network unreachable"
+            end },
+            {}, {},
+            { showProgress = noop, hideProgress = noop,
+              notify = function(text) message = text end })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        equal(manager:downloadHTML({ _id = 123, title = "T",
+            cache = { status = "ready" } }), nil, "failure reported to the caller")
+        -- The download must aim at the copy already on disk; gota_api writes to
+        -- "<target>.part" and only renames after a 2xx, which is what keeps the
+        -- previous copy intact when this fails.
+        equal(target, "/tmp/exports/123_T.html", "aimed at the existing copy")
+        truthy(message and message:find("network unreachable", 1, true), "reason surfaced")
+    end)
+end)
+
+test("a malformed article reports the real reason it cannot be saved", function()
+    withExportFolder({}, function()
+        local message
+        local manager = ArticleManager:new({}, {}, {}, {
+            showProgress = noop, hideProgress = noop,
+            notify = function(text) message = text end,
+        })
+        manager:setSettings({
+            getFullDownloadPath = function() return "/tmp/exports/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        -- The export directory is fine; the id is not.
+        equal(manager:downloadHTML({ _id = false, title = "T", cache = { status = "ready" } }), nil)
+        equal(message ~= nil and message:find("directory", 1, true), nil,
+            "does not blame the directory")
+    end)
+end)
+
 test("offline state reports the copy and its progress", function()
     withExportFolder({ ["123_Title.html"] = 10 }, function()
         local manager = offlineManager({})
-        manager:setDocSettings({
-            hasSidecarFile = function() return true end,
-            open = function()
-                return { readSetting = function() return 0.43 end }
-            end,
-        })
+        manager:setDocSettings(offlineDocSettings(0.43, {
+            sidecars = { ["/tmp/exports/123_Title.html"] = "/tmp/exports/123_Title.sdr/m.lua" },
+        }))
         local state = manager:getOfflineState({ _id = 123, title = "Title" })
         equal(state.path, "/tmp/exports/123_Title.html", "offline path")
         equal(state.percent, 43, "progress percent")
@@ -2155,6 +2309,25 @@ test("PreRenderDocument applies styles before the after-open state", function()
     Gota.onPreRenderDocument({ ui = { document = {} } })
 end)
 
+test("PreRenderDocument checks the pending path before reaching the reader", function()
+    local Gota = require("main")
+    armGotaReader("/tmp/article.html", true, true)
+    -- Spy on the collaborator: asserting only that no stylesheet was installed
+    -- would be satisfied by applyStyleNormalization's own internal guard, and
+    -- would still pass with main.lua's guard deleted entirely.
+    local original = GotaReader.applyStyleNormalization
+    local calls = 0
+    GotaReader.applyStyleNormalization = function(self, ui)
+        calls = calls + 1
+        return original(self, ui)
+    end
+    Gota.onPreRenderDocument({ ui = styleReaderDouble("/tmp/library-book.epub") })
+    equal(calls, 0, "unrelated document never reaches the stylesheet stage")
+    Gota.onPreRenderDocument({ ui = styleReaderDouble("/tmp/article.html") })
+    equal(calls, 1, "the pending document does")
+    GotaReader.applyStyleNormalization = original
+end)
+
 test("source contexts preserve page and copied search criteria", function()
     local Gota = require("main")
     local captured
@@ -2283,28 +2456,74 @@ test("saved-file result uses one shared action entry point", function()
     equal(shown, "/tmp/articles/item.html", "shared filename")
 end)
 
-test("saved-file dialog offers reading the new copy", function()
+local function savedFileDialog(fake, filename, options)
     local Gota = require("main")
-    package.loaded["ui/widget/buttondialog"] = { new = function(_, options) return options end }
+    package.loaded["ui/widget/buttondialog"] = { new = function(_, opts) return opts end }
+    Gota.showSavedFileActions(fake, filename, options)
+    local buttons = {}
+    for _, row in ipairs(fake.widgets.saved_file_dialog.buttons) do
+        for _, button in ipairs(row) do buttons[button.text] = button end
+    end
+    return buttons
+end
+
+test("reading a saved file keeps a way back into Gota", function()
+    local opened, torn_down = nil, false
+    local fake = {
+        widgets = {}, closeWidget = noop,
+        closeAllWidgets = function() torn_down = true end,
+        article_manager = { openSavedFile = function(_, path, opts) opened = { path, opts } end },
+    }
+    local returned = false
+    local buttons = savedFileDialog(fake, "/tmp/articles/7_Item.html",
+        { on_return = function() returned = true end })
+    truthy(buttons["Read now"], "read-now button present")
+    buttons["Read now"].callback()
+    equal(opened[1], "/tmp/articles/7_Item.html", "opens the file that was just saved")
+    -- Without a return callback GotaReader:canReturn() is false and the
+    -- "Back to Gota" entry never appears, stranding the user.
+    equal(type(opened[2].on_return_callback), "function", "return path provided")
+    opened[2].on_return_callback()
+    equal(returned, true, "returning refreshes the article screen")
+    -- Teardown must be deferred to before_open_callback, which GotaReader only
+    -- runs once the file and provider checks pass.
+    equal(torn_down, false, "UI not destroyed before the reader accepts the file")
+    equal(type(opened[2].before_open_callback), "function", "teardown deferred")
+    opened[2].before_open_callback()
+    equal(torn_down, true, "teardown runs through the reader")
+end)
+
+test("staying in Gota after a download refreshes the article screen", function()
+    local refreshed = 0
+    local fake = {
+        widgets = {}, closeWidget = noop, closeAllWidgets = noop,
+        article_manager = { openSavedFile = noop },
+    }
+    local buttons = savedFileDialog(fake, "/tmp/articles/7_Item.html",
+        { on_return = function() refreshed = refreshed + 1 end })
+    buttons["Stay in Gota"].callback()
+    -- Otherwise the menu keeps offering "Download to read offline" and never
+    -- shows "Continue reading" until the user leaves and re-enters.
+    equal(refreshed, 1, "menu rebuilt so the offline entry appears")
+end)
+
+test("annotated exports are read without publisher style normalization", function()
     local opened
     local fake = {
         widgets = {}, closeWidget = noop, closeAllWidgets = noop,
-        article_manager = {
-            openSavedFile = function(_, path) opened = path end,
-        },
+        article_manager = { openSavedFile = function(_, _, opts) opened = opts end },
     }
-    Gota.showSavedFileActions(fake, "/tmp/articles/7_Item.html")
-    local read_now
-    for _, row in ipairs(fake.widgets.saved_file_dialog.buttons) do
-        for _, button in ipairs(row) do
-            if button.text == "Read now" then read_now = button end
-        end
-    end
-    truthy(read_now, "read-now button present")
-    read_now.callback()
-    -- Opens the file just written, which is correct for the original copy and
-    -- for an annotated export alike.
-    equal(opened, "/tmp/articles/7_Item.html", "opens the file that was just saved")
+    -- Gota authors this HTML with its own tuned stylesheet; the normalization
+    -- policy exists for third-party publisher CSS and would flatten it.
+    local buttons = savedFileDialog(fake, "/tmp/articles/7_Item_notes.html",
+        { normalize_styles = false })
+    buttons["Read now"].callback()
+    equal(opened.normalize_styles, false, "Gota-authored export left alone")
+
+    local remote = savedFileDialog(fake, "/tmp/articles/7_Item.html",
+        { normalize_styles = true })
+    remote["Read now"].callback()
+    equal(opened.normalize_styles, true, "remote web copy normalized")
 end)
 
 test("article detail passes the offline state to the menu", function()
