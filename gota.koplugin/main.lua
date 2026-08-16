@@ -379,6 +379,26 @@ function Gota:addToMainMenu(menu_items)
     }
 end
 
+-- ReaderUI emits PreRenderDocument after loading the document and before the
+-- first render, which is the only point where a stylesheet can be installed
+-- without paying for a second render. The path guard keeps this inert for
+-- books opened outside Gota, for the outgoing document during switchDocument,
+-- and for temporary HTML reopened from history without an active request.
+function Gota:onPreRenderDocument()
+    local path = self.ui and self.ui.document and self.ui.document.file
+    if not GotaReader:shouldNormalize(path) then return end
+
+    -- Presentation only: a failure must never keep the article from opening,
+    -- and the warning carries no article title, URL or content.
+    local applied, apply_error = GotaReader:applyStyleNormalization(self.ui)
+    if not applied then
+        logger.warn("Gota: full-reader style normalization was not applied:",
+            tostring(apply_error))
+    else
+        logger.dbg("Gota: full-reader styles normalized:", path)
+    end
+end
+
 -- ReaderUI emits CloseDocument before releasing the active document. Keep the
 -- singleton return state in sync without coupling GotaReader to ReaderUI internals.
 function Gota:onCloseDocument()

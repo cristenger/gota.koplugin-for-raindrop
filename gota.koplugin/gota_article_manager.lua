@@ -424,6 +424,9 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
     -- Usar GotaReader para abrir
     local opened = self.gota_reader:show({
         path = filename,
+        -- Publisher font sizes in Raindrop web copies are bounded before the
+        -- first render. The downloaded file itself stays untouched.
+        normalize_styles = true,
         before_open_callback = close_all_callback,
         on_return_callback = function()
             logger.dbg("ArticleManager: Usuario volvió del lector")

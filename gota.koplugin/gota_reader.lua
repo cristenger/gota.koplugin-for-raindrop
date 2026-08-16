@@ -6,12 +6,17 @@ local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local _ = require("gettext")
 
+local ReaderStyles = require("gota_reader_styles")
+
 -- This module is shared by the FileManager and ReaderUI plugin instances. It
--- only keeps the state needed to offer a canonical "Back to Gota" menu item.
+-- only keeps the state needed to offer a canonical "Back to Gota" menu item
+-- and to know whether the pending document was requested by Gota's full
+-- reader action.
 local GotaReader = {
     current_path = nil,
     is_showing = false,
     on_return_callback = nil,
+    normalize_styles = false,
 }
 
 local function showError(text)
@@ -25,6 +30,7 @@ function GotaReader:reset()
     self.current_path = nil
     self.is_showing = false
     self.on_return_callback = nil
+    self.normalize_styles = false
 end
 
 function GotaReader:show(options)
@@ -61,6 +67,9 @@ function GotaReader:show(options)
     self.current_path = options.path
     self.is_showing = false
     self.on_return_callback = options.on_return_callback
+    -- Callers opt in explicitly; the path or extension is never used to infer
+    -- the policy, so this module stays reusable and the intent stays visible.
+    self.normalize_styles = options.normalize_styles == true
 
     local function after_open_callback()
         self.is_showing = true
@@ -94,6 +103,65 @@ function GotaReader:show(options)
         return false
     end
 
+    return true
+end
+
+function GotaReader:shouldNormalize(path)
+    return self.normalize_styles == true
+        and type(path) == "string"
+        and path == self.current_path
+end
+
+--[[
+    Append Gota's presentation stylesheet to the base sheet KOReader already
+    resolved. Must run on PreRenderDocument: ReaderTypeset:onReadSettings has
+    set typeset.css by then, and CREngine has not rendered yet, so no second
+    render is triggered.
+
+    CreDocument:setStyleSheet(base_css_file, appended_css) reloads the base
+    file and concatenates the appended string after it, so the same base sheet
+    is preserved and nothing is written to doc_settings. Returns false when the
+    document is not ours (silent), nil plus a reason when the expected API is
+    unavailable or fails, and true when the sheet was installed.
+]]
+function GotaReader:applyStyleNormalization(reader_ui)
+    local document = reader_ui and reader_ui.document
+    local path = document and document.file
+    if not self:shouldNormalize(path) then
+        return false, "document is not the pending Gota reader document"
+    end
+    if type(document.setStyleSheet) ~= "function" then
+        return nil, "CREngine stylesheet API is unavailable"
+    end
+
+    -- typeset.css is the sheet the user selected; default_css only covers the
+    -- case where ReaderTypeset has not resolved one.
+    local typeset = reader_ui.typeset
+    local base_css = typeset and typeset.css or document.default_css
+    if type(base_css) ~= "string" or base_css == "" then
+        return nil, "KOReader base stylesheet is unavailable"
+    end
+
+    -- Read the active tweaks without mutating them. getCssText returns nil
+    -- when no tweak is enabled, which build() treats as absent.
+    local styletweak = reader_ui.styletweak
+    local user_css
+    if styletweak and type(styletweak.getCssText) == "function" then
+        local css_ok, css_or_error = pcall(styletweak.getCssText, styletweak)
+        if css_ok then
+            user_css = css_or_error
+        else
+            logger.warn("Gota: could not read active style tweaks")
+        end
+    end
+
+    local combined = ReaderStyles.build(user_css, {
+        skip_font_normalization = ReaderStyles.hasActiveFontSizeTweak(styletweak),
+    })
+    local ok, err = pcall(document.setStyleSheet, document, base_css, combined)
+    if not ok then
+        return nil, tostring(err)
+    end
     return true
 end
 

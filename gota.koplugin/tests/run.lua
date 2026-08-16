@@ -1054,6 +1054,34 @@ test("reader precondition failure keeps the current menu open", function()
     equal(notifications, 1, "notification count")
 end)
 
+test("ArticleManager requests style normalization for full reader", function()
+    local shown, requested_bytes, requested_path
+    local manager = ArticleManager:new({
+        downloadRaindropCache = function(_, _, path, max_bytes)
+            requested_path = path
+            requested_bytes = max_bytes
+            return path
+        end,
+    }, {}, {
+        show = function(_, options) shown = options; return true end,
+    }, {
+        showProgress = noop,
+        hideProgress = noop,
+        notify = noop,
+    })
+    manager:setSettings({
+        getMaxCacheFileBytes = function() return 512 * 1024 * 1024 end,
+    })
+    local raindrop = { _id = 7, cache = { status = "ready", size = 42, text = "<html>" } }
+    equal(manager:openInReader(raindrop, nil, noop), true, "reader result")
+    equal(shown.normalize_styles, true, "normalization requested")
+    equal(shown.path, requested_path, "reader opens the downloaded file")
+    equal(shown.path, manager:getReaderCachePath(7), "managed reader path")
+    -- The presentation policy must not disturb the streaming download budget.
+    equal(requested_bytes, 512 * 1024 * 1024, "configured file limit unchanged")
+    equal(raindrop.cache.text, nil, "in-memory copy released")
+end)
+
 test("reader cache files are isolated from permanent exports", function()
     local manager = ArticleManager:new({}, {}, {}, {
         showProgress = noop,
@@ -1604,6 +1632,164 @@ test("ReaderUI provider failure leaves Gota navigation open", function()
     equal(closed, false, "navigation close")
 end)
 
+-- Doubles for the pre-render stage. ReaderUI is never instantiated: the
+-- contract under test is which fields Gota reads and which it must not touch.
+local function styleReaderDouble(path, options)
+    options = options or {}
+    local calls = { style = {} }
+    local document = {
+        file = path,
+        default_css = "./data/fallback.css",
+        setStyleSheet = function(_, base, appended)
+            calls.style[#calls.style + 1] = { base = base, appended = appended }
+        end,
+        setEmbeddedStyleSheet = function()
+            error("normalization must not change embedded style settings")
+        end,
+    }
+    if options.no_style_api then
+        document.setStyleSheet = nil
+    elseif options.throwing_style then
+        document.setStyleSheet = function() error("crengine failure") end
+    end
+    return {
+        document = document,
+        typeset = options.typeset ~= false
+            and { css = options.base_css or "./data/epub.css" } or nil,
+        styletweak = options.styletweak,
+    }, calls
+end
+
+-- Arms the singleton through the public entry point instead of writing fields.
+local function armGotaReader(path, normalize, defer_after_open)
+    local pending
+    GotaReader:reset()
+    ReaderUI.instance = nil
+    ReaderUI.showReader = function(self, file, _, _, _, after_open)
+        self.instance = { document = { file = file } }
+        if defer_after_open then pending = after_open else after_open() end
+    end
+    local opened = GotaReader:show({
+        path = path,
+        normalize_styles = normalize,
+        on_return_callback = noop,
+    })
+    return opened, pending
+end
+
+test("GotaReader applies normalization to the pending matching path", function()
+    truthy(armGotaReader("/tmp/article.html", true), "reader open")
+    equal(GotaReader:shouldNormalize("/tmp/article.html"), true, "pending normalization")
+
+    local reader_ui, calls = styleReaderDouble("/tmp/article.html", {
+        styletweak = {
+            enabled = true,
+            getCssText = function() return "p { -gota-user-marker: 1; }" end,
+            isTweakEnabled = function() return false, false end,
+        },
+    })
+    equal(GotaReader:applyStyleNormalization(reader_ui), true, "normalization applied")
+    equal(#calls.style, 1, "single stylesheet call")
+    contains(calls.style[1].appended, "h4, h5, h6 { font-size: 1.1rem !important; }",
+        "bounded heading scale")
+    contains(calls.style[1].appended, "-gota-user-marker", "user tweaks appended last")
+end)
+
+test("GotaReader keeps the current base stylesheet", function()
+    armGotaReader("/tmp/article.html", true)
+    local reader_ui, calls = styleReaderDouble("/tmp/article.html",
+        { base_css = "./data/html5.css" })
+    equal(GotaReader:applyStyleNormalization(reader_ui), true, "normalization applied")
+    equal(calls.style[1].base, "./data/html5.css", "user-selected base sheet reused")
+
+    -- default_css is only a fallback for a ReaderTypeset without a sheet.
+    local fallback_ui, fallback_calls = styleReaderDouble("/tmp/article.html",
+        { typeset = false })
+    equal(GotaReader:applyStyleNormalization(fallback_ui), true, "fallback applied")
+    equal(fallback_calls.style[1].base, "./data/fallback.css", "document default sheet")
+end)
+
+test("GotaReader does not change embedded stylesheet settings", function()
+    armGotaReader("/tmp/article.html", true)
+    local reader_ui, calls = styleReaderDouble("/tmp/article.html")
+    local original_open, original_remove, original_rename = io.open, os.remove, os.rename
+    io.open = function() error("normalization must not open files") end
+    os.remove = function() error("normalization must not remove files") end
+    os.rename = function() error("normalization must not rename files") end
+    local ok, applied = pcall(GotaReader.applyStyleNormalization, GotaReader, reader_ui)
+    io.open, os.remove, os.rename = original_open, original_remove, original_rename
+    truthy(ok, "no filesystem access during normalization")
+    equal(applied, true, "normalization applied")
+    equal(#calls.style, 1, "stylesheet installed once")
+end)
+
+test("GotaReader ignores unrelated documents", function()
+    armGotaReader("/tmp/article.html", true)
+    local other_ui, other_calls = styleReaderDouble("/tmp/library-book.epub")
+    local applied, reason = GotaReader:applyStyleNormalization(other_ui)
+    equal(applied, false, "unrelated document result")
+    contains(reason, "not the pending", "unrelated document reason")
+    equal(#other_calls.style, 0, "no stylesheet call")
+
+    -- Opening a Gota path without the explicit request stays untouched.
+    armGotaReader("/tmp/article.html", nil)
+    equal(GotaReader:shouldNormalize("/tmp/article.html"), false, "opt-in required")
+    local plain_ui, plain_calls = styleReaderDouble("/tmp/article.html")
+    equal(GotaReader:applyStyleNormalization(plain_ui), false, "no normalization")
+    equal(#plain_calls.style, 0, "no stylesheet call")
+
+    -- Closing the document retires the pending request.
+    armGotaReader("/tmp/article.html", true)
+    GotaReader:onReaderUIClose("/tmp/article.html")
+    equal(GotaReader:shouldNormalize("/tmp/article.html"), false, "cleared on close")
+end)
+
+test("GotaReader contains missing or throwing CREngine style APIs", function()
+    armGotaReader("/tmp/article.html", true)
+    local applied, reason = GotaReader:applyStyleNormalization(
+        styleReaderDouble("/tmp/article.html", { no_style_api = true }))
+    equal(applied, nil, "missing API result")
+    contains(reason, "stylesheet API is unavailable", "missing API reason")
+
+    applied, reason = GotaReader:applyStyleNormalization(
+        styleReaderDouble("/tmp/article.html", { throwing_style = true }))
+    equal(applied, nil, "throwing API result")
+    contains(reason, "crengine failure", "throwing API reason")
+
+    local bare_ui = styleReaderDouble("/tmp/article.html", { typeset = false })
+    bare_ui.document.default_css = nil
+    applied, reason = GotaReader:applyStyleNormalization(bare_ui)
+    equal(applied, nil, "missing base sheet result")
+    contains(reason, "base stylesheet is unavailable", "missing base sheet reason")
+
+    -- A failing tweak lookup still installs Gota's own policy.
+    local tweak_ui, tweak_calls = styleReaderDouble("/tmp/article.html", {
+        styletweak = {
+            enabled = true,
+            getCssText = function() error("no tweak text") end,
+            isTweakEnabled = function() error("no tweak table") end,
+        },
+    })
+    equal(GotaReader:applyStyleNormalization(tweak_ui), true, "applied without user CSS")
+    contains(tweak_calls.style[1].appended, "1.6rem", "Gota policy present")
+end)
+
+test("an active KOReader size tweak keeps Gota from adding a second policy", function()
+    armGotaReader("/tmp/article.html", true)
+    local reader_ui, calls = styleReaderDouble("/tmp/article.html", {
+        styletweak = {
+            enabled = true,
+            getCssText = function() return "* { font-size: inherit !important; }" end,
+            isTweakEnabled = function(_, id) return id == "font_size_all_inherit", true end,
+        },
+    })
+    equal(GotaReader:applyStyleNormalization(reader_ui), true, "normalization applied")
+    local appended = calls.style[1].appended
+    equal(appended:find("1.6rem", 1, true), nil, "no Gota heading scale")
+    contains(appended, "display: none !important", "cleanup still applied")
+    contains(appended, "font-size: inherit !important", "user tweak preserved")
+end)
+
 test("plugin init registers Dispatcher actions and settings ownership", function()
     local actions = {}
     package.loaded["dispatcher"] = {
@@ -1650,6 +1836,31 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     local menu = {}
     Gota:addToMainMenu(menu)
     equal(menu.gota.sorting_hint, nil, "legacy top-level menu placement")
+end)
+
+test("PreRenderDocument applies styles before the after-open state", function()
+    local Gota = require("main")
+    local opened, pending_after_open = armGotaReader("/tmp/article.html", true, true)
+    truthy(opened, "reader open")
+    -- ReaderUI emits PreRenderDocument before the after-open callback runs.
+    equal(GotaReader.is_showing, false, "document not opened yet")
+
+    local reader_ui, calls = styleReaderDouble("/tmp/article.html")
+    Gota.onPreRenderDocument({ ui = reader_ui })
+    equal(#calls.style, 1, "stylesheet installed before the first render")
+    equal(calls.style[1].base, "./data/epub.css", "base sheet preserved")
+
+    pending_after_open()
+    equal(GotaReader.is_showing, true, "after-open state")
+    equal(#calls.style, 1, "no second stylesheet call after opening")
+
+    -- Books opened outside Gota, and incomplete UI states, stay inert.
+    local other_ui, other_calls = styleReaderDouble("/tmp/library-book.epub")
+    Gota.onPreRenderDocument({ ui = other_ui })
+    equal(#other_calls.style, 0, "unrelated document untouched")
+    Gota.onPreRenderDocument({})
+    Gota.onPreRenderDocument({ ui = {} })
+    Gota.onPreRenderDocument({ ui = { document = {} } })
 end)
 
 test("source contexts preserve page and copied search criteria", function()
