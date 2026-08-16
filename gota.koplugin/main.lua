@@ -29,6 +29,13 @@ local Gota = WidgetContainer:extend{
     version = Version.version,
 }
 
+local function copyPlainTable(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for key, item in pairs(value) do copy[key] = copyPlainTable(item) end
+    return copy
+end
+
 -- ========== INITIALIZATION ==========
 
 function Gota:init()
@@ -172,6 +179,47 @@ function Gota:closeAllWidgets()
     for _, name in ipairs(widget_names) do
         self:closeWidget(name)
     end
+end
+
+function Gota:buildCollectionSourceContext(collection_id, collection_name, page)
+    local captured_id = collection_id
+    local captured_name = collection_name
+    local captured_page = page or 0
+    return {
+        kind = "collection",
+        page = captured_page,
+        reload = function(focus_raindrop_id)
+            self:showRaindrops(captured_id, captured_name, captured_page, focus_raindrop_id)
+        end,
+    }
+end
+
+function Gota:buildSearchSourceContext(term, page, filters, search_context)
+    local captured_term = term
+    local captured_page = page or 0
+    local captured_filters = copyPlainTable(filters)
+    local captured_context = copyPlainTable(search_context or {})
+    return {
+        kind = "search",
+        page = captured_page,
+        reload = function(focus_raindrop_id)
+            self:searchRaindrops(captured_term, captured_page, captured_filters,
+                captured_context, focus_raindrop_id)
+        end,
+    }
+end
+
+function Gota:buildHighlightsSourceContext(collection_id, collection_name, page)
+    local captured_id = collection_id
+    local captured_name = collection_name
+    local captured_page = page or 0
+    return {
+        kind = "highlights",
+        page = captured_page,
+        reload = function(focus_raindrop_id)
+            self:showHighlights(captured_id, captured_name, captured_page, focus_raindrop_id)
+        end,
+    }
 end
 
 -- ========== MAIN MENU ==========
@@ -585,7 +633,7 @@ function Gota:formatRaindropQuickInfo(raindrop)
     return info
 end
 
-function Gota:showRaindrops(collection_id, collection_name, page)
+function Gota:showRaindrops(collection_id, collection_name, page, focus_raindrop_id)
     page = page or 0
     local perpage = 25
     local sort = self.settings:getSortOrder()
@@ -599,9 +647,10 @@ function Gota:showRaindrops(collection_id, collection_name, page)
         return
     end
 
+    local source_context = self:buildCollectionSourceContext(collection_id, collection_name, page)
     local items = self.ui_builder:buildRaindropItems(
         raindrops,
-        function(raindrop) self:showRaindropContent(raindrop) end,
+        function(raindrop) self:showRaindropContent(raindrop, source_context) end,
         -- Hold callback: quick info popup (no API calls, data already in list item)
         function(raindrop)
             self:notify(self:formatRaindropQuickInfo(raindrop), 5)
@@ -609,7 +658,7 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     )
 
     -- Pagination
-    self.ui_builder:addPagination(
+    local subtitle = self.ui_builder:addPagination(
         items,
         raindrops,
         page,
@@ -632,7 +681,12 @@ function Gota:showRaindrops(collection_id, collection_name, page)
     self:closeWidget("raindrops_menu")
     local menu_title = collection_name or _("Articles")
     if raindrops.count ~= nil then menu_title = string.format("%s (%d)", menu_title, raindrops.count) end
-    self.widgets.raindrops_menu = self.ui_builder:createMenu(menu_title, items)
+    self.widgets.raindrops_menu = self.ui_builder:createMenu(menu_title, items, {
+        subtitle = subtitle,
+        focus_raindrop_id = focus_raindrop_id,
+        items_max_lines = 2,
+        multilines_forced = true,
+    })
     UIManager:show(self.widgets.raindrops_menu)
 end
 
@@ -687,7 +741,7 @@ end
 
 -- ========== ARTICLE CONTENT ==========
 
-function Gota:showRaindropContent(raindrop)
+function Gota:showRaindropContent(raindrop, source_context)
     if not raindrop then
         self:notify(_("Error loading article: ") .. _("Unknown error"), 4)
         return
@@ -713,7 +767,7 @@ function Gota:showRaindropContent(raindrop)
                 self.article_manager:openInReader(
                     raindrop,
                     function() self:closeAllWidgets() end,
-                    function(rd) self:showRaindropContent(rd) end
+                    function(rd) self:showRaindropContent(rd, source_context) end
                 )
             else
                 self:notify(_("Content is not available yet"))
@@ -721,7 +775,8 @@ function Gota:showRaindropContent(raindrop)
         end,
         show_text = function()
             local loaded = self.article_manager:loadCacheContent(raindrop)
-            if self.article_manager:hasValidCache(loaded) then self:showRaindropCachedContent(loaded)
+            if self.article_manager:hasValidCache(loaded) then
+                self:showRaindropCachedContent(loaded, source_context)
             else self:notify(_("Content exceeds the text limit or is unavailable")) end
         end,
         show_info = function()
@@ -758,20 +813,22 @@ function Gota:showRaindropContent(raindrop)
         reload = function()
             self.article_manager:reloadArticle(
                 raindrop._id,
-                function(rd) self:showRaindropContent(rd) end
+                function(rd) self:showRaindropContent(rd, source_context) end
             )
         end,
         in_trash = in_trash,
         toggle_favorite = function()
             NetworkMgr:runWhenOnline(function()
                 self:updateCurrentRaindrop(raindrop, { important = not raindrop.important },
-                    _("Favorite updated"))
+                    _("Favorite updated"), nil, source_context)
             end)
         end,
-        edit_note = function() self:editRaindropNote(raindrop) end,
-        edit_tags = function() self:editRaindropTags(raindrop) end,
-        move_collection = function() self:chooseRaindropCollection(raindrop) end,
-        move_to_trash = function() self:confirmTrashRaindrop(raindrop, current_collection_id) end,
+        edit_note = function() self:editRaindropNote(raindrop, source_context) end,
+        edit_tags = function() self:editRaindropTags(raindrop, source_context) end,
+        move_collection = function() self:chooseRaindropCollection(raindrop, source_context) end,
+        move_to_trash = function()
+            self:confirmTrashRaindrop(raindrop, current_collection_id, source_context)
+        end,
     })
     
     self:closeWidget("article_menu")
@@ -797,7 +854,7 @@ function Gota:showRaindropHighlights(raindrop)
     self.dialogs:showArticleInfo(raindrop, content)
 end
 
-function Gota:showRaindropCachedContent(raindrop)
+function Gota:showRaindropCachedContent(raindrop, source_context)
     if not raindrop.cache or not raindrop.cache.text then
         self:notify(_("No cached content available"))
         return
@@ -813,7 +870,7 @@ function Gota:showRaindropCachedContent(raindrop)
             self.article_manager:openInReader(
                 raindrop,
                 function() self:closeAllWidgets() end,
-                function(rd) self:showRaindropContent(rd) end
+                function(rd) self:showRaindropContent(rd, source_context) end
             )
         end,
         show_link = function()
@@ -858,7 +915,7 @@ end
 
 -- ========== SEARCH ==========
 
-function Gota:searchRaindrops(search_term, page, filters, context)
+function Gota:searchRaindrops(search_term, page, filters, context, focus_raindrop_id)
     page = page or 0
     local perpage = 25
     context = context or {}
@@ -875,9 +932,10 @@ function Gota:searchRaindrops(search_term, page, filters, context)
         return
     end
     
+    local source_context = self:buildSearchSourceContext(search_term, page, filters, context)
     local items = self.ui_builder:buildRaindropItems(
         results,
-        function(raindrop) self:showRaindropContent(raindrop) end,
+        function(raindrop) self:showRaindropContent(raindrop, source_context) end,
         -- Hold callback: quick info (same as showRaindrops)
         function(raindrop)
             self:notify(self:formatRaindropQuickInfo(raindrop), 5)
@@ -918,7 +976,7 @@ end
 
 -- ========== GLOBAL HIGHLIGHTS ==========
 
-function Gota:showHighlights(collection_id, collection_name, page)
+function Gota:showHighlights(collection_id, collection_name, page, focus_raindrop_id)
     page = page or 0
     local perpage = 25
     self:showProgress(_("Loading highlights..."))
@@ -928,19 +986,27 @@ function Gota:showHighlights(collection_id, collection_name, page)
         self:notify(_("Error loading highlights: ") .. (err or _("Unknown error")), 4)
         return
     end
+    local source_context = self:buildHighlightsSourceContext(collection_id, collection_name, page)
     local items = self.ui_builder:buildHighlightItems(response, function(highlight)
-        self:showHighlightActions(highlight)
+        self:showHighlightActions(highlight, source_context)
     end)
-    self.ui_builder:addPagination(items, response, page, perpage, function(new_page)
+    local subtitle = self.ui_builder:addPagination(items, response, page, perpage, function(new_page)
         self:showHighlights(collection_id, collection_name, new_page)
     end)
     self:closeWidget("highlights_menu")
     self.widgets.highlights_menu = self.ui_builder:createMenu(
-        collection_id and (_("Highlights") .. " — " .. tostring(collection_name)) or _("All highlights"), items)
+        collection_id and (_("Highlights") .. " — " .. tostring(collection_name)) or _("All highlights"),
+        items,
+        {
+            subtitle = subtitle,
+            focus_raindrop_id = focus_raindrop_id,
+            items_max_lines = 2,
+            multilines_forced = true,
+        })
     UIManager:show(self.widgets.highlights_menu)
 end
 
-function Gota:showHighlightActions(highlight)
+function Gota:showHighlightActions(highlight, source_context)
     local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or nil
     local items = {{
         text = _("View highlight details"),
@@ -952,7 +1018,7 @@ function Gota:showHighlightActions(highlight)
     if reference and reference._id then
         items[#items + 1] = {
             text = _("Open related article"),
-            callback = function() self:showRaindropContent(reference) end,
+            callback = function() self:showRaindropContent(reference, source_context) end,
         }
     end
     self:closeWidget("highlight_actions_menu")
@@ -963,7 +1029,7 @@ end
 
 -- ========== REVERSIBLE BOOKMARK EDITING ==========
 
-function Gota:updateCurrentRaindrop(raindrop, patch, success_message, dialog_to_close)
+function Gota:updateCurrentRaindrop(raindrop, patch, success_message, dialog_to_close, source_context)
     self:showProgress(_("Updating bookmark..."))
     local response, err = self.api:updateRaindrop(raindrop._id, patch)
     self:hideProgress()
@@ -971,34 +1037,42 @@ function Gota:updateCurrentRaindrop(raindrop, patch, success_message, dialog_to_
         self:notify(_("Could not update bookmark: ") .. (err or _("Unknown error")), 4)
         return false
     end
+    local updated = self.article_manager:adoptFullArticle(response.item)
     if dialog_to_close then UIManager:close(dialog_to_close) end
+    self:closeWidget("article_menu")
     self:toast(success_message or _("Bookmark updated"))
-    self:showRaindropContent(self.article_manager:adoptFullArticle(response.item))
+    if source_context and type(source_context.reload) == "function" then
+        source_context.reload(updated._id)
+    else
+        self:showRaindropContent(updated, { kind = "standalone", page = 0 })
+    end
     return true
 end
 
-function Gota:editRaindropNote(raindrop)
+function Gota:editRaindropNote(raindrop, source_context)
     self.dialogs:showEditNoteDialog(raindrop.note, {
         notify = function(...) self:notify(...) end,
         save = function(note, dialog)
             NetworkMgr:runWhenOnline(function()
-                self:updateCurrentRaindrop(raindrop, { note = note }, _("Note updated"), dialog)
+                self:updateCurrentRaindrop(raindrop, { note = note }, _("Note updated"),
+                    dialog, source_context)
             end)
         end,
     })
 end
 
-function Gota:editRaindropTags(raindrop)
+function Gota:editRaindropTags(raindrop, source_context)
     self.dialogs:showEditTagsDialog(raindrop.tags, {
         save = function(tags, dialog)
             NetworkMgr:runWhenOnline(function()
-                self:updateCurrentRaindrop(raindrop, { tags = tags }, _("Tags updated"), dialog)
+                self:updateCurrentRaindrop(raindrop, { tags = tags }, _("Tags updated"),
+                    dialog, source_context)
             end)
         end,
     })
 end
 
-function Gota:chooseRaindropCollection(raindrop)
+function Gota:chooseRaindropCollection(raindrop, source_context)
     self:showProgress(_("Loading collections..."))
     local structure, err = self.api:getCollectionStructure()
     self:hideProgress()
@@ -1010,15 +1084,25 @@ function Gota:chooseRaindropCollection(raindrop)
         text = _("Unsorted (inbox)"),
         callback = function()
             NetworkMgr:runWhenOnline(function()
-                self:updateCurrentRaindrop(raindrop, { collection = { ["$id"] = -1 } },
-                    _("Bookmark moved"), self.widgets.collection_picker)
+                local moved = self:updateCurrentRaindrop(raindrop,
+                    { collection = { ["$id"] = -1 } }, _("Bookmark moved"),
+                    self.widgets.collection_picker, source_context)
+                if moved then
+                    self:closeWidget("collections_menu")
+                    self:closeWidget("collection_actions_menu")
+                end
             end)
         end,
     }}
     local collection_items = self.ui_builder:buildCollectionItems(structure, function(id)
         NetworkMgr:runWhenOnline(function()
-            self:updateCurrentRaindrop(raindrop, { collection = { ["$id"] = id } },
-                _("Bookmark moved"), self.widgets.collection_picker)
+            local moved = self:updateCurrentRaindrop(raindrop,
+                { collection = { ["$id"] = id } }, _("Bookmark moved"),
+                self.widgets.collection_picker, source_context)
+            if moved then
+                self:closeWidget("collections_menu")
+                self:closeWidget("collection_actions_menu")
+            end
         end)
     end, { collapsed_groups = {}, expand_all_groups = true })
     for _, item in ipairs(collection_items) do items[#items + 1] = item end
@@ -1027,7 +1111,7 @@ function Gota:chooseRaindropCollection(raindrop)
     UIManager:show(self.widgets.collection_picker)
 end
 
-function Gota:confirmTrashRaindrop(raindrop, context_collection_id)
+function Gota:confirmTrashRaindrop(raindrop, context_collection_id, source_context)
     local item_collection_id = raindrop.collection and raindrop.collection["$id"]
     if tonumber(context_collection_id) == -99 or tonumber(item_collection_id) == -99 then
         self:notify(_("This item is already in Trash; permanent deletion is not supported."), 4)
@@ -1042,6 +1126,13 @@ function Gota:confirmTrashRaindrop(raindrop, context_collection_id)
             if response then
                 self:toast(_("Bookmark moved to Trash"))
                 self:closeWidget("article_menu")
+                self:closeWidget("collections_menu")
+                self:closeWidget("collection_actions_menu")
+                if source_context and type(source_context.reload) == "function" then
+                    source_context.reload(nil)
+                else
+                    self:showRaindrops(0, _("All articles"), 0)
+                end
             else
                 self:notify(_("Could not move bookmark to Trash: ") .. (err or _("Unknown error")), 4)
             end

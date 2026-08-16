@@ -1086,6 +1086,33 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     equal(menu.gota.sorting_hint, "more_tools", "sorting hint")
 end)
 
+test("source contexts preserve page and copied search criteria", function()
+    local Gota = require("main")
+    local captured
+    local fake = {
+        showRaindrops = function(_, id, name, page, focus)
+            captured = { id = id, name = name, page = page, focus = focus }
+        end,
+        searchRaindrops = function(_, term, page, filters, context, focus)
+            captured = { term = term, page = page, filters = filters, context = context, focus = focus }
+        end,
+    }
+    local collection = Gota.buildCollectionSourceContext(fake, 4, "Inbox", 2)
+    collection.reload(19)
+    equal(captured.page, 2, "collection page")
+    equal(captured.focus, 19, "collection focus")
+
+    local filters = { tag = "original" }
+    local context = { collection_id = 4, nested = true }
+    local search = Gota.buildSearchSourceContext(fake, "term", 3, filters, context)
+    filters.tag = "mutated"
+    context.collection_id = 99
+    search.reload(21)
+    equal(captured.filters.tag, "original", "copied filter")
+    equal(captured.context.collection_id, 4, "copied scope")
+    equal(captured.page, 3, "search page")
+end)
+
 test("confirmed token removal clears API cache and closes authenticated navigation", function()
     local Gota = require("main")
     local cache_clears, closes, notice = 0, 0
@@ -1101,6 +1128,56 @@ test("confirmed token removal clears API cache and closes authenticated navigati
     equal(cache_clears, 1, "cache cleared")
     equal(closes, 1, "authenticated widgets closed")
     equal(notice, "Local access token removed", "success notice")
+end)
+
+test("successful mutation reloads source once while failure preserves detail", function()
+    local Gota = require("main")
+    local reload_count, reload_id, closed, notified = 0, nil, 0, 0
+    local fake = {
+        api = { updateRaindrop = function() return { item = { _id = 77 } } end },
+        article_manager = { adoptFullArticle = function(_, item) return item end },
+        showProgress = noop,
+        hideProgress = noop,
+        toast = noop,
+        notify = function() notified = notified + 1 end,
+        closeWidget = function(_, name) if name == "article_menu" then closed = closed + 1 end end,
+        showRaindropContent = function() error("detail should not reopen") end,
+    }
+    local source = { reload = function(id) reload_count, reload_id = reload_count + 1, id end }
+    truthy(Gota.updateCurrentRaindrop(fake, { _id = 77 }, { important = true }, "updated",
+        nil, source), "mutation")
+    equal(reload_count, 1, "single reload")
+    equal(reload_id, 77, "updated focus")
+    equal(closed, 1, "detail closed")
+
+    fake.api.updateRaindrop = function() return nil, "offline" end
+    equal(Gota.updateCurrentRaindrop(fake, { _id = 77 }, { important = false }, "updated",
+        nil, source), false, "failed mutation")
+    equal(reload_count, 1, "no failed reload")
+    equal(closed, 1, "detail kept on failure")
+    equal(notified, 1, "failure notice")
+end)
+
+test("Trash closes stale navigation and reloads without reopening the item", function()
+    local Gota = require("main")
+    local reload_called, reload_id = false, "not-called"
+    local closed = {}
+    local fake = {
+        dialogs = { confirmMoveToTrash = function(_, _, callback) callback() end },
+        api = { trashRaindrop = function() return { result = true } end },
+        showProgress = noop,
+        hideProgress = noop,
+        toast = noop,
+        notify = noop,
+        closeWidget = function(_, name) closed[name] = true end,
+    }
+    Gota.confirmTrashRaindrop(fake, { _id = 9, title = "Item", collection = { ["$id"] = 4 } },
+        4, { reload = function(id) reload_called, reload_id = true, id end })
+    equal(reload_called, true, "source reloaded")
+    equal(reload_id, nil, "no deleted focus")
+    equal(closed.article_menu, true, "detail closed")
+    equal(closed.collections_menu, true, "collection counts closed")
+    equal(closed.collection_actions_menu, true, "collection actions closed")
 end)
 
 test("collection screen reads documented nested user statistics counts", function()
