@@ -95,9 +95,13 @@ end
 package.preload["device"] = function()
     return { screen = { getWidth = function() return 600 end, getHeight = function() return 800 end } }
 end
-local http = { PROXY = nil }
+local http = { PROXY = nil, request = function(request)
+    return require("ssl.https").request(request)
+end }
 package.preload["socket.http"] = function() return http end
-package.preload["ssl.https"] = function() return { request = noop } end
+package.preload["ssl.https"] = function()
+    return { request = noop, tcp = function() return function() return {} end end }
+end
 package.preload["ltn12"] = function()
     return { source = { string = function(value) return value end } }
 end
@@ -1170,7 +1174,8 @@ test("bookmark updates are allowlisted and Trash refuses permanent deletion", fu
     equal(api:trashRaindrop(7, -99), nil, "Trash safety")
     equal(#calls, 2, "no permanent DELETE")
     truthy(api:trashRaindrop(7, 42), "move to Trash")
-    equal(calls[3].method, "DELETE", "Trash method")
+    equal(calls[3].method, "PUT", "Trash method")
+    contains(calls[3].body, '"collection":{"$id":-99}', "explicit Trash destination")
 end)
 
 test("raindrop list accepts an undocumented missing count", function()
@@ -2663,6 +2668,11 @@ test("collection screen reads documented nested user statistics counts", functio
     contains(combined, "Duplicate links: 2", "duplicate count")
     contains(combined, "Trash (4)", "Trash count")
 end)
+
+for _, path in ipairs({ "tests/api_hardening.lua", "tests/reading_localization.lua",
+    "tests/offline_library.lua", "tests/operations.lua", "tests/navigation.lua" }) do
+    dofile(path)(test, equal, truthy, contains)
+end
 
 io.write(string.format("1..%d\n", total))
 if failed > 0 then

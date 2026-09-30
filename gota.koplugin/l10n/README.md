@@ -2,6 +2,8 @@
 
 This directory contains translation files for the Gota plugin.
 
+All plugin modules use `gota_gettext.lua`. It temporarily loads the plugin MO file into separate dictionaries and restores KOReader’s translation, context and plural state. It does not change the core text domain. Regional UI languages fall back to a base catalog, for example `es_ES` uses `es/gota.mo`. The catalog is loaded before modules build translated lookup tables.
+
 ## Structure
 
 ```
@@ -103,6 +105,14 @@ The audit rejects missing/fuzzy Spanish entries, incompatible printf placeholder
    - Settings → Language → Select your language
 3. Restart KOReader
 4. Open the Gota plugin and verify translations
+
+The native isolation check can also run from KOReader’s runtime directory without opening a real profile:
+
+```bash
+KO_HOME="$(mktemp -d)" ./luajit /absolute/path/gota.koplugin/tests/runtime_gettext.lua
+```
+
+It verifies Spanish, regional fallback and unchanged core dictionaries, plural function and domain.
 
 ## Updating Existing Translations
 

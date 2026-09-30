@@ -12,7 +12,8 @@ local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local DataStorage = require("datastorage")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("gota_gettext")
+local unpack = unpack or table.unpack
 
 local Settings = require("gota_settings")
 local API = require("gota_api")
@@ -22,6 +23,8 @@ local UIBuilder = require("gota_ui_builder")
 local Dialogs = require("gota_dialogs")
 local ArticleManager = require("gota_article_manager")
 local Version = require("gota_version")
+local Operations = require("gota_operations")
+local Raindrop = require("gota_raindrop")
 
 local Gota = WidgetContainer:extend{
     name = "gota",
@@ -34,6 +37,12 @@ local function copyPlainTable(value)
     local copy = {}
     for key, item in pairs(value) do copy[key] = copyPlainTable(item) end
     return copy
+end
+
+local function searchSort(settings, term, context)
+    if context and context.sort then return context.sort end
+    if tostring(term or ""):find("%S") then return "score" end
+    return settings:getSortOrder()
 end
 
 -- ========== INITIALIZATION ==========
@@ -60,6 +69,20 @@ function Gota:init()
     self.article_manager:setSettings(self.settings)
     self.widgets = {}
     self.collapsed_collection_groups = {}
+    self.session_generation = self.settings.getSessionGeneration
+        and self.settings:getSessionGeneration() or 0
+    if self.api.setRequestExecutor then
+        self.operations = Operations:new{
+            get_generation = function() return self.settings:getSessionGeneration() end,
+            get_progress = function() return self.widgets.progress end,
+            finish = function() self:hideProgress() end,
+            notify = function(text) self:notify(text, 4) end,
+            invalidate = function() self.api:clearCache() end,
+        }
+        self.api:setRequestExecutor(function(task, context)
+            return self.operations:execute(task, context)
+        end)
+    end
     local active_path = self.ui and self.ui.document and self.ui.document.file
     local removed_count, cleanup_warnings =
         self.article_manager:cleanupOrphanReaderFiles(active_path)
@@ -175,9 +198,45 @@ function Gota:closeAllWidgets()
     local widget_names = {"progress", "token_dialog", "collections_menu", "collection_actions_menu", "raindrops_menu",
                           "article_menu", "search_dialog", "search_menu", "advanced_search_dialog",
                           "text_viewer", "sort_dialog", "highlights_menu", "highlight_actions_menu",
-                          "collection_picker", "remove_token_dialog", "saved_file_dialog"}
+                          "collection_picker", "remove_token_dialog", "saved_file_dialog", "offline_menu"}
     for _, name in ipairs(widget_names) do
         self:closeWidget(name)
+    end
+end
+
+function Gota:runNetworkAction(task)
+    if self.operations then return self.operations:run(task) end
+    return task()
+end
+
+function Gota:resetAuthenticatedNavigation()
+    self.api:clearCache()
+    self.last_advanced_search = nil
+    self.collapsed_collection_groups = {}
+    self.session_generation = self.settings.getSessionGeneration
+        and self.settings:getSessionGeneration() or 0
+    for _, name in ipairs({ "collections_menu", "collection_actions_menu", "raindrops_menu",
+        "article_menu", "search_dialog", "search_menu", "advanced_search_dialog", "text_viewer",
+        "highlights_menu", "highlight_actions_menu", "collection_picker", "saved_file_dialog" }) do
+        self:closeWidget(name)
+    end
+end
+
+function Gota:networkCallback(callback)
+    local generation = self.settings and self.settings.getSessionGeneration
+        and self.settings:getSessionGeneration() or 0
+    return function(...)
+        if self.settings and self.settings.getSessionGeneration and
+            generation ~= self.settings:getSessionGeneration() then
+            self:resetAuthenticatedNavigation()
+            self:notify(_("The account changed; reopen the article before continuing"), 4)
+            return
+        end
+        local args = { n = select("#", ...), ... }
+        if self.operations then
+            return self.operations:run(function() return callback(unpack(args, 1, args.n)) end)
+        end
+        return callback(unpack(args, 1, args.n))
     end
 end
 
@@ -188,9 +247,9 @@ function Gota:buildCollectionSourceContext(collection_id, collection_name, page)
     return {
         kind = "collection",
         page = captured_page,
-        reload = function(focus_raindrop_id)
+        reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:showRaindrops(captured_id, captured_name, captured_page, focus_raindrop_id)
-        end,
+        end),
     }
 end
 
@@ -202,10 +261,10 @@ function Gota:buildSearchSourceContext(term, page, filters, search_context)
     return {
         kind = "search",
         page = captured_page,
-        reload = function(focus_raindrop_id)
+        reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:searchRaindrops(captured_term, captured_page, captured_filters,
                 captured_context, focus_raindrop_id)
-        end,
+        end),
     }
 end
 
@@ -216,9 +275,9 @@ function Gota:buildHighlightsSourceContext(collection_id, collection_name, page)
     return {
         kind = "highlights",
         page = captured_page,
-        reload = function(focus_raindrop_id)
+        reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:showHighlights(captured_id, captured_name, captured_page, focus_raindrop_id)
-        end,
+        end),
     }
 end
 
@@ -309,6 +368,13 @@ function Gota:getSubMenuItems()
         },
         {
             text_func = function()
+                return self.settings:isTLSVerificationEnabled()
+                    and _("Server verification: enabled") or _("Server verification: disabled")
+            end,
+            callback = function() self:showTransportSecurityPicker() end,
+        },
+        {
+            text_func = function()
                 local sort_labels = {
                     ["-created"] = _("newest first"),
                     ["created"]  = _("oldest first"),
@@ -344,6 +410,10 @@ function Gota:getSubMenuItems()
     end
 
     local items = {
+        {
+            text = _("Saved on this device"),
+            callback = function() self:showOfflineLibrary() end,
+        },
         {
             text = _("All articles"),
             enabled_func = token_valid,
@@ -456,7 +526,8 @@ function Gota:showTokenDialog()
                 local previous_token = self.settings:getToken()
                 self.settings:setToken(token)
                 local saved, save_error = self.settings:save()
-                if not saved then self.settings:setToken(previous_token) end
+                if not saved then self.settings:setToken(previous_token)
+                elseif previous_token ~= token then self:resetAuthenticatedNavigation() end
                 return saved, save_error
             end,
             notify = function(...) self:notify(...) end,
@@ -464,8 +535,63 @@ function Gota:showTokenDialog()
     )
 end
 
+function Gota:showTransportSecurityPicker()
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local enabled = self.settings:isTLSVerificationEnabled()
+    local function save(value)
+        self.settings:setTLSVerificationEnabled(value)
+        local saved, err = self.settings:save()
+        if not saved then
+            self.settings:setTLSVerificationEnabled(enabled)
+            self:notify(_("Error saving configuration: ") .. tostring(err), 4)
+            return
+        end
+        self.api:clearCache()
+        self:toast(value and _("Server verification enabled") or _("Server verification disabled"))
+    end
+    if not enabled then save(true); return end
+    UIManager:show(ConfirmBox:new{
+        text = _("Disable server verification?\n\nUse this only for device compatibility. The connection will be encrypted, but an attacker could impersonate Raindrop and obtain your token."),
+        ok_text = _("Disable verification"),
+        ok_callback = function() save(false) end,
+    })
+end
+
+function Gota:showOfflineLibrary()
+    local copies, err = self.article_manager:listOfflineCopies()
+    if not copies then
+        self:notify(_("Could not read saved articles: ") .. tostring(err), 4)
+        return
+    end
+    local items = {}
+    for copy_index, copy in ipairs(copies) do
+        local saved = copy
+        local detail = saved.annotated and _("Notes and highlights") or _("Original copy")
+        if saved.percent then detail = detail .. string.format(" · %d%%", saved.percent) end
+        items[#items + 1] = {
+            text = saved.title .. " — " .. detail,
+            callback = function()
+                self.article_manager:openSavedFile(saved.path, {
+                    normalize_styles = not saved.annotated,
+                    before_open_callback = function() self:closeAllWidgets() end,
+                    on_return_callback = function() self:showOfflineLibrary() end,
+                })
+            end,
+        }
+    end
+    if #items == 0 then
+        items[1] = { text = _("No saved articles on this device"), enabled = false, select_enabled = false }
+    end
+    items[#items + 1] = { text = _("Reload"), callback = function() self:showOfflineLibrary() end }
+    self:closeWidget("offline_menu")
+    self.widgets.offline_menu = self.ui_builder:createMenu(_("Saved on this device"), items, {
+        items_max_lines = 2, multilines_forced = true,
+    })
+    UIManager:show(self.widgets.offline_menu)
+end
+
 function Gota:confirmRemoveToken()
-    self.widgets.remove_token_dialog = self.dialogs:confirmRemoveToken(function()
+    self.widgets.remove_token_dialog = self.dialogs:confirmRemoveToken(Gota.networkCallback(self, function()
         self.widgets.remove_token_dialog = nil
         local removed, remove_error = self.settings:clearToken()
         if not removed then
@@ -474,14 +600,18 @@ function Gota:confirmRemoveToken()
             return
         end
         self.api:clearCache()
+        self.last_advanced_search = nil
+        self.collapsed_collection_groups = {}
+        self.session_generation = self.settings.getSessionGeneration
+            and self.settings:getSessionGeneration() or 0
         self:closeAllWidgets()
         self:notify(_("Local access token removed"), 3)
-    end)
+    end))
 end
 
 function Gota:showSearchDialog(context)
     self.widgets.search_dialog = self.dialogs:showSearchDialog(
-        function(term) self:searchRaindrops(term, 0, nil, context) end,
+        Gota.networkCallback(self, function(term) self:searchRaindrops(term, 0, nil, context) end),
         function(msg) if msg then self:notify(msg) end end
     )
 end
@@ -507,18 +637,18 @@ function Gota:showAdvancedSearchDialog(context)
         {
             build_summary = function(state)
                 return self.ui_builder.buildActiveFilterSummary(
-                    state, context, self.settings:getSortOrder())
+                    state, context, searchSort(self.settings, state.term, context))
             end,
-            on_state_change = function(state)
+            on_state_change = Gota.networkCallback(self, function(state)
                 self.last_advanced_search = copyPlainTable(state)
-            end,
-            on_search = function(state, filters)
+            end),
+            on_search = Gota.networkCallback(self, function(state, filters)
                 self.last_advanced_search = copyPlainTable(state)
                 local search_context = copyPlainTable(context)
                 search_context.filter_summary = self.ui_builder.buildActiveFilterSummary(
-                    state, context, self.settings:getSortOrder())
+                    state, context, searchSort(self.settings, state.term, context))
                 self:searchRaindrops(state.term, 0, filters, search_context)
-            end,
+            end),
             notify = function(...) self:notify(...) end,
         }
     )
@@ -613,23 +743,23 @@ function Gota:renderCollections(structure, stats)
 
     table.insert(items, {
         text = systemText(_("All articles"), 0),
-        callback = function() self:showRaindrops(0, _("All articles")) end,
+        callback = Gota.networkCallback(self, function() self:showRaindrops(0, _("All articles")) end),
     })
     table.insert(items, {
         text = systemText(_("Unsorted (inbox)"), -1),
-        callback = function() self:showRaindrops(-1, _("Unsorted")) end,
+        callback = Gota.networkCallback(self, function() self:showRaindrops(-1, _("Unsorted")) end),
     })
 
     -- User collections
     local collection_items = self.ui_builder:buildCollectionItems(
         structure,
-        function(id, title) self:showCollectionActions(id, title) end,
+        Gota.networkCallback(self, function(id, title) self:showCollectionActions(id, title) end),
         {
             collapsed_groups = self.collapsed_collection_groups,
-            on_toggle_group = function(key, collapsed)
+            on_toggle_group = Gota.networkCallback(self, function(key, collapsed)
                 self.collapsed_collection_groups[key] = collapsed
                 self:renderCollections(structure, stats)
-            end,
+            end),
         }
     )
     for _, item in ipairs(collection_items) do
@@ -661,7 +791,7 @@ function Gota:renderCollections(structure, stats)
     })
     table.insert(items, {
         text = systemText(_("Trash"), -99),
-        callback = function() self:showRaindrops(-99, _("Trash")) end,
+        callback = Gota.networkCallback(self, function() self:showRaindrops(-99, _("Trash")) end),
     })
 
     -- Reload option
@@ -672,14 +802,14 @@ function Gota:renderCollections(structure, stats)
     })
     table.insert(items, {
         text = _("Reload collections"),
-        callback = function()
+        callback = Gota.networkCallback(self, function()
             self:closeWidget("collections_menu")
             self.api:clearCacheFor("/collections")
             self.api:clearCacheFor("/user")
-            NetworkMgr:runWhenOnline(function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:showCollections()
-            end)
-        end,
+            end))
+        end),
     })
 
     self:closeWidget("collections_menu")
@@ -693,23 +823,25 @@ end
 
 function Gota:showCollectionActions(collection_id, collection_name)
     local items = {
-        { text = _("View articles"), callback = function()
+        { text = _("View articles"), callback = Gota.networkCallback(self, function()
             self:showRaindrops(collection_id, collection_name)
-        end },
-        { text = _("Search this collection"), callback = function()
+        end) },
+        { text = _("Search this collection"), callback = Gota.networkCallback(self, function()
             self:showSearchDialog({ collection_id = collection_id, collection_name = collection_name })
-        end },
-        { text = _("Search this collection and subcollections"), callback = function()
+        end) },
+        { text = _("Search this collection and subcollections"), callback = Gota.networkCallback(self, function()
             self:showSearchDialog({ collection_id = collection_id, collection_name = collection_name, nested = true })
-        end },
-        { text = _("Advanced search"), callback = function()
-            NetworkMgr:runWhenOnline(function()
+        end) },
+        { text = _("Advanced search"), callback = Gota.networkCallback(self, function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:showAdvancedSearchDialog({ collection_id = collection_id, collection_name = collection_name })
-            end)
-        end },
-        { text = _("Highlights in this collection"), callback = function()
-            NetworkMgr:runWhenOnline(function() self:showHighlights(collection_id, collection_name, 0) end)
-        end },
+            end))
+        end) },
+        { text = _("Highlights in this collection"), callback = Gota.networkCallback(self, function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
+                self:showHighlights(collection_id, collection_name, 0)
+            end))
+        end) },
     }
     self:closeWidget("collection_actions_menu")
     self.widgets.collection_actions_menu = self.ui_builder:createMenu(collection_name, items)
@@ -760,11 +892,11 @@ function Gota:showRaindrops(collection_id, collection_name, page, focus_raindrop
     local source_context = self:buildCollectionSourceContext(collection_id, collection_name, page)
     local items = self.ui_builder:buildRaindropItems(
         raindrops,
-        function(raindrop) self:showRaindropContent(raindrop, source_context) end,
+        Gota.networkCallback(self, function(raindrop) self:showRaindropContent(raindrop, source_context) end),
         -- Hold callback: quick info popup (no API calls, data already in list item)
-        function(raindrop)
+        Gota.networkCallback(self, function(raindrop)
             self:notify(self:formatRaindropQuickInfo(raindrop), 5)
-        end
+        end)
     )
 
     -- Pagination
@@ -773,19 +905,21 @@ function Gota:showRaindrops(collection_id, collection_name, page, focus_raindrop
         raindrops,
         page,
         perpage,
-        function(new_page) self:showRaindrops(collection_id, collection_name, new_page) end
+        Gota.networkCallback(self, function(new_page)
+            self:showRaindrops(collection_id, collection_name, new_page)
+        end)
     )
 
     -- Reload option at the bottom
     table.insert(items, {
         text = _("Reload"),
-        callback = function()
+        callback = Gota.networkCallback(self, function()
             self:closeWidget("raindrops_menu")
             self.api:clearCacheFor("/raindrops/" .. tostring(collection_id))
-            NetworkMgr:runWhenOnline(function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:showRaindrops(collection_id, collection_name, page)
-            end)
-        end,
+            end))
+        end),
     })
 
     self:closeWidget("raindrops_menu")
@@ -872,13 +1006,16 @@ function Gota:showRaindropContent(raindrop, source_context)
     local current_collection_id = raindrop.collection and raindrop.collection["$id"]
     local in_trash = tonumber(current_collection_id) == -99
     local offline_state = self.article_manager:getOfflineState(raindrop)
-    local items = self.ui_builder:buildArticleMenu(raindrop, cache_available, {
+    local return_to_article = Gota.networkCallback(self, function(rd)
+        self:showRaindropContent(rd or raindrop, source_context)
+    end)
+    local article_callbacks = {
         continue_reading = function()
             -- Deliberately independent of cache_available: the copy is on disk.
             self.article_manager:openOfflineCopy(
                 raindrop,
                 function() self:closeAllWidgets() end,
-                function(rd) self:showRaindropContent(rd, source_context) end
+                return_to_article
             )
         end,
         open_reader = function()
@@ -886,7 +1023,7 @@ function Gota:showRaindropContent(raindrop, source_context)
                 self.article_manager:openInReader(
                     raindrop,
                     function() self:closeAllWidgets() end,
-                    function(rd) self:showRaindropContent(rd, source_context) end
+                    return_to_article
                 )
             else
                 self:notify(_("Content is not available yet"))
@@ -922,14 +1059,14 @@ function Gota:showRaindropContent(raindrop, source_context)
         save_html = function()
             self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
                 normalize_styles = true,
-                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+                on_return = return_to_article,
             })
         end,
         save_html_with_notes = function()
             self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop), {
                 -- Gota authors this document; its own stylesheet must survive.
                 normalize_styles = false,
-                on_return = function() self:showRaindropContent(raindrop, source_context) end,
+                on_return = return_to_article,
             })
         end,
         show_link = function()
@@ -943,10 +1080,10 @@ function Gota:showRaindropContent(raindrop, source_context)
         end,
         in_trash = in_trash,
         toggle_favorite = function()
-            NetworkMgr:runWhenOnline(function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:updateCurrentRaindrop(raindrop, { important = not raindrop.important },
                     _("Favorite updated"), nil, source_context)
-            end)
+            end))
         end,
         edit_note = function() self:editRaindropNote(raindrop, source_context) end,
         edit_tags = function() self:editRaindropTags(raindrop, source_context) end,
@@ -954,7 +1091,15 @@ function Gota:showRaindropContent(raindrop, source_context)
         move_to_trash = function()
             self:confirmTrashRaindrop(raindrop, current_collection_id, source_context)
         end,
-    }, offline_state)
+    }
+    if self.operations then
+        for name, callback in pairs(article_callbacks) do
+            if type(callback) == "function" then
+                article_callbacks[name] = self:networkCallback(callback)
+            end
+        end
+    end
+    local items = self.ui_builder:buildArticleMenu(raindrop, cache_available, article_callbacks, offline_state)
 
     self:closeWidget("article_menu")
     self.widgets.article_menu = self.ui_builder:createMenu(
@@ -990,12 +1135,12 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
     -- The text viewer sits above the article screen, so it has to be dismissed
     -- before rebuilding it; otherwise the menu stacks on top of the still-open
     -- web-copy text.
-    local function return_to_article()
+    local return_to_article = Gota.networkCallback(self, function()
         self:closeWidget("text_viewer")
         self:showRaindropContent(raindrop, source_context)
-    end
+    end)
 
-    local buttons = self.ui_builder:buildContentViewerButtons({
+    local viewer_callbacks = {
         close = function()
             self:closeWidget("text_viewer")
         end,
@@ -1003,7 +1148,7 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
             self.article_manager:openInReader(
                 raindrop,
                 function() self:closeAllWidgets() end,
-                function(rd) self:showRaindropContent(rd, source_context) end
+                return_to_article
             )
         end,
         show_link = function()
@@ -1022,7 +1167,13 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
                 on_return = return_to_article,
             })
         end,
-    }, raindrop)
+    }
+    if self.operations then
+        for name, callback in pairs(viewer_callbacks) do
+            viewer_callbacks[name] = self:networkCallback(callback)
+        end
+    end
+    local buttons = self.ui_builder:buildContentViewerButtons(viewer_callbacks, raindrop)
     
     self.widgets.text_viewer = self.dialogs:showContentViewer(
         _("Web copy text"),
@@ -1036,12 +1187,15 @@ end
 function Gota:searchRaindrops(search_term, page, filters, context, focus_raindrop_id)
     page = page or 0
     local perpage = 25
-    context = context or {}
+    context = copyPlainTable(context or {})
+    local effective_sort = searchSort(self.settings, search_term, context)
+    context.sort = effective_sort
     
     self:showProgress(_("Searching articles..."))
     local results, err = self.api:searchRaindrops(search_term, page, perpage, filters, nil, {
         collection_id = context.collection_id or 0,
         nested = context.nested == true,
+        sort = effective_sort,
     })
     self:hideProgress()
     
@@ -1053,11 +1207,11 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
     local source_context = self:buildSearchSourceContext(search_term, page, filters, context)
     local items = self.ui_builder:buildRaindropItems(
         results,
-        function(raindrop) self:showRaindropContent(raindrop, source_context) end,
+        Gota.networkCallback(self, function(raindrop) self:showRaindropContent(raindrop, source_context) end),
         -- Hold callback: quick info (same as showRaindrops)
-        function(raindrop)
+        Gota.networkCallback(self, function(raindrop)
             self:notify(self:formatRaindropQuickInfo(raindrop), 5)
-        end
+        end)
     )
     
     -- Añadir paginación simple
@@ -1066,11 +1220,13 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
         results,
         page,
         perpage,
-        function(new_page) self:searchRaindrops(search_term, new_page, filters, context) end
+        Gota.networkCallback(self, function(new_page)
+            self:searchRaindrops(search_term, new_page, filters, context)
+        end)
     )
     
-    local filter_summary = context.filter_summary
-    if not filter_summary then
+    local filter_summary
+    do
         filters = filters or {}
         filter_summary = self.ui_builder.buildActiveFilterSummary({
             term = search_term,
@@ -1090,7 +1246,7 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
                 created = filters.created,
                 last_update = filters.last_update,
             },
-        }, context, self.settings:getSortOrder())
+        }, context, effective_sort)
     end
     subtitle = filter_summary .. " · " .. subtitle
     
@@ -1121,12 +1277,12 @@ function Gota:showHighlights(collection_id, collection_name, page, focus_raindro
         return
     end
     local source_context = self:buildHighlightsSourceContext(collection_id, collection_name, page)
-    local items = self.ui_builder:buildHighlightItems(response, function(highlight)
+    local items = self.ui_builder:buildHighlightItems(response, Gota.networkCallback(self, function(highlight)
         self:showHighlightActions(highlight, source_context)
-    end)
-    local subtitle = self.ui_builder:addPagination(items, response, page, perpage, function(new_page)
+    end))
+    local subtitle = self.ui_builder:addPagination(items, response, page, perpage, Gota.networkCallback(self, function(new_page)
         self:showHighlights(collection_id, collection_name, new_page)
-    end)
+    end))
     self:closeWidget("highlights_menu")
     self.widgets.highlights_menu = self.ui_builder:createMenu(
         collection_id and (_("Highlights") .. " — " .. tostring(collection_name)) or _("All highlights"),
@@ -1141,18 +1297,18 @@ function Gota:showHighlights(collection_id, collection_name, page, focus_raindro
 end
 
 function Gota:showHighlightActions(highlight, source_context)
-    local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or nil
+    local reference = Raindrop.highlightReference(highlight)
     local items = {{
         text = _("View highlight details"),
-        callback = function()
+        callback = Gota.networkCallback(self, function()
             self.dialogs:showArticleInfo({ title = highlight.title or _("Highlight") },
                 self.content_processor:formatHighlightInfo(highlight))
-        end,
+        end),
     }}
     if reference and reference._id then
         items[#items + 1] = {
             text = _("Open related article"),
-            callback = function() self:showRaindropContent(reference, source_context) end,
+            callback = Gota.networkCallback(self, function() self:showRaindropContent(reference, source_context) end),
         }
     end
     self:closeWidget("highlight_actions_menu")
@@ -1186,23 +1342,23 @@ end
 function Gota:editRaindropNote(raindrop, source_context)
     self.dialogs:showEditNoteDialog(raindrop.note, {
         notify = function(...) self:notify(...) end,
-        save = function(note, dialog)
-            NetworkMgr:runWhenOnline(function()
+        save = Gota.networkCallback(self, function(note, dialog)
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:updateCurrentRaindrop(raindrop, { note = note }, _("Note updated"),
                     dialog, source_context)
-            end)
-        end,
+            end))
+        end),
     })
 end
 
 function Gota:editRaindropTags(raindrop, source_context)
     self.dialogs:showEditTagsDialog(raindrop.tags, {
-        save = function(tags, dialog)
-            NetworkMgr:runWhenOnline(function()
+        save = Gota.networkCallback(self, function(tags, dialog)
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 self:updateCurrentRaindrop(raindrop, { tags = tags }, _("Tags updated"),
                     dialog, source_context)
-            end)
-        end,
+            end))
+        end),
     })
 end
 
@@ -1216,8 +1372,8 @@ function Gota:chooseRaindropCollection(raindrop, source_context)
     end
     local items = {{
         text = _("Unsorted (inbox)"),
-        callback = function()
-            NetworkMgr:runWhenOnline(function()
+        callback = Gota.networkCallback(self, function()
+            NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
                 local moved = self:updateCurrentRaindrop(raindrop,
                     { collection = { ["$id"] = -1 } }, _("Bookmark moved"),
                     self.widgets.collection_picker, source_context)
@@ -1225,11 +1381,11 @@ function Gota:chooseRaindropCollection(raindrop, source_context)
                     self:closeWidget("collections_menu")
                     self:closeWidget("collection_actions_menu")
                 end
-            end)
-        end,
+            end))
+        end),
     }}
-    local collection_items = self.ui_builder:buildCollectionItems(structure, function(id)
-        NetworkMgr:runWhenOnline(function()
+    local collection_items = self.ui_builder:buildCollectionItems(structure, Gota.networkCallback(self, function(id)
+        NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
             local moved = self:updateCurrentRaindrop(raindrop,
                 { collection = { ["$id"] = id } }, _("Bookmark moved"),
                 self.widgets.collection_picker, source_context)
@@ -1237,8 +1393,8 @@ function Gota:chooseRaindropCollection(raindrop, source_context)
                 self:closeWidget("collections_menu")
                 self:closeWidget("collection_actions_menu")
             end
-        end)
-    end, { collapsed_groups = {}, expand_all_groups = true })
+        end))
+    end), { collapsed_groups = {}, expand_all_groups = true })
     for _, item in ipairs(collection_items) do items[#items + 1] = item end
     self:closeWidget("collection_picker")
     self.widgets.collection_picker = self.ui_builder:createMenu(_("Move to collection"), items)
@@ -1251,8 +1407,8 @@ function Gota:confirmTrashRaindrop(raindrop, context_collection_id, source_conte
         self:notify(_("This item is already in Trash; permanent deletion is not supported."), 4)
         return
     end
-    self.dialogs:confirmMoveToTrash(raindrop.title, function()
-        NetworkMgr:runWhenOnline(function()
+    self.dialogs:confirmMoveToTrash(raindrop.title, Gota.networkCallback(self, function()
+        NetworkMgr:runWhenOnline(Gota.networkCallback(self, function()
             self:showProgress(_("Moving bookmark to Trash..."))
             local response, err = self.api:trashRaindrop(raindrop._id,
                 item_collection_id or context_collection_id)
@@ -1270,8 +1426,8 @@ function Gota:confirmTrashRaindrop(raindrop, context_collection_id, source_conte
             else
                 self:notify(_("Could not move bookmark to Trash: ") .. (err or _("Unknown error")), 4)
             end
-        end)
-    end)
+        end))
+    end))
 end
 
 -- ========== TOKEN TEST ==========
@@ -1296,6 +1452,27 @@ function Gota:testToken(test_token)
         self:notify(_("Valid token!\nUser: ") .. user_name .. pro_status, 4)
     else
         self:notify(_("Error with token:\n") .. (err or _("Invalid token")), 5)
+    end
+end
+
+-- Every public entry point that reaches the API resumes in a Trapper coroutine.
+-- Keeping this at the boundary also covers Dispatcher and FileManager callbacks.
+for method_index, name in ipairs({ "showCollections", "showRaindrops", "showAdvancedSearchDialog",
+    "showRaindropContent", "searchRaindrops", "showHighlights", "updateCurrentRaindrop",
+    "chooseRaindropCollection", "testToken" }) do
+    local method = Gota[name]
+    Gota[name] = function(self, ...)
+        if not self.operations then return method(self, ...) end
+        if self.settings:getSessionGeneration() ~= self.session_generation then
+            self:resetAuthenticatedNavigation()
+            if name == "showRaindropContent" or name == "updateCurrentRaindrop"
+                or name == "chooseRaindropCollection" then
+                self:notify(_("The account changed; reopen the article before continuing"), 4)
+                return
+            end
+        end
+        local args = { n = select("#", ...), ... }
+        return self:runNetworkAction(function() return method(self, unpack(args, 1, args.n)) end)
     end
 end
 

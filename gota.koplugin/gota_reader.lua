@@ -4,7 +4,7 @@ local ReaderUI = require("apps/reader/readerui")
 local UIManager = require("ui/uimanager")
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("gota_gettext")
 
 local ReaderStyles = require("gota_reader_styles")
 

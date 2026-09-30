@@ -4,15 +4,15 @@
 ]]
 
 local http = require("socket.http")
-local https = require("ssl.https")
 local ltn12 = require("ltn12")
 local socket = require("socket")
 local socketutil = require("socketutil")
 local JSON = require("json")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("gota_gettext")
 local Compression = require("gota_compression")
 local Version = require("gota_version")
+local TLS = require("gota_tls")
 
 local API = {}
 
@@ -21,6 +21,9 @@ local MAX_RETRY_DELAY = 30
 local MAX_BLOCKING_RETRY_DELAY = 3
 local MAX_PER_PAGE = 50
 local DEFAULT_DECOMPRESSED_RESPONSE_BYTES = 16 * 1024 * 1024
+local DEFAULT_JSON_RESPONSE_BYTES = 2 * 1024 * 1024
+local DEFAULT_CACHE_BYTES = 4 * 1024 * 1024
+local DEFAULT_CACHE_ENTRIES = 32
 local RESPONSE_TOO_LARGE = "gota_response_too_large"
 
 local CONTENT_TYPES = {
@@ -70,17 +73,17 @@ local HTTP_METHODS = {
 }
 
 -- LuaSec 1.3.2 refuses HTTPS whenever LuaSocket's global HTTP proxy is set.
--- Gota requests are synchronous, so temporarily clearing and restoring that
--- global lets LuaSec establish end-to-end TLS without exposing the Raindrop
--- bearer token to a plaintext forward proxy.
-local function requestHttpsDirectly(request)
+-- Each request is synchronous inside its operation worker, so temporarily
+-- clearing and restoring that global establishes end-to-end TLS without
+-- exposing the Raindrop bearer token to a plaintext forward proxy.
+local function requestHttpsDirectly(request, tls)
     local configured_proxy = http.PROXY
     if not configured_proxy then
-        return https.request(request)
+        return tls:request(request)
     end
 
     http.PROXY = nil
-    local ok, result, status, headers, status_line = pcall(https.request, request)
+    local ok, result, status, headers, status_line = pcall(tls.request, tls, request)
     http.PROXY = configured_proxy
 
     if not ok then
@@ -440,6 +443,7 @@ API.normalizePagination = normalizePagination
 API.normalizeDateExpression = normalizeDateExpression
 API.boundedSink = boundedSink
 API.RESPONSE_TOO_LARGE = RESPONSE_TOO_LARGE
+API.DEFAULT_JSON_RESPONSE_BYTES = DEFAULT_JSON_RESPONSE_BYTES
 
 function API:new(settings, server_url)
     local o = {}
@@ -453,21 +457,44 @@ function API:new(settings, server_url)
     end
     o.response_cache = {}
     o.cache_ttl = 300 -- 5 minutes
+    o.cache_max_bytes = DEFAULT_CACHE_BYTES
+    o.cache_max_entries = DEFAULT_CACHE_ENTRIES
+    o.cache_size_bytes = 0
+    o.cache_entry_count = 0
+    o.cache_access_counter = 0
+    o.session_token = settings:getToken() or ""
+    o.settings_generation = settings.getSessionGeneration and settings:getSessionGeneration()
+    o.session_generation = 0
     o.sleep = socket.sleep
-
-    -- Do not mutate ssl.https.cert_verify: it is shared by all plugins.
-    -- KOReader currently bundles LuaSec 1.3.2, whose HTTPS client defaults to
-    -- verify="none"; retaining that runtime default preserves Kindle support.
+    o.tls = TLS:new(settings)
     return o
 end
 
 function API:getTransportSecurityInfo()
-    return {
-        encrypted = true,
-        peer_authenticated = false,
-        hostname_verified = false,
-        limitation = "LuaSec 1.3.2 verify=none",
-    }
+    local info = self.tls:getSecurityInfo()
+    local observed = self.transport_security_info
+    if observed and info.peer_authenticated and
+        observed.verification_enabled == info.verification_enabled then
+        info.validation_observed = observed.validation_observed
+    end
+    return info
+end
+
+function API:setRequestExecutor(executor)
+    assert(executor == nil or type(executor) == "function", "Invalid request executor")
+    self.request_executor = executor
+end
+
+function API:_synchronizeSession()
+    local token = self.settings:getToken() or ""
+    local generation = self.settings.getSessionGeneration and self.settings:getSessionGeneration()
+    if token ~= self.session_token or generation ~= self.settings_generation then
+        self:clearCache()
+        self.session_token = token
+        self.settings_generation = generation
+        self.session_generation = self.session_generation + 1
+    end
+    return token
 end
 
 function API:_performRequest(url, method, body, include_authorization, is_file_download, request_options)
@@ -537,7 +564,7 @@ function API:_performRequest(url, method, body, include_authorization, is_file_d
             socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
         end
         call_ok, request_result, actual_status, response_headers, status_line =
-            pcall(requestHttpsDirectly, request)
+            pcall(requestHttpsDirectly, request, self.tls)
     end)
 
     local reset_ok, reset_error = pcall(function() socketutil:reset_timeout() end)
@@ -569,7 +596,7 @@ function API:_performRequest(url, method, body, include_authorization, is_file_d
     if not request_result then
         logger.err("Gota API: HTTP transport error:", actual_status)
         return nil, _("HTTP error: ") .. tostring(actual_status),
-            nil, nil, nil, true, transfer
+            nil, nil, nil, not self.tls.last_error_was_verification, transfer
     end
 
     local payload = response_mode == "file" and true or table.concat(chunks)
@@ -596,6 +623,7 @@ local function readFilePrefix(path, max_bytes)
 end
 
 function API:makeRequest(endpoint, method, body, request_options)
+    self:_synchronizeSession()
     if type(endpoint) ~= "string" or endpoint:sub(1, 1) ~= "/"
         or endpoint:find("[%c%s\\]") then
         return nil, _("Invalid API endpoint")
@@ -618,6 +646,10 @@ function API:makeRequest(endpoint, method, body, request_options)
     end
     local is_file_download = endpoint:match("/cache$") ~= nil
         or endpoint:match("/cache%?[^/]*$") ~= nil
+    if request_options.max_response_bytes == nil and
+        (response_mode == "json" or (response_mode == nil and not is_file_download)) then
+        request_options.max_response_bytes = DEFAULT_JSON_RESPONSE_BYTES
+    end
     if response_mode == "file" and not is_file_download then
         return nil, _("File response mode is only supported for permanent copies")
     end
@@ -809,7 +841,7 @@ function API:makeRequest(endpoint, method, body, request_options)
     end
 end
 
-function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
+function API:_makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
     method = tostring(method or "GET"):upper()
     request_options = request_options or {}
     local is_read = method == "GET" or method == "HEAD"
@@ -832,6 +864,12 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
         end
         last_error = err
 
+        if not is_read and (transient_transport_error == true or
+            (status and status >= 500 and status <= 599)) then
+            return nil, tostring(err) ..
+                _("; the server may have applied this change. Reload the item before trying again")
+        end
+
         local transient = transient_transport_error == true or status == 429
             or (status and status >= 500 and status <= 599)
         if not transient then
@@ -842,9 +880,9 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
         end
 
         local delay = retryDelay(attempt, status, headers)
-        -- NetworkMgr does not move this loop off KOReader's UI thread. Respect a
-        -- long rate-limit window by returning control to the user instead of
-        -- freezing an e-ink device for tens of seconds.
+        -- Keep retry windows short even in the worker. Longer server delays
+        -- return control so the user can retry later; the standalone API also
+        -- remains usable without an asynchronous executor.
         if delay > MAX_BLOCKING_RETRY_DELAY then
             return nil, tostring(err) .. _("; please retry later")
         end
@@ -858,7 +896,128 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
     return nil, _("Failed after ") .. tostring(max_retries) .. _(" attempts: ") .. tostring(last_error)
 end
 
+function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
+    method = tostring(method or "GET"):upper()
+    self:_synchronizeSession()
+    local session_generation = self.session_generation
+    local result, err
+    if self.request_executor then
+        local security_info
+        local executor_ok
+        executor_ok, result, err, security_info = pcall(self.request_executor, function()
+            local value, request_error = self:_makeRequestWithRetry(
+                endpoint, method, body, max_retries, request_options)
+            return value, request_error, self.tls:getSecurityInfo()
+        end, {
+            endpoint = endpoint,
+            method = method,
+            target_path = request_options and request_options.target_path,
+        })
+        if not executor_ok then
+            if method ~= "GET" and method ~= "HEAD" then self:clearCache() end
+            self:_synchronizeSession()
+            -- Cancellation is a control-flow marker owned by the operation
+            -- runner. Preserve it so optional API requests cannot continue.
+            error(result, 0)
+        end
+        if type(security_info) == "table" then self.transport_security_info = security_info end
+    else
+        result, err = self:_makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
+        self.transport_security_info = self.tls:getSecurityInfo()
+    end
+    if method ~= "GET" and method ~= "HEAD" then
+        -- A response can be lost after the server commits a change. Discard
+        -- parent-process cache even on cancellation or an invalid envelope.
+        self:clearCache()
+    end
+    self:_synchronizeSession()
+    if session_generation ~= self.session_generation then
+        return nil, _("Account changed while the request was running; please reload")
+    end
+    return result, err
+end
+
+-- Conservative estimate of Lua table memory, including keys and entry
+-- overhead. Stop early instead of spending time traversing an uncacheable
+-- result. The response byte limit separately bounds JSON before parsing.
+local function cacheCost(value, limit)
+    local size, seen = 0, {}
+    local pending = { value }
+    while #pending > 0 do
+        local item = table.remove(pending)
+        if type(item) == "table" then
+            if not seen[item] then
+                seen[item] = true
+                size = size + 64
+                for key, child in pairs(item) do
+                    size = size + 48
+                    pending[#pending + 1] = key
+                    pending[#pending + 1] = child
+                    if size > limit then return nil end
+                end
+            end
+        elseif type(item) == "string" then
+            size = size + #item + 32
+        else
+            size = size + 16
+        end
+        if size > limit then return nil end
+    end
+    return size
+end
+
+local function cacheEntryCost(endpoint, value, limit)
+    local overhead = 256 + #endpoint -- cache entry fields and endpoint key
+    local cost = cacheCost(value, limit - overhead)
+    return cost and cost + overhead or nil
+end
+
+function API:_pruneCache(now)
+    now = now or os.time()
+    local total, count = 0, 0
+    for endpoint, cached in pairs(self.response_cache) do
+        local cost = cached.cost or cacheEntryCost(endpoint, cached.data, self.cache_max_bytes)
+        if not cost or now - cached.timestamp >= self.cache_ttl then
+            self.response_cache[endpoint] = nil
+        else
+            cached.cost = cost
+            total, count = total + cost, count + 1
+        end
+    end
+    self.cache_size_bytes, self.cache_entry_count = total, count
+end
+
+function API:_cacheResponse(endpoint, data)
+    self:_pruneCache()
+    self.response_cache[endpoint] = nil
+    self:_pruneCache()
+    local cost = cacheEntryCost(endpoint, data, self.cache_max_bytes)
+    if not cost or self.cache_max_entries < 1 then return end
+    while self.cache_entry_count >= self.cache_max_entries or
+        self.cache_size_bytes + cost > self.cache_max_bytes do
+        local oldest_endpoint, oldest_access
+        for key, cached in pairs(self.response_cache) do
+            local access = cached.accessed or cached.timestamp
+            if oldest_access == nil or access < oldest_access then
+                oldest_endpoint, oldest_access = key, access
+            end
+        end
+        if not oldest_endpoint then break end
+        self.response_cache[oldest_endpoint] = nil
+        self:_pruneCache()
+    end
+    self.cache_access_counter = self.cache_access_counter + 1
+    self.response_cache[endpoint] = {
+        data = data, timestamp = os.time(), cost = cost,
+        accessed = self.cache_access_counter,
+    }
+    self.cache_size_bytes = self.cache_size_bytes + cost
+    self.cache_entry_count = self.cache_entry_count + 1
+end
+
 function API:cachedRequest(endpoint, method, body, use_cache)
+    self:_synchronizeSession()
+    self:_pruneCache()
     method = tostring(method or "GET"):upper()
     use_cache = (use_cache == nil) and (method == "GET") or use_cache
 
@@ -866,6 +1025,8 @@ function API:cachedRequest(endpoint, method, body, use_cache)
         if use_cache then
             local cached = self.response_cache[endpoint]
             if cached and os.time() - cached.timestamp < self.cache_ttl then
+                self.cache_access_counter = self.cache_access_counter + 1
+                cached.accessed = self.cache_access_counter
                 return cached.data, nil
             end
             if cached then self.response_cache[endpoint] = nil end
@@ -879,10 +1040,7 @@ function API:cachedRequest(endpoint, method, body, use_cache)
     local result, err = self:makeRequestWithRetry(endpoint, method, body)
 
     if result ~= nil and method == "GET" and use_cache then
-        self.response_cache[endpoint] = {
-            data = result,
-            timestamp = os.time(),
-        }
+        self:_cacheResponse(endpoint, result)
     end
 
     return result, err
@@ -935,6 +1093,9 @@ end
 
 function API:clearCache()
     self.response_cache = {}
+    self.cache_size_bytes = 0
+    self.cache_entry_count = 0
+    self.cache_access_counter = 0
 end
 
 function API:clearCacheFor(endpoint_prefix)
@@ -947,6 +1108,7 @@ function API:clearCacheFor(endpoint_prefix)
     for _, key in ipairs(to_remove) do
         self.response_cache[key] = nil
     end
+    self:_pruneCache()
 end
 
 -- Raindrop.io API endpoints
@@ -1264,13 +1426,9 @@ function API:trashRaindrop(raindrop_id, current_collection_id)
     if tonumber(collection_id) == -99 then
         return nil, _("Refusing to permanently delete an item already in Trash")
     end
-    local data, err = self:makeRequestWithRetry(
-        "/raindrop/" .. id,
-        "DELETE",
-        nil,
-        1,
-        { retry_policy = "none" }
-    )
+    -- PUT is an explicit move even if another client has already trashed the
+    -- bookmark. DELETE would permanently remove it in that situation.
+    local data, err = self:updateRaindrop(id, { collection = { ["$id"] = -99 } })
     if not data then return nil, err end
     if type(data) ~= "table" or data.result ~= true then
         return nil, _("Invalid Trash response")
@@ -1280,16 +1438,29 @@ function API:trashRaindrop(raindrop_id, current_collection_id)
 end
 
 function API:testToken(token)
-    local old_token = self.settings:getToken()
-    self.settings:setToken(token)
+    -- Validate in a separate API session. Temporarily swapping the live token
+    -- would invalidate navigation and any operation belonging to that account.
+    local parent_settings = self.settings
+    local test_settings = setmetatable({ getToken = function() return token or "" end }, {
+        __index = function(_, key)
+            local value = parent_settings[key]
+            if type(value) == "function" then
+                return function(_, ...) return value(parent_settings, ...) end
+            end
+            return value
+        end,
+    })
+    local test_api = API:new(test_settings, self.server_url)
+    test_api:setRequestExecutor(self.request_executor)
+    test_api.sleep = self.sleep
     local call_ok, user_data, err = pcall(function()
-        return self:getUser(false)
+        return test_api:getUser(false)
     end)
-    local restore_ok, restore_error = pcall(function() self.settings:setToken(old_token) end)
-    if not restore_ok then
-        logger.err("Gota API: failed to restore token after validation:", restore_error)
-    end
+    self.transport_security_info = test_api:getTransportSecurityInfo()
     if not call_ok then
+        if type(user_data) == "table" and user_data.gota_operation_cancelled then
+            error(user_data, 0)
+        end
         return nil, _("HTTP error: ") .. tostring(user_data)
     end
     return user_data, err

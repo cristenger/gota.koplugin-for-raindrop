@@ -1,4 +1,4 @@
-local _ = require("gettext")
+local _ = require("gota_gettext")
 
 return {
     fullname = _("Gota"),

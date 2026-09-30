@@ -5,11 +5,13 @@
 
 local logger = require("logger")
 local util = require("util")
-local _ = require("gettext")
+local _ = require("gota_gettext")
+local Raindrop = require("gota_raindrop")
 
 local ContentProcessor = {}
 
 local UTF8_REPLACEMENT = "\239\191\189"
+local NON_ASCII_BYTES = "[" .. string.char(128) .. "-" .. string.char(255) .. "]"
 
 local function isContinuationByte(byte)
     return byte and byte >= 0x80 and byte <= 0xBF
@@ -101,22 +103,40 @@ local function sanitizeUTF8(str)
         str = str:sub(4)
     end
 
-    local parts = {}
-    local index = 1
+    local parts, chunks
+    local index, span_start = 1, 1
     local replaced = false
+    local function append(fragment)
+        if fragment == "" then return end
+        parts[#parts + 1] = fragment
+        if #parts == 128 then
+            chunks[#chunks + 1] = table.concat(parts)
+            parts = {}
+        end
+    end
     while index <= #str do
+        -- Ordinary ASCII spans need no per-character allocations or checks.
+        if str:byte(index) <= 0x7F then
+            index = str:find(NON_ASCII_BYTES, index) or #str + 1
+            if index > #str then break end
+        end
         local length = validSequenceLength(str, index)
         if length then
-            parts[#parts + 1] = str:sub(index, index + length - 1)
             index = index + length
         else
-            parts[#parts + 1] = UTF8_REPLACEMENT
+            if not parts then parts, chunks = {}, {} end
+            append(str:sub(span_start, index - 1))
+            append(UTF8_REPLACEMENT)
             index = index + invalidSequenceLength(str, index)
+            span_start = index
             replaced = true
         end
     end
 
-    return table.concat(parts), replaced, had_bom
+    if not replaced then return str, false, had_bom end
+    append(str:sub(span_start))
+    if #parts > 0 then chunks[#chunks + 1] = table.concat(parts) end
+    return table.concat(chunks), true, had_bom
 end
 
 ContentProcessor.sanitizeUTF8 = sanitizeUTF8
@@ -137,34 +157,102 @@ local function caseInsensitiveTag(tag)
     end))
 end
 
-local function removePairedElement(content, tag)
-    local pattern = caseInsensitiveTag(tag)
-    return (content:gsub("<%s*" .. pattern .. "[^>]*>.-</%s*" .. pattern .. "%s*>", ""))
-end
-
-local RAW_TEXT_ELEMENTS = { "script", "style" }
-local PLAIN_TEXT_HIDDEN_ELEMENTS = { "template", "svg", "iframe", "object" }
-
-local function removePairedElements(content, tags)
-    for _, tag in ipairs(tags) do
-        content = removePairedElement(content, tag)
+-- A linear scanner for text conversion and filtering. Attribute quotes may
+-- contain ">"; regex tag stripping splits those values into visible text.
+-- This is deliberately a tokenizer rather than a browser DOM parser.
+local function walkHTML(content, on_text, on_tag)
+    local position, length = 1, #content
+    while position <= length do
+        local opening = content:find("<", position, true)
+        if not opening then
+            on_text(content:sub(position))
+            break
+        end
+        if opening > position then on_text(content:sub(position, opening - 1)) end
+        if content:sub(opening, opening + 3) == "<!--" then
+            local closing = content:find("-->", opening + 4, true)
+            position = closing and closing + 3 or length + 1
+        elseif not content:sub(opening, opening + 128):match("^<%s*/?%s*[%a!?]") then
+            -- A comparison such as "x < 2" is text, so continue scanning
+            -- rather than swallowing the next actual element into this token.
+            on_text("<")
+            position = opening + 1
+        else
+            local cursor, quote = opening + 1, nil
+            while cursor <= length do
+                local char = content:sub(cursor, cursor)
+                if quote then
+                    if char == quote then quote = nil end
+                elseif char == '"' or char == "'" then
+                    quote = char
+                elseif char == ">" then
+                    break
+                end
+                cursor = cursor + 1
+            end
+            if cursor > length then
+                on_text(content:sub(opening))
+                break
+            end
+            local token = content:sub(opening, cursor)
+            local slash, name, rest = token:match("^<%s*(/?)%s*([%a][%w:_%-]*)(.-)>$")
+            if name and (rest == "" or rest:match("^[%s/]") ~= nil) then
+                name = name:lower()
+                on_tag(name, slash == "/", token, rest, opening, cursor)
+                if slash == "" and (name == "script" or name == "style") then
+                    local closing_start, closing_end = content:find(
+                        "</%s*" .. caseInsensitiveTag(name) .. "%s*>", cursor + 1)
+                    if not closing_start then
+                        on_text(content:sub(cursor + 1))
+                        break
+                    end
+                    on_text(content:sub(cursor + 1, closing_start - 1))
+                    on_tag(name, true, content:sub(closing_start, closing_end), "", closing_start, closing_end)
+                    cursor = closing_end
+                end
+            elseif token:match("^<!") or token:match("^<%?") then
+                -- Declarations do not contain visible article text.
+            else
+                on_text(token)
+            end
+            position = cursor + 1
+        end
     end
-    return content
 end
 
-local function stripRawTextElements(content)
-    return removePairedElements(content, RAW_TEXT_ELEMENTS)
+local function filterElements(content, paired, unwrap)
+    local parts, depth, hidden_tag = {}, 0, nil
+    walkHTML(content, function(text)
+        if depth == 0 then parts[#parts + 1] = text end
+    end, function(name, closing, token)
+        if name == hidden_tag then
+            if closing then
+                depth = depth - 1
+                if depth == 0 then hidden_tag = nil end
+            elseif name == "script" or name == "style" or not token:match("/%s*>$") then
+                depth = depth + 1
+            end
+        elseif depth == 0 and paired[name] then
+            if not closing and
+                (name == "script" or name == "style" or not token:match("/%s*>$")) then
+                hidden_tag, depth = name, 1
+            end
+        elseif depth == 0 and not (unwrap and unwrap[name]) then
+            parts[#parts + 1] = token
+        end
+    end)
+    return table.concat(parts)
+end
+
+local function removePairedElement(content, tag)
+    return filterElements(content, { [tag] = true })
 end
 
 local function stripNonTextElements(content)
-    content = stripRawTextElements(content)
-    content = removePairedElements(content, PLAIN_TEXT_HIDDEN_ELEMENTS)
-    return (content:gsub("<!%-%-.-%-%->", ""))
-end
-
-local function removeOpenTag(content, tag)
-    local pattern = caseInsensitiveTag(tag)
-    return (content:gsub("<%s*/?%s*" .. pattern .. "[^>]*>", ""))
+    return filterElements(content, {
+        script = true, style = true, template = true,
+        svg = true, iframe = true, object = true,
+    })
 end
 
 local function extractHTMLBody(content)
@@ -229,10 +317,17 @@ function ContentProcessor:htmlToText(html_content)
     local content = stripNonTextElements(html_content)
     local sanitized_length = #content
 
-    -- Remover elementos no deseados
+    -- Select editorial content before removing the page's navigation header.
+    -- An article header commonly owns its title and author.
+    local main_content = self:extractMainContent(content)
+    if main_content then
+        content = main_content
+    else
+        content = removePairedElement(content, "header")
+        content = removePairedElement(content, "footer")
+        content = removePairedElement(content, "head")
+    end
     content = removePairedElement(content, "nav")
-    content = removePairedElement(content, "header")
-    content = removePairedElement(content, "footer")
 
     -- Remover patrones de navegación y publicidad
     local non_content_patterns = {
@@ -258,14 +353,9 @@ function ContentProcessor:htmlToText(html_content)
         end
     end
 
-    -- Intentar identificar el contenido principal
-    local main_content = self:extractMainContent(content)
-    if main_content then
-        content = main_content
-    end
-
     -- Convertir HTML a texto
-    content = self:convertHtmlTags(content)
+    local preserved
+    content, preserved = self:convertHtmlTags(content)
 
     -- Limpiar entidades HTML
     content = self:decodeHtmlEntities(content)
@@ -287,6 +377,16 @@ function ContentProcessor:htmlToText(html_content)
     content = content:gsub("^%s+", "")
     content = content:gsub("%s+$", "")
 
+    -- Decode after tag removal so escaped tag examples remain visible. Restore
+    -- code last so indentation and blank lines survive prose normalization.
+    if preserved then
+        for _, fragment in ipairs(preserved) do
+            content = content:gsub(fragment.marker, function()
+                return self:decodeHtmlEntities(fragment.text)
+            end)
+        end
+    end
+
     logger.dbg("Gota ContentProcessor: plain HTML bytes:", input_length,
                "sanitized bytes:", sanitized_length,
                "plain bytes:", #content)
@@ -295,27 +395,31 @@ function ContentProcessor:htmlToText(html_content)
 end
 
 local function visibleTextWeight(fragment)
-    local text = fragment:gsub("<[^>]+>", "")
+    local parts = {}
+    walkHTML(fragment, function(text) parts[#parts + 1] = text end, function() end)
+    local text = table.concat(parts)
     text = text:gsub("&[%w#]+;", "x")
     text = text:gsub("%s+", "")
     return #text
 end
 
--- This intentionally handles non-nested semantic containers. Malformed or
--- nested article/main structures require a bounded HTML parser, not more
--- pattern heuristics here.
+-- Scan semantic containers without building a DOM or recursing on nesting.
 local function largestElementContent(content, tag)
-    local pattern = caseInsensitiveTag(tag)
-    local best, best_weight = nil, 0
-    for candidate in content:gmatch(
-        "<%s*" .. pattern .. "[^>]*>(.-)</%s*" .. pattern .. "%s*>"
-    ) do
-        local weight = visibleTextWeight(candidate)
-        if weight > best_weight then
-            best = candidate
-            best_weight = weight
+    local best, best_weight, depth, start = nil, 0, 0, nil
+    walkHTML(content, function() end, function(name, closing, _, _, opening, ending)
+        if name ~= tag then return end
+        if not closing then
+            if depth == 0 then start = ending + 1 end
+            depth = depth + 1
+        elseif depth > 0 then
+            depth = depth - 1
+            if depth == 0 then
+                local candidate = content:sub(start, opening - 1)
+                local weight = visibleTextWeight(candidate)
+                if weight > best_weight then best, best_weight = candidate, weight end
+            end
         end
-    end
+    end)
     return best, best_weight
 end
 
@@ -338,16 +442,108 @@ end
 
 -- Convierte etiquetas HTML a formato de texto
 function ContentProcessor:convertHtmlTags(content)
-    content = content:gsub("\n%s*\n%s*\n", "\n\n")
-    content = content:gsub("<[Bb][Rr][^>]*>", "\n")
-    content = content:gsub("<[Pp][^>]*>", "\n")
-    content = content:gsub("</[Pp]%s*>", "\n")
-    content = content:gsub("<[Hh]%d[^>]*>", "\n\n")
-    content = content:gsub("</[Hh]%d%s*>", "\n")
-    content = content:gsub("<[Dd][Ii][Vv][^>]*>", "\n")
-    content = content:gsub("</[Dd][Ii][Vv]%s*>", "\n")
-    content = content:gsub("<[^>]+>", "")
-    return content
+    local parts, preserved, verbatim = {}, {}, nil
+    local protected_name, protected_depth
+    local lists, list_depth = {}, 0
+    local list_prefix_index
+    local row_cells
+    local marker_prefix = "\30GOTA_CODE_"
+    local decoded = self:decodeHtmlEntities(content)
+    while decoded:find(marker_prefix, 1, true) do marker_prefix = marker_prefix .. "_" end
+    local blocks = {
+        p = true, div = true, section = true, article = true, main = true,
+        header = true, footer = true, aside = true, blockquote = true,
+        dl = true, dt = true, dd = true, figure = true, figcaption = true,
+        table = true, h1 = true, h2 = true, h3 = true, h4 = true, h5 = true, h6 = true,
+    }
+    local function append(text)
+        local target = verbatim or parts
+        if not verbatim and text == " " and
+            (#parts == 0 or parts[#parts]:sub(-1) == "\n") then return end
+        target[#target + 1] = text
+    end
+    local function lineBreak()
+        if #parts == 0 or parts[#parts]:sub(-1) ~= "\n" then append("\n") end
+    end
+    local function closeProtected()
+        local marker = marker_prefix .. tostring(#preserved + 1) .. "\31"
+        preserved[#preserved + 1] = { marker = marker, text = table.concat(verbatim) }
+        verbatim, protected_name, protected_depth = nil, nil, nil
+        parts[#parts + 1] = marker
+    end
+    local function integerAttribute(attributes, name)
+        local value = attributes:match('%s' .. name .. '%s*=%s*"([%-]?%d+)"') or
+            attributes:match("%s" .. name .. "%s*=%s*'([%-]?%d+)'") or
+            attributes:match("%s" .. name .. "%s*=%s*([%-]?%d+)[%s/]*$") or
+            attributes:match("%s" .. name .. "%s*=%s*([%-]?%d+)%s")
+        local number = tonumber(value)
+        -- Keep malicious counters small and representable on LuaJIT.
+        return number and math.abs(number) <= 1000000 and number or nil
+    end
+    walkHTML(content, function(text)
+        -- HTML source formatting is a single space in ordinary prose.
+        append(verbatim and text or text:gsub("%s+", " "))
+    end, function(name, closing, _, attributes)
+        if verbatim then
+            if name == protected_name then
+                protected_depth = protected_depth + (closing and -1 or 1)
+                if protected_depth == 0 then
+                    local was_pre = protected_name == "pre"
+                    closeProtected()
+                    if was_pre then lineBreak() end
+                end
+            elseif name == "br" then append("\n") end
+            return
+        end
+        if (name == "pre" or name == "code") and not closing then
+            if name == "pre" then lineBreak() end
+            verbatim, protected_name, protected_depth = {}, name, 1
+        elseif name == "ul" or name == "ol" then
+            lineBreak()
+            if closing then
+                lists[list_depth] = nil
+                list_depth = math.max(0, list_depth - 1)
+            else
+                list_depth = list_depth + 1
+                -- Rendering keeps at most 64 levels of list state.
+                if list_depth <= 64 then
+                    lists[list_depth] = {
+                        ordered = name == "ol",
+                        next = integerAttribute(attributes:lower(), "start") or 1,
+                    }
+                end
+            end
+        elseif name == "li" then
+            lineBreak()
+            if not closing then
+                local list = lists[list_depth]
+                local prefix = "• "
+                if list and list.ordered then
+                    local number = integerAttribute(attributes:lower(), "value") or list.next
+                    prefix = tostring(number) .. ". "
+                    list.next = number + 1
+                end
+                append(string.rep("  ", math.min(math.max(list_depth - 1, 0), 8)) .. prefix)
+                list_prefix_index = #parts
+            end
+        elseif name == "tr" then
+            lineBreak()
+            row_cells = closing and nil or 0
+        elseif name == "td" or name == "th" then
+            if not closing then
+                if row_cells and row_cells > 0 then append(" | ") end
+                row_cells = (row_cells or 0) + 1
+            end
+        elseif name == "br" then
+            append("\n")
+        elseif name == "hr" or blocks[name] then
+            if not (name == "p" and not closing and list_prefix_index == #parts) then
+                lineBreak()
+            end
+        end
+    end)
+    if verbatim then closeProtected() end
+    return table.concat(parts), preserved
 end
 
 -- Decodifica entidades HTML
@@ -358,18 +554,7 @@ end
 
 -- Conversión simple de HTML a texto (fallback)
 function ContentProcessor:simpleHtmlToText(html_content)
-    local content = stripNonTextElements(html_content)
-    content = content:gsub("<[Bb][Rr][^>]*>", "\n")
-    content = content:gsub("<[Pp][^>]*>", "\n")
-    content = content:gsub("</[Pp]%s*>", "\n")
-    content = content:gsub("<[Dd][Ii][Vv][^>]*>", "\n")
-    content = content:gsub("</[Dd][Ii][Vv]%s*>", "\n")
-    content = content:gsub("<[^>]+>", "")
-    content = self:decodeHtmlEntities(content)
-    content = content:gsub("\n\n+", "\n\n")
-    content = content:gsub("^%s+", "")
-    content = content:gsub("%s+$", "")
-    return content
+    return self:htmlToText(html_content)
 end
 
 -- Formatea el contenido con metadatos del artículo
@@ -412,27 +597,12 @@ function ContentProcessor:cleanHTMLForEink(html_content)
     local content = html_content
     local original_size = #content
 
-    -- 1. Remover elementos no renderizables en e-ink
-    content = stripRawTextElements(content)
-    -- Keep useful fallback content from <noscript>, only remove its wrapper.
-    content = removeOpenTag(content, "noscript")
-
-    -- 2. Remover elementos multimedia no soportados
-    content = removePairedElement(content, "video")
-    content = removePairedElement(content, "audio")
-    content = removePairedElement(content, "iframe")
-    content = removeOpenTag(content, "embed")
-    content = removePairedElement(content, "object")
-
-    -- 3. Remover formularios (no funcionales)
-    content = removePairedElement(content, "form")
-    content = removeOpenTag(content, "input")
-    content = removePairedElement(content, "button")
-    content = removePairedElement(content, "select")
-    content = removePairedElement(content, "textarea")
-
-    -- 4. Remover CSS externo (no se carga en archivos locales)
-    content = removeOpenTag(content, "link")
+    -- Filter unsupported content in one pass. Keep useful <noscript>
+    -- fallback text while dropping its wrapper and unused external resources.
+    content = filterElements(content, {
+        script = true, style = true, video = true, audio = true, iframe = true,
+        object = true, form = true, button = true, select = true, textarea = true,
+    }, { noscript = true, embed = true, input = true, link = true })
 
     -- 5. Remover atributos style inline (conflicto con CSS del reader)
     content = content:gsub('%s+[Ss][Tt][Yy][Ll][Ee]%s*=%s*"[^"]*"', "")
@@ -441,9 +611,8 @@ function ContentProcessor:cleanHTMLForEink(html_content)
     -- 6. Remover comentarios HTML (innecesarios)
     content = content:gsub("<!%-%-.-%-%->", "")
 
-    -- 7. Remove whitespace only between tags. Global %s+ collapsing corrupts
-    -- preformatted code, poetry, and other whitespace-sensitive content.
-    content = content:gsub(">%s+<", "><")
+    -- Preserve source whitespace, including gaps between syntax-highlighted
+    -- spans in pre/code. The HTML renderer collapses ordinary prose itself.
 
     -- 8. Limpiar data URLs muy grandes (>10KB)
     content = content:gsub(
@@ -747,6 +916,7 @@ function ContentProcessor:createReaderHTMLWithNotes(raindrop)
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="generator" content="Gota annotated export">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>%s</title>
     <style>
@@ -1083,7 +1253,7 @@ end
 
 function ContentProcessor:formatHighlightInfo(highlight)
     highlight = type(highlight) == "table" and highlight or {}
-    local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or {}
+    local reference = Raindrop.highlightReference(highlight) or {}
     local parts = {
         tostring(highlight.title or reference.title or _("Highlight")),
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",

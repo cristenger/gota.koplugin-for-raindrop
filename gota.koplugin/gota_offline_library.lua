@@ -20,6 +20,7 @@
 local OfflineLibrary = {}
 
 local HTML_EXTENSION = ".html"
+local HEADER_BYTES = 16 * 1024
 
 -- Callers pass components already sanitized by ArticleManager so the result
 -- matches the names downloadHTML has produced since before this module
@@ -121,6 +122,106 @@ function OfflineLibrary.find(dir, safe_id, safe_title, lfs)
     return nil
 end
 
+local function readHeader(path, limit)
+    local file = io.open(path, "rb")
+    if not file then return nil end
+    local ok, header = pcall(file.read, file, limit)
+    pcall(file.close, file)
+    return ok and header or nil
+end
+
+local function parseCopyName(name)
+    if type(name) ~= "string" or name:find("%c") then return nil end
+    local id, title = name:match("^(%d+)_(.+)%.html$")
+    if not id or not title:find("%S") or title == "." or title == ".." then return nil end
+    local numeric_id = tonumber(id)
+    if not numeric_id or numeric_id >= 2 ^ 53 or numeric_id ~= math.floor(numeric_id) then
+        return nil
+    end
+    return numeric_id, title
+end
+
+local function isAnnotatedHeader(header)
+    if type(header) ~= "string" then return nil end
+    -- Current exports carry an explicit marker. The stylesheet also identifies
+    -- Gota's older exports, whose filename alone is ambiguous (Release_notes).
+    return header:find('content="Gota annotated export"', 1, true) ~= nil or
+        (header:find(".notes-section", 1, true) ~= nil and
+         header:find(".highlights-section", 1, true) ~= nil and
+         header:find(".source-url", 1, true) ~= nil)
+end
+
+local function titleFromHeader(header, decode_entities)
+    if type(header) ~= "string" then return nil end
+    local title = header:match("<[Tt][Ii][Tt][Ll][Ee]%s*>(.-)</[Tt][Ii][Tt][Ll][Ee]%s*>") or
+        header:match("<[Tt][Ii][Tt][Ll][Ee]%s+[^>]*>(.-)</[Tt][Ii][Tt][Ll][Ee]%s*>")
+    if not title then return nil end
+    title = title:gsub("<[^>]*>", "")
+    if type(decode_entities) == "function" then
+        local ok, decoded = pcall(decode_entities, title)
+        if ok and type(decoded) == "string" then title = decoded end
+    end
+    title = title:gsub("%c", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    return title ~= "" and title or nil
+end
+
+-- List only Gota-named HTML files in the configured export directory. Each
+-- path remains independent, so legacy numbered files and annotated exports
+-- retain their own reading position. No network, index, or directory creation
+-- is involved. The header read is bounded even for large permanent copies.
+-- options.read_header is an injectable reader for the dependency-free suite.
+function OfflineLibrary.list(dir, lfs, docsettings, options)
+    if type(dir) ~= "string" or dir == "" then return nil, "export directory is not configured" end
+    if type(lfs) ~= "table" or type(lfs.attributes) ~= "function" or
+       type(lfs.dir) ~= "function" then return nil, "could not enumerate saved articles" end
+    options = options or {}
+
+    local mode_ok, mode = pcall(lfs.attributes, dir, "mode")
+    if not mode_ok then return nil, tostring(mode) end
+    if mode == nil then return {}, nil end
+    if mode ~= "directory" then return nil, "export path is not a directory" end
+
+    local iterator_ok, iterator, directory_state = pcall(lfs.dir, dir)
+    if not iterator_ok then return nil, tostring(iterator) end
+    if type(iterator) ~= "function" then return nil, "could not enumerate saved articles" end
+    local copies = {}
+    local scan_ok, scan_error = pcall(function()
+        for name in iterator, directory_state do
+            local id, fallback_title = parseCopyName(name)
+            if id then
+                local path = joinPath(dir, name)
+                if isFile(lfs, path) then
+                    local header_ok, header = pcall(options.read_header or readHeader, path, HEADER_BYTES)
+                    header = header_ok and header or nil
+                    local annotated = isAnnotatedHeader(header)
+                    -- An unreadable old file can still be listed from its name.
+                    if annotated == nil then annotated = isAnnotatedExport(name) end
+                    if annotated then
+                        local article_title = fallback_title:gsub("_notes_%d+$", ""):gsub("_notes$", "")
+                        if article_title:find("%S") then fallback_title = article_title end
+                    end
+                    fallback_title = fallback_title:gsub("_", " ")
+                    copies[#copies + 1] = {
+                        path = path,
+                        title = titleFromHeader(header, options.decode_entities) or fallback_title,
+                        raindrop_id = id,
+                        annotated = annotated == true,
+                        percent = OfflineLibrary.progress(path, docsettings),
+                    }
+                end
+            end
+        end
+    end)
+    if not scan_ok then return nil, tostring(scan_error) end
+    table.sort(copies, function(a, b)
+        local a_title, b_title = a.title:lower(), b.title:lower()
+        if a_title ~= b_title then return a_title < b_title end
+        if a.annotated ~= b.annotated then return not a.annotated end
+        return a.path < b.path
+    end)
+    return copies, nil
+end
+
 --[[
     percent_finished is stored as a 0..1 fraction. Flooring keeps the reported
     value from ever overstating how much of the article has been read.
@@ -153,7 +254,7 @@ function OfflineLibrary.progress(path, docsettings)
     if not read_ok then return nil end
 
     fraction = tonumber(fraction)
-    if not fraction or fraction < 0 or fraction > 1 then return nil end
+    if not fraction or fraction ~= fraction or fraction < 0 or fraction > 1 then return nil end
     return math.floor(fraction * 100)
 end
 

@@ -1,9 +1,16 @@
 local DataStorage = require("datastorage")
 local LuaSettings = require("luasettings")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("gota_gettext")
 
 local Settings = {}
+-- FileManager and ReaderUI create separate settings instances. Credentials
+-- belong to the running session, so a stale instance must not restore a token.
+local session_token
+local session_generation = 0
+local session_security_initialized = false
+local session_tls_verify = true
+local session_ca_file
 local DEFAULT_DOWNLOAD_PATH = "gota_articles"
 local DEFAULT_SORT_ORDER = "-created"
 local MIB = 1024 * 1024
@@ -102,7 +109,12 @@ function Settings:new()
     o.config = LuaSettings:open(settings_path)
 
     if o.config then
-        o.token = o.config:readSetting("token") or ""
+        if session_token == nil then session_token = o.config:readSetting("token") or "" end
+        if not session_security_initialized then
+            session_tls_verify = o.config:readSetting("tls_verify") ~= false
+            session_ca_file = o.config:readSetting("tls_ca_file")
+            session_security_initialized = true
+        end
         o.download_path = normalizeDownloadPath(o.config:readSetting("download_path"))
         o.sort_order = normalizeSortOrder(o.config:readSetting("sort_order"))
         o.max_cache_memory_bytes = normalizePreset(o.config:readSetting("max_cache_memory_bytes"),
@@ -111,14 +123,15 @@ function Settings:new()
             CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
     else
         logger.warn("Gota Settings: could not open config, using defaults")
-        o.token = ""
+        if session_token == nil then session_token = "" end
+        session_security_initialized = true
         o.download_path = DEFAULT_DOWNLOAD_PATH
         o.sort_order = DEFAULT_SORT_ORDER
         o.max_cache_memory_bytes = DEFAULT_CACHE_MEMORY_BYTES
         o.max_cache_file_bytes = DEFAULT_CACHE_FILE_BYTES
     end
 
-    logger.dbg("Gota Settings: loaded, token:", o.token ~= "" and "present" or "empty")
+    logger.dbg("Gota Settings: loaded, token:", o:getToken() ~= "" and "present" or "empty")
     return o
 end
 
@@ -130,7 +143,9 @@ function Settings:save()
 
     local saved, save_error = pcall(function()
         self.download_path = normalizeDownloadPath(self.download_path)
-        self.config:saveSetting("token", self.token)
+        self.config:saveSetting("token", self:getToken())
+        self.config:saveSetting("tls_verify", self:isTLSVerificationEnabled())
+        self.config:saveSetting("tls_ca_file", self:getTLSCAFile())
         self.config:saveSetting("download_path", self.download_path)
         self.sort_order = normalizeSortOrder(self.sort_order)
         self.config:saveSetting("sort_order", self.sort_order)
@@ -152,26 +167,50 @@ function Settings:save()
 end
 
 function Settings:getToken()
-    return self.token
+    return session_token or ""
 end
 
 function Settings:setToken(token)
-    self.token = token or ""
+    token = type(token) == "string" and token or ""
+    if token ~= session_token then
+        session_token = token
+        session_generation = session_generation + 1
+    end
+end
+
+function Settings:getSessionGeneration()
+    return session_generation
+end
+
+function Settings:isTLSVerificationEnabled()
+    return session_tls_verify
+end
+
+function Settings:setTLSVerificationEnabled(enabled)
+    session_tls_verify = enabled ~= false
+end
+
+function Settings:getTLSCAFile()
+    return type(session_ca_file) == "string" and session_ca_file ~= "" and session_ca_file or nil
+end
+
+function Settings:setTLSCAFile(path)
+    session_ca_file = type(path) == "string" and path ~= "" and path or nil
 end
 
 function Settings:clearToken()
-    local previous_token = self.token
-    self.token = ""
+    local previous_token = self:getToken()
+    self:setToken("")
     local saved, save_error = self:save()
     if not saved then
-        self.token = previous_token
+        self:setToken(previous_token)
         return false, save_error
     end
     return true
 end
 
 function Settings:isTokenValid()
-    return self.token and self.token ~= ""
+    return self:getToken() ~= ""
 end
 
 function Settings:getDownloadPath()
@@ -257,7 +296,7 @@ function Settings:getDebugInfo()
     local lfs = require("libs/libkoreader-lfs")
     local attr = lfs.attributes(settings_path)
     return {
-        token_status = self.token ~= "" and "configured" or "not configured",
+        token_status = self:getToken() ~= "" and "configured" or "not configured",
         settings_file = settings_path,
         file_exists = attr ~= nil,
         file_size = attr and attr.size or 0,

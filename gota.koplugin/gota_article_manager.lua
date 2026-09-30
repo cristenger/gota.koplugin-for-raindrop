@@ -200,6 +200,13 @@ function ArticleManager:getOfflineState(raindrop)
     }
 end
 
+function ArticleManager:listOfflineCopies()
+    local dir = self.settings and self.settings:getFullDownloadPath() or nil
+    return OfflineLibrary.list(dir, require("libs/libkoreader-lfs"), self:getDocSettings(), {
+        decode_entities = util.htmlEntitiesToUtf8,
+    })
+end
+
 -- Opens a kept file. No cleanup is registered: the path lives in the export
 -- folder, so isManagedReaderPath rejects it and CloseDocument leaves both the
 -- file and KOReader's reading-position sidecar alone.
@@ -263,7 +270,8 @@ end
 local function isManagedReaderName(name)
     return type(name) == "string" and
         (name:match("^raindrop_%d+%.html$") ~= nil or
-         name:match("^raindrop_%d+%.html%.part$") ~= nil)
+         name:match("^raindrop_%d+%.html%.part$") ~= nil or
+         name:match("^raindrop_%d+%.html%.part%.decoded$") ~= nil)
 end
 
 function ArticleManager:isManagedReaderPath(path)
@@ -296,9 +304,16 @@ function ArticleManager:cleanupManagedReaderPath(path)
 
     local lfs = require("libs/libkoreader-lfs")
     local is_part = path:match("%.part$") ~= nil
-    local history_path = not is_part and canonicalPath(path) or nil
+    local is_decoded = path:match("%.part%.decoded$") ~= nil
+    local is_document = not is_part and not is_decoded
+    local history_path = is_document and canonicalPath(path) or nil
     local paths = { path }
-    if not is_part then paths[#paths + 1] = path .. ".part" end
+    if is_document then
+        paths[#paths + 1] = path .. ".part"
+        paths[#paths + 1] = path .. ".part.decoded"
+    elseif is_part then
+        paths[#paths + 1] = path .. ".decoded"
+    end
 
     local errors = {}
     for _, candidate in ipairs(paths) do
@@ -338,7 +353,8 @@ function ArticleManager:cleanupOrphanReaderFiles(active_path)
     for name in iterator_or_error, directory_state do
         if isManagedReaderName(name) then
             local path = cache_dir .. "/" .. name
-            if canonicalPath(path) ~= active_canonical then
+            local document_path = path:gsub("%.part%.decoded$", ""):gsub("%.part$", "")
+            if canonicalPath(document_path) ~= active_canonical then
                 local cleaned, clean_error = self:cleanupManagedReaderPath(path)
                 if cleaned then
                     removed_count = removed_count + 1
@@ -492,6 +508,15 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         return false
     end
 
+    local filename = self:getReaderCachePath(raindrop._id)
+    -- Never replace a file CREngine currently has open: the reader still holds
+    -- the old document while a later CloseDocument can remove the replacement.
+    if self.gota_reader and type(self.gota_reader.isDocumentOpen) == "function" and
+       self.gota_reader:isDocumentOpen(filename) then
+        self.callbacks.notify(_("This article is already open in the reader"))
+        return false
+    end
+
     -- Reader documents are transient cache files. Keeping them out of the
     -- export directory prevents an open action from overwriting a saved HTML.
     local html_dir = DataStorage:getDataDir() .. "/cache/gota"
@@ -503,7 +528,6 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         return false
     end
 
-    local filename = self:getReaderCachePath(raindrop._id)
     local max_bytes = self.settings and self.settings:getMaxCacheFileBytes() or 128 * 1024 * 1024
     local fits, size_error = cacheFitsLimit(raindrop, max_bytes)
     if not fits then

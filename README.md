@@ -20,8 +20,10 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Highlights**: Review highlights globally or by collection without requiring PRO
 - **Bookmark Editing**: Update favorite, note, tags and collection; move safely to/from Trash
 - **Content Limits**: Separate presets up to 64 MiB for text-in-RAM and 512 MiB for reader-file downloads
-- **Read Offline**: Download an article to your folder and resume it later at the page where you stopped, or create a safer text-based annotated export
-- **Internationalization**: Automatic language detection with English source strings and a Spanish catalog
+- **Read Offline**: Download an article and resume it later, or create an annotated text export. **Saved on this device** opens your local library without a token or connection
+- **Cancellable Networking**: Network requests run in KOReader subprocesses, keeping the interface responsive while transfers and retries run
+- **Verified HTTPS**: Certificate chain and server hostname checks enabled by default
+- **Internationalization**: Isolated plugin catalogs, including Spanish and regional fallback
 - **Configurable**: Customizable export folder with visual folder picker
 - **KOReader Compatibility**: Targets KOReader 2026.07 and later
 
@@ -129,6 +131,8 @@ Choose between the visual picker—long-press a folder name to select it—or ma
 
 Open an article and select **Download to read offline** to download Raindrop's permanent web copy into your export folder. If it has a note or highlights, **Export with notes & highlights** creates an annotated file directly from the same menu. After saving you can choose **Read now**, **Stay in Gota** or **Open folder**.
 
+Use **Menu → Gota → Saved on this device** to list original copies and annotated exports with reading progress. This menu remains available without an access token or a network connection.
+
 Once downloaded, the article's menu shows **Continue reading** with how far you got. Selecting it reopens the saved file at that position, so you can put the device down mid-article and pick it up later without downloading anything again. Downloading the same article a second time updates that file in place, which is what keeps your position.
 
 Original-copy downloads require Raindrop PRO and are limited by the configured reader-file size. They preserve remote HTML and may therefore contain code or resources from the source site. Annotated exports convert the article body to escaped plain text and prioritize safety/readability over visual fidelity; notes-only and highlights-only exports remain available without PRO content.
@@ -137,7 +141,7 @@ Original-copy downloads require Raindrop PRO and are limited by the configured r
 
 The plugin auto-detects your KOReader language:
 - **English** (default)
-- **Spanish** (Español; legacy entries still need linguistic review)
+- **Spanish** (Español)
 
 Change language in: `KOReader Settings → Language`
 
@@ -191,11 +195,11 @@ If a site still shows menus, banners or other page chrome, that is an accepted l
 
 This is a presentation policy, not sanitization. The remote HTML stays in the downloaded file and remains untrusted content.
 
-### TLS Certificate Limitation on Kindle
+### HTTPS Server Verification
 
-Raindrop only provides an HTTPS API. On the supported Kindle runtime, however, remote certificate authentication is not implemented in this flow. Gota inherits KOReader's LuaSec behavior (`verify = "none"` in LuaSec 1.3.2) and does not mutate process-wide TLS state.
+Gota verifies certificate chains and server hostnames by default, using KOReader's CA bundle or an available system store. Verification happens before HTTP or the Bearer token is sent. If verification cannot be performed, the connection fails. Web-copy redirects use the same policy and never receive the Raindrop token.
 
-Traffic is encrypted but the server is not authenticated, so an active attacker could intercept the Bearer token. Use Gota only on a trusted network. HTTPS URLs remain mandatory, and web-copy redirects never receive the Raindrop token.
+**Configuration → Server verification** offers an explicit compatibility setting with confirmation. Disabling verification keeps traffic encrypted but allows an attacker to impersonate Raindrop and obtain your token. Enable verification again when the device can use a current CA store.
 
 The token field is masked, but the credential is stored as plaintext in KOReader's `settings/gota.lua`. Treat that file as sensitive and do not attach it to public bug reports.
 
@@ -207,10 +211,9 @@ git clone https://github.com/cristenger/gota.koplugin-for-raindrop.git
 cd gota.koplugin-for-raindrop/gota.koplugin
 
 # Check Lua 5.1 syntax
-luac5.1 -p *.lua tests/run.lua
+luac5.1 -p *.lua tests/*.lua
 
-# Run the dependency-free regression suite
-lua5.1 tests/run.lua
+# Run the regression suite (gzip cases require LuaJIT FFI)
 luajit tests/run.lua
 
 # Validate localization scripts and the Spanish catalog
@@ -229,7 +232,11 @@ python3 extract_strings.py
 ```
 gota.koplugin/
 ├── main.lua                  # Plugin coordinator
-├── gota_api.lua              # Raindrop.io API client
+├── gota_api.lua              # Bounded Raindrop.io API client
+├── gota_tls.lua              # Per-request certificate and hostname verification
+├── gota_operations.lua       # Trapper workers, cancellation and session guards
+├── gota_gettext.lua          # Isolated plugin translations
+├── gota_raindrop.lua         # Highlight reference normalization
 ├── gota_compression.lua      # Bounded in-process gzip decoding
 ├── gota_settings.lua         # Configuration management
 ├── gota_dialogs.lua          # UI dialogs
@@ -238,7 +245,7 @@ gota.koplugin/
 ├── gota_article_manager.lua  # Article operations
 ├── gota_reader.lua           # Reader integration
 ├── gota_reader_styles.lua    # Full-reader presentation stylesheet
-├── gota_offline_library.lua  # Locating downloaded offline copies
+├── gota_offline_library.lua  # Listing and locating saved copies
 ├── gota_version.lua          # Version and compatibility metadata
 ├── ARCHITECTURE.md           # Maintained architecture and contracts
 ├── tests/run.lua             # Dependency-free regression tests

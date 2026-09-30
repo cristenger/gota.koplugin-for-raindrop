@@ -6,7 +6,8 @@
 local Menu = require("ui/widget/menu")
 local Device = require("device")
 local logger = require("logger")
-local _ = require("gettext")
+local _ = require("gota_gettext")
+local Raindrop = require("gota_raindrop")
 
 local UIBuilder = {}
 
@@ -31,6 +32,7 @@ function UIBuilder.buildActiveFilterSummary(state, context, sort)
         title = _("title A-Z"), ["-title"] = _("title Z-A"),
         domain = _("domain A-Z"), ["-domain"] = _("domain Z-A"),
         ["-sort"] = _("custom order"),
+        score = _("relevance"),
     }
     parts[#parts + 1] = string.format(_("Sort: %s"), sort_names[sort] or tostring(sort or "-created"))
 
@@ -670,7 +672,7 @@ function UIBuilder:buildHighlightItems(response, on_select_callback)
         local preview, truncated = truncateUTF8ByCharacters(
             normalizeMenuText(highlight.text or _("Highlight without text")), 90)
         local details = {}
-        local reference = type(highlight.raindropRef) == "table" and highlight.raindropRef or {}
+        local reference = Raindrop.highlightReference(highlight) or {}
         local source_title = highlight.title or reference.title
         if source_title and source_title ~= "" then
             local title_preview, title_truncated = truncateUTF8ByCharacters(

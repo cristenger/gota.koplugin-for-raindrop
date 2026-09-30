@@ -1,6 +1,6 @@
 # Arquitectura de Gota
 
-Este documento describe la arquitectura vigente de Gota 2.3.0. La versión de referencia es KOReader 2026.07 o posterior. El código se contrastó con KOReader 2026.07/master y con la API REST v1 de Raindrop.io el 15 de agosto de 2026.
+Este documento describe Gota 2.3.0 con las mejoras pendientes de publicación. La referencia es KOReader 2026.07.1 o posterior. La revisión del 30 de septiembre de 2026 contrastó la release estable (`9192014d8bd82a91dc1012473be0f238dedfdb54`), desarrollo (`b539d24b97e52845841af6d7bb521cbba64e34dd`) y la API REST v1 de Raindrop.io.
 
 ## Alcance
 
@@ -23,7 +23,10 @@ flowchart LR
     A --> O["gota_offline_library.lua<br/>localización de copias"]
     A --> P["gota_api.lua<br/>Raindrop REST v1"]
     P --> Z["gota_compression.lua<br/>gzip acotado"]
-    P --> X["api.raindrop.io"]
+    M --> W["gota_operations.lua<br/>Trapper y cancelación"]
+    P --> W
+    P --> V["gota_tls.lua<br/>cadena y nombre TLS"]
+    V --> X["api.raindrop.io"]
     S --> F["settings/gota.lua"]
     A --> H["DataStorage/<download_path>/*.html"]
     A --> T["DataStorage/cache/gota/*.html<br/>lectura temporal"]
@@ -33,12 +36,16 @@ flowchart LR
 |---|---|---|
 | `main.lua` | Componer dependencias, registrar menú/Dispatcher y coordinar pantallas | Interpretar HTTP o transformar HTML |
 | `gota_api.lua` | Transporte HTTPS, autenticación, redirects, reintentos, caché de respuestas y endpoints | Construir widgets |
+| `gota_operations.lua` | Ejecutar red en subprocess mediante Trapper, cancelar el flujo completo y rechazar respuestas de una sesión anterior | Crear pantallas de navegación o persistir datos de cuenta |
+| `gota_tls.lua` | Verificar cadena y SAN del servidor antes de enviar HTTP; aplicar la política por petición | Cambiar opciones globales de LuaSec |
+| `gota_gettext.lua` | Cargar el catálogo del plugin con fallback regional, conservando los diccionarios de KOReader | Cambiar el dominio global de traducción |
+| `gota_raindrop.lua` | Normalizar referencias numéricas y objetos de resaltados | Hacer red o construir widgets |
 | `gota_compression.lua` | Descomprimir gzip mediante el zlib incluido en KOReader y limitar la salida | Hacer red o ejecutar comandos externos |
 | `gota_article_manager.lua` | Cargar, recargar, exportar y abrir artículos | Conocer internals de `ReaderUI` |
 | `gota_content_processor.lua` | Sanear UTF-8, convertir HTML a texto y generar documentos locales | Hacer red |
 | `gota_reader.lua` | Abrir/cambiar documento, volver a Gota mediante APIs públicas de KOReader y aplicar la hoja transitoria en pre-render | Preabrir documentos, modificar tablas internas del menú o mutar ajustes persistentes |
 | `gota_reader_styles.lua` | Componer el CSS de presentación y detectar los tweaks oficiales de tamaño | Requerir módulos de KOReader, tocar disco o guardar estado |
-| `gota_offline_library.lua` | Nombrar de forma determinista y localizar copias offline; leer el progreso | Descargar, escribir archivos o requerir módulos de KOReader |
+| `gota_offline_library.lua` | Nombrar, localizar y enumerar copias offline; leer títulos acotados y progreso | Descargar, escribir archivos o requerir módulos de KOReader |
 | `gota_ui_builder.lua` | Crear items, jerarquías de colecciones y paginación | Hacer red o persistir configuración |
 | `gota_dialogs.lua` | Construir diálogos y recoger entradas | Guardar directamente ajustes |
 | `gota_settings.lua` | Leer y escribir `gota.lua` mediante `LuaSettings` | Registrar UI |
@@ -47,6 +54,8 @@ flowchart LR
 ## Navegación y coherencia de pantalla
 
 Cada detalle de artículo recibe un `SourceContext` pequeño con `kind`, página remota y una función `reload(focus_raindrop_id)`. La closure captura solo IDs, nombre, término, filtros normalizados y alcance; no conserva envelopes, HTML ni widgets. Tras editar favorito, nota, etiquetas o colección, el proceso padre adopta la respuesta, cierra el detalle y reconstruye la lista autoritativa. Las filas llevan `gota_raindrop_id`, y `Menu:switchItemTable` localiza su página sin escribir campos internos de KOReader. Mover a Papelera recarga sin foco porque el elemento ya no debe aparecer en el origen.
+
+Las instancias de FileManager y ReaderUI comparten token, generación de sesión y preferencias TLS. Guardar o borrar un token invalida las respuestas y la navegación de la cuenta; los callbacks capturan la generación al crearse. Una respuesta o acción de una generación anterior se descarta, incluso si otra entrada ya actualizó la pantalla. La validación de un token candidato usa una instancia API independiente.
 
 Las listas remotas mantienen 25 elementos por petición. Sus controles aparecen arriba y abajo para no confundirse con la paginación interna de `Menu`; el subtítulo muestra alcance, filtros, rango y página de Raindrop. La búsqueda avanzada conserva su último estado únicamente durante el proceso (`last_advanced_search`) y no lo escribe en `gota.lua`.
 
@@ -123,7 +132,9 @@ Esta etapa **no es un saneamiento**. `display:none` solo evita que CREngine pres
 
 La URL base es `https://api.raindrop.io/rest/v1`. El constructor rechaza HTTP, credenciales embebidas, query o fragmento en la URL base. Raindrop no ofrece un endpoint HTTP, por lo que HTTPS sigue siendo obligatorio como transporte.
 
-En Kindle, la autenticación del certificado remoto no está implementada en el flujo soportado. Gota no modifica el estado global `ssl.https.cert_verify` ni fuerza `verify = "peer"`; hereda el comportamiento de LuaSec 1.3.2 incluido por KOReader, cuyo cliente HTTPS usa `verify = "none"` por defecto. El tráfico se cifra, pero el servidor no queda autenticado: un atacante activo en la red podría interceptar el Bearer token. El dispositivo debe usarse en una red de confianza. Esta es una limitación aceptada por compatibilidad, no una garantía de seguridad TLS.
+La verificación HTTPS está activada por defecto. `gota_tls.lua` usa `verify = "peer"` con el bundle CA de KOReader (`data/ca-bundle.crt`) o un almacén del sistema y comprueba el SAN del certificado después del handshake, antes de enviar la línea HTTP o el Bearer token. Se exige SAN: no existe fallback al common name, y un wildcard solo cubre una etiqueta DNS. Una IP literal IPv4 exige IP SAN; IPv6 literal no está soportado. Si falta el almacén o la capacidad necesaria, la petición falla. No se modifica la política global de LuaSec.
+
+La configuración ofrece desactivar la verificación de forma explícita y con confirmación por compatibilidad del dispositivo. Ese modo conserva el cifrado, pero permite suplantar al servidor. `tls_ca_file` admite un almacén CA personalizado en los ajustes. La información de diagnóstico distingue la política disponible de `validation_observed`, que solo se activa después de una conexión verificada.
 
 Cada llamada inicial incluye `Authorization: Bearer <token>`. Gota solicita `Accept-Encoding: identity`, pero algunos hosts de almacenamiento devuelven gzip de todos modos. En ese caso usa el zlib incluido en KOReader: no ejecuta binarios externos y aplica el límite configurado a los bytes ya descomprimidos. Una codificación diferente, como Brotli, se rechaza por nombre.
 
@@ -141,9 +152,11 @@ Cada llamada inicial incluye `Authorization: Bearer <token>`. Gota solicita `Acc
 
 `JSON.decode` está protegido con `pcall`. Los bodies JSON de error aportan `errorMessage`, `message` o `error.message` cuando existen. Los timeouts de `socketutil` se restauran incluso si LuaSec lanza una excepción.
 
-Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `Retry-After` o las variantes documentadas de la cabecera de reset. Como este bucle corre en el hilo de UI, Gota solo duerme hasta tres segundos; si el servidor pide una espera mayor, devuelve el control y solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
+Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `Retry-After` o las variantes documentadas de la cabecera de reset. El retraso por intento sigue limitado a tres segundos; si el servidor pide más, solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
 
-La caché de respuestas GET vive en memoria durante cinco minutos. `getRaindrop(id, true)` significa recarga forzada: invalida y omite la entrada almacenada.
+Todas las entradas de red de la UI ejecutan el flujo completo dentro de una coroutine de `Trapper`. El ejecutor mueve transporte, reintentos, descompresión y JSON a `dismissableRunInSubprocess`; el padre conserva widgets, navegación y caché. Solo la coroutine propietaria puede anidar llamadas, y un bloqueo de proceso impide operaciones simultáneas entre instancias. Cancelar aborta también endpoints opcionales y fallback de datos. Las descargas canceladas retiran `.part` y `.part.decoded`. Si se interrumpe una escritura, Gota invalida la caché y explica que el servidor puede haberla guardado; no vuelve a enviarla automáticamente.
+
+JSON está limitado a 2 MiB recibidos y descomprimidos. La caché GET tiene TTL de cinco minutos, un máximo de 32 entradas y 4 MiB estimados de claves y estructuras Lua; elimina caducados y expulsa las entradas menos utilizadas. No es un límite exacto del heap. `getRaindrop(id, true)` fuerza la recarga. Cualquier resultado de escritura, incluido un fallo incierto, invalida la caché.
 
 ### Endpoints usados
 
@@ -159,11 +172,11 @@ La caché de respuestas GET vive en memoria durante cinco minutos. `getRaindrop(
 | Filtros | `GET /filters/{collectionId}` |
 | Resaltados globales/por colección | `GET /highlights[/{collectionId}]` |
 | Favorito, nota, tags y colección | `PUT /raindrop/{id}` |
-| Mover a Trash, solo fuera de Trash | `DELETE /raindrop/{id}` |
+| Mover a Trash, solo fuera de Trash | `PUT /raindrop/{id}` con `collection.$id = -99` |
 | Todos los tags | `GET /tags` |
 | Tags de una colección | `GET /tags/{collectionId}` |
 
-La búsqueda avanzada construye un único parámetro `search`. Por ejemplo, texto `swift`, tag `coffee beans` y tipo `article` producen `swift #"coffee beans" type:article` antes del URL encoding. La búsqueda textual usa `sort=score`; una consulta que solo contiene filtros usa `-created`. El alcance puede ser global, una colección o una colección con `nested=true`. `/filters/{id}?tagsSort=-count` es la única fuente de los filtros populares.
+La búsqueda avanzada construye un único parámetro `search`. Por ejemplo, texto `swift`, tag `coffee beans` y tipo `article` producen `swift #"coffee beans" type:article` antes del URL encoding. La búsqueda textual usa `sort=score`; una consulta que solo contiene filtros usa el orden configurado, cuyo valor inicial es `-created`. El subtítulo muestra ese mismo orden efectivo. El paso a Papelera siempre expresa el destino mediante `PUT`, así que una copia local desactualizada no puede provocar el borrado definitivo que Raindrop permite mediante `DELETE` en Papelera. Los resaltados aceptan el `raindropRef` numérico documentado y la variante objeto. El alcance puede ser global, una colección o una colección con `nested=true`. `/filters/{id}?tagsSort=-count` es la única fuente de los filtros populares.
 
 ## Modelo de caché de artículo
 
@@ -179,13 +192,15 @@ Abrir el menú o recargar obtiene solo metadatos. La vista de texto descarga en 
 
 ### Pipeline de texto plano
 
-La vista de texto valida UTF-8 y elimina `script`, `style`, `template`, `svg`, `iframe`, `object` y comentarios antes de interpretar la estructura. Después retira `nav`, `header`, `footer` y los elementos de navegación conocidos, elige el `article` con más texto visible o, si no existe, el `main` con más texto visible. Solo entonces quita las etiquetas restantes, decodifica entidades HTML y normaliza espacios y saltos de línea. La selección no depende del porcentaje que ocupe el artículo dentro del documento.
+La vista de texto valida UTF-8 y usa un scanner iterativo que reconoce etiquetas y atributos entrecomillados. Elimina `script`, `style`, `template`, `svg`, `iframe`, `object`, comentarios y navegación conocida; conserva los `header` editoriales. Elige el `article` con más texto visible o, si no existe, el `main` con más texto visible. La selección no depende del porcentaje que ocupe dentro del documento.
+
+La conversión separa elementos de listas, conserva numeración de `ol`, celdas y filas de tabla y mantiene espacios y líneas vacías en `pre` y `code`. El estado de listas está limitado a 64 niveles y no hay recursión según la profundidad remota. Un documento UTF-8 válido se devuelve sin crear una tabla por carácter; los reemplazos inválidos se agrupan en fragmentos acotados.
 
 El saneamiento ocurre antes de decodificar entidades. Por eso un ejemplo editorial escrito como `&lt;style&gt;` permanece como texto y el contenido de `pre` y `code` no se descarta. El lector HTML y la copia original no pasan por este pipeline. Los límites de 2–64 MiB tampoco cambian: se aplican al HTML descargado y descomprimido antes de convertirlo.
 
 ### Frontera de confianza de los exports
 
-La copia original conserva byte a byte el HTML servido por Raindrop y puede contener código o recursos del sitio; se guarda para fidelidad y debe tratarse como contenido web no confiable. El export anotado pertenece a Gota: elimina elementos activos conocidos, convierte el cuerpo remoto a texto, valida UTF-8 y escapa el resultado antes de insertarlo en una plantilla controlada. Notas, resaltados, metadatos y URL también se insertan como texto escapado; la URL no se convierte en `href`. Este segundo formato prioriza seguridad y legibilidad sobre fidelidad visual.
+La copia original conserva byte a byte el HTML servido por Raindrop y puede contener código o recursos del sitio; se guarda para fidelidad y debe tratarse como contenido web no confiable. El export anotado pertenece a Gota: elimina elementos activos conocidos, convierte el cuerpo remoto a texto, valida UTF-8 y escapa el resultado antes de insertarlo en una plantilla controlada. Las exportaciones nuevas incluyen el marcador `Gota annotated export`, que permite distinguirlas sin depender del título. Notas, resaltados, metadatos y URL también se insertan como texto escapado; la URL no se convierte en `href`. Este segundo formato prioriza seguridad y legibilidad sobre fidelidad visual.
 
 ## Colecciones
 
@@ -197,11 +212,13 @@ Los IDs de sistema usados por la UI son `0` para todos los marcadores, `-1` para
 
 | Dato | Ubicación | Duración |
 |---|---|---|
-| Token, carpeta, orden y límites de caché | `DataStorage:getSettingsDir()/gota.lua` | persistente; el token puede borrarse desde Gota |
+| Token, política TLS, carpeta, orden y límites de caché | `DataStorage:getSettingsDir()/gota.lua` | persistente; el token puede borrarse desde Gota |
 | HTML exportado | `DataStorage:getDataDir()/<download_path>/` | persistente |
-| HTML usado por ReaderUI | `DataStorage:getDataDir()/cache/gota/` | temporal; `CloseDocument` y el siguiente arranque retiran solo `raindrop_<id>.html[.part]` |
-| Respuestas API | tabla de `API.response_cache` | proceso, TTL 5 min |
+| HTML usado por ReaderUI | `DataStorage:getDataDir()/cache/gota/` | temporal; `CloseDocument` y el siguiente arranque retiran solo `raindrop_<id>.html`, `.part` y `.part.decoded` |
+| Respuestas API | tabla de `API.response_cache` | sesión, TTL 5 min, 32 entradas y 4 MiB estimados |
 | Estado de retorno del lector | singleton `GotaReader` | proceso y documento actual |
+
+Cada módulo usa `gota_gettext`, que carga `l10n/<idioma>/gota.mo` en diccionarios temporales y restaura traducciones, contextos y regla de plurales de KOReader. Un idioma regional puede usar el catálogo base, por ejemplo `es_ES` → `es`.
 
 El diálogo muestra el token como contraseña, pero `LuaSettings` lo guarda en texto claro. El archivo debe tratarse como una credencial y no compartirse en informes, respaldos públicos o issues. El alcance soportado es una integración personal mediante test token; OAuth multiusuario queda fuera del diseño actual.
 
@@ -221,6 +238,8 @@ La lectura del progreso usa `findSidecarFile` más `openSettingsFile`, no `DocSe
 
 `gota_offline_library.lua` resuelve la copia en dos pasos: primero la ruta canónica, y si no existe, un escaneo del directorio por el prefijo `<id>_`. El escaneo recupera copias guardadas antes de esta función —que llevan contador— y copias cuyo título cambió después en Raindrop; gana la de modificación más reciente. No se persiste ningún índice: el sistema de archivos es la única fuente de verdad, así que nada queda obsoleto cuando el usuario mueve o borra un archivo desde el gestor.
 
+El menú «Guardados en este dispositivo» enumera originales y exportaciones anotadas, permite abrirlos y volver a la biblioteca sin token ni conexión. El listado lee como máximo 16 KiB por archivo para obtener el título y su marcador, ignora archivos incompletos y no crea carpetas.
+
 Dos reglas que el escaneo debe respetar. El guion bajo delimita el ID, de modo que `12_` nunca captura `123_…`. Y las exportaciones anotadas se llaman `<id>_<título>_notes.html` y comparten el prefijo: el sufijo es solo un indicio, no una prueba, porque un título que sanea a algo terminado en `_notes` («Release notes») produce la misma forma. Por eso el escaneo **ordena** en vez de descartar: prefiere la copia original y solo ofrece una exportación anotada cuando no hay ninguna otra candidata. `find` devuelve además si el resultado parece anotado, para que no se le imponga la política de estilos de editores a un documento que escribió Gota.
 
 El desempate entre candidatas con el mismo `mtime` —habitual, porque la granularidad es de segundos enteros— usa el orden de nombre, nunca el orden de enumeración del directorio, que varía entre sistemas de archivos.
@@ -236,31 +255,43 @@ Estas copias viven en la carpeta de exportación, así que `isManagedReaderPath`
 La suite autocontenida no necesita KOReader ni una cuenta real:
 
 ```bash
-lua tests/run.lua
-luac -p *.lua tests/run.lua
+luajit tests/run.lua
+luajit -e 'for f in io.popen("rg --files -g \"*.lua\""):lines() do assert(loadfile(f)) end'
 git diff --check
 ```
 
-Cubre 129 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render y Dispatcher. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
+Cubre 186 casos: UTF-8 y export anotado adversarial, búsqueda por alcance/estado, foco y paginación remota, URLs HTTPS, redirects sin fuga del Bearer, streaming, gzip y límites antes y después de descomprimir, reintentos explícitos, envelopes/JSON, reintentos automáticos solo de lectura, grupos y orden de colecciones, resaltados, mutaciones allowlisted, protección de Papelera, cleanup confinado, rutas, firmas de `ReaderUI`, normalización de estilos en pre-render, Dispatcher, TLS antes de enviar credenciales, sesiones compartidas, cancelación compuesta, límites de caché/JSON, biblioteca local y aislamiento gettext. El audit separado valida cobertura española, placeholders y la allowlist de traducciones idénticas.
 
 Los tres casos de gzip requieren el FFI de LuaJIT. Un intérprete sin JIT los falla con `LuaJIT FFI is unavailable`; esa es una limitación del intérprete, no del plugin.
 
-Antes de publicar una release se requiere además un smoke test en KOReader 2026.07.1 o posterior y una prueba real contra Raindrop para 200/307/401/429. Esas pruebas verifican la integración real de LuaSec en Kindle, el renderizado e-ink y el servicio externo; no pueden sustituirse por mocks.
+Las pruebas nativas reproducibles se ejecutan desde el directorio del runtime de KOReader con un `KO_HOME` temporal:
+
+```bash
+KO_HOME="$(mktemp -d)" ./luajit /ruta/gota.koplugin/tests/runtime_operations.lua
+KO_HOME="$(mktemp -d)" ./luajit /ruta/gota.koplugin/tests/runtime_gettext.lua
+python3 /ruta/gota.koplugin/tests/runtime_tls.py /ruta/koreader/base/build/<plataforma>
+```
+
+Las dos primeras usan Trapper/fork/IPC y gettext reales; Operations sustituye solo widgets y el scheduler de UI. TLS genera una CA y certificados locales, acepta el servidor válido y rechaza nombre incorrecto y CA desconocida antes de recibir HTTP. No requieren una cuenta ni alteran credenciales. La validación local también incluye arranque SDL con perfil Kindle aislado.
+
+Antes de publicar se requieren pruebas de renderizado, cancelación y memoria en dispositivos Kindle/Kobo y respuestas autenticadas de Raindrop 200/307/429. El smoke del emulador y los certificados locales no cubren esos escenarios.
 
 ## Deuda conocida
 
-- Las llamadas HTTP siguen siendo síncronas dentro del callback de `NetworkMgr`; una red lenta puede bloquear la UI durante el timeout. `NetworkMgr:runWhenOnline` comprueba conectividad, no crea un hilo. KOReader 2026.07 expone `Trapper`, pero la migración queda detenida hasta demostrar cancelación, memoria y coherencia padre/hijo en Kindle y Kobo con una cuenta de prueba; no se presenta un spinner como asincronía.
 - El proyecto soporta test tokens personales, no OAuth con refresh.
 - La descarga cruda a CREngine necesita smoke test en Kindle/Kobo reales; si un port no abre el HTML, se mantendrá el límite y se diseñará una transformación acotada a archivo.
 - Raindrop no documenta `count` en el ejemplo de listas; Gota acepta su ausencia y pagina de forma abierta.
 - `main.lua` y `gota_content_processor.lua` siguen concentrando demasiada lógica; separar controladores de pantalla y plantillas HTML reducirá el coste de cambio.
-- CI valida Lua 5.1, la suite local y el catálogo; aún no cubre una instancia real de KOReader ni una cuenta Raindrop.
+- Las pruebas nativas de KOReader se ejecutan localmente; CI todavía no incluye ese runtime ni una cuenta Raindrop. La suite completa necesita LuaJIT para los casos de gzip.
 - El catálogo español pasa `msgfmt` y el audit de cobertura/placeholder; las pocas igualdades restantes están justificadas en `tests/check_translations.py`.
 
 ## Fuentes canónicas
 
 KOReader:
 
+- [Trapper estable](https://github.com/koreader/koreader/blob/9192014d8bd82a91dc1012473be0f238dedfdb54/frontend/ui/trapper.lua)
+- [gettext estable](https://github.com/koreader/koreader/blob/9192014d8bd82a91dc1012473be0f238dedfdb54/frontend/gettext.lua)
+- [Trapper en desarrollo revisado](https://github.com/koreader/koreader/blob/b539d24b97e52845841af6d7bb521cbba64e34dd/frontend/ui/trapper.lua)
 - [plugin Hello 2026.07](https://raw.githubusercontent.com/koreader/koreader/v2026.07/plugins/hello.koplugin/main.lua)
 - [Dispatcher](https://koreader.rocks/doc/modules/dispatcher.html)
 - [ReaderUI 2026.07](https://raw.githubusercontent.com/koreader/koreader/v2026.07/frontend/apps/reader/readerui.lua)

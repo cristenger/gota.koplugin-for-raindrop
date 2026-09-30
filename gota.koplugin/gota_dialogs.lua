@@ -10,7 +10,7 @@ local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local logger = require("logger")
 local util = require("util")
-local _ = require("gettext")
+local _ = require("gota_gettext")
 local Version = require("gota_version")
 
 local Dialogs = {}
@@ -31,7 +31,7 @@ function Dialogs:showTokenDialog(current_token, callbacks)
     local token_dialog  -- Declarar antes para que los callbacks puedan acceder
     token_dialog = InputDialog:new{
         title = _("Raindrop.io Access Token"),
-        description = _("TEST TOKEN (Recommended and currently supported):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nGota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n\nSecurity warning: this KOReader TLS flow encrypts traffic but does not authenticate the remote server. Use a trusted network and treat the token as a password.\n\nPaste the token here:"),
+        description = _("TEST TOKEN (Recommended and currently supported):\n• Go to: https://app.raindrop.io/settings/integrations\n• Create a new application\n• Copy the 'Test token'\n\nGota is intended for personal integrations. OAuth sign-in and token refresh are not implemented.\n\nHTTPS server verification is enabled by default. If your device cannot verify certificates, you can explicitly disable verification in Gota settings for compatibility. Treat the token as a password.\n\nPaste the token here:"),
         input = current_token,
         text_type = "password",
         buttons = {

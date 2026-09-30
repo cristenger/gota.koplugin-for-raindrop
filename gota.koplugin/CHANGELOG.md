@@ -1,8 +1,13 @@
 # Changelog - Gota Plugin for KOReader
 
-## Unreleased - UX and lifecycle hardening
+## Unreleased - Network, reading and lifecycle improvements
 
 ### Added
+
+- Cancellable network operations using KOReader Trapper subprocesses, with widgets and response cache retained by the UI process.
+- HTTPS chain and SAN hostname verification enabled by default, using KOReader’s bundled CA store. An explicit confirmed setting allows compatibility mode.
+- “Saved on this device” library, available without a token or connection, listing original copies, annotated exports and reading progress.
+- Native runtime checks for Trapper/fork/IPC, isolated gettext loading and locally generated TLS certificates.
 
 - Local access-token removal with confirmation and rollback if settings cannot be flushed.
 - Direct offline download from article details and one post-save choice to read the file, remain in Gota or open the destination folder.
@@ -15,6 +20,11 @@
 
 ### Changed
 
+- Move-to-Trash now uses an explicit PUT collection update, so stale local state cannot trigger permanent deletion.
+- JSON responses are limited to 2 MiB before and after decompression; the five-minute response cache is limited to 32 entries and 4 MiB of estimated Lua structures.
+- Credentials, session generation and TLS preferences are shared across FileManager and ReaderUI. Old responses and callbacks are rejected after an account change; candidate-token validation uses an independent API session.
+- Cancellation aborts composite flows and cleans temporary downloads. An interrupted write invalidates cached data and reports that its outcome may be unknown.
+
 - Article and highlight rows now use natural wrapping instead of forced newlines; status badges are written out and remote pagination is available above and below the list.
 - Manual download paths preserve valid spaces and nested folders, reject unsafe input without replacing it with a default, and ask before applying sanitizer changes.
 - Annotated exports convert remote article markup to escaped plain text. Original copies remain byte-faithful web content and are identified separately.
@@ -25,18 +35,26 @@
 
 ### Fixed
 
+- Plugin catalogs now load through an isolated translator before module-level labels are built; Spanish UI and regional fallback no longer depend on the core translation domain.
+- Documented numeric highlight references open their related bookmarks, and search summaries show the actual relevance ordering.
+- Plain text preserves editorial headers, list separators and numbering, table boundaries and code spacing. HTML scanning is iterative with bounded list state; valid UTF-8 avoids per-character table allocations.
+- Annotated exports carry a generator marker; cleanup also handles decoded partial files and protects an open reader document.
+
 - Temporary ReaderUI files are cleaned through `CloseDocument` and startup recovery with an exact canonical-path/name allowlist; `.sdr` sidecars and permanent exports are preserved.
 - Successful bookmark edits close stale detail/collection screens and reload their authoritative source page; failures keep the current detail open.
-- The token dialog and debug view state the actual TLS limitation: encryption is available, remote certificate/hostname authentication is not.
+- The token dialog describes the verified HTTPS default and the explicit compatibility setting; diagnostics separately record whether validation occurred.
 - Plain-text loading reports the specific download or size error, avoids duplicate notices and retries when the user explicitly selects the action again.
 - Gzip output is limited after decompression, and failed or oversized transfers remove both compressed and decoded partial files.
 - Plain-text articles remove embedded JavaScript, CSS and non-text containers before conversion, then select semantic content without comparing it to the page shell size. Escaped code examples remain readable.
 
 ### Validation and open gates
 
-- Expanded the dependency-free suite from 51 to 129 cases, including gzip, decompressed-size, explicit-retry, plain-text sanitization and full-reader style normalization coverage, and validated plugin startup with the isolated macOS Kindle profile.
-- Full-reader style normalization is verified against KOReader v2026.07 sources (`PreRenderDocument` ordering, `CreDocument:setStyleSheet` argument contract, `ReaderTypeset`/`ReaderStyleTweak` behavior) and by unit tests, but the local emulator runs a v2025.08 runtime; the on-device 2026.07+ cascade check remains an open gate.
-- Cancellable `Trapper` migration remains gated on live-account cancellation and physical Kindle/Kobo memory tests; bounded synchronous networking remains the documented fallback.
+- 186 regression cases pass with the bundled LuaJIT runtime. Coverage includes session isolation, cancellation of composite calls, bounded JSON/cache, local library, HTML structure and isolated gettext.
+- Real Trapper yields while a subprocess runs and cancellation aborts the parent flow. Real gettext loads Spanish and regional fallback without altering the core dictionary.
+- Real LuaSec accepts a trusted local certificate and rejects a mismatched hostname and an unknown CA before sending HTTP. A token-free public Raindrop request returned 401 with verified TLS; an expired public certificate was also rejected.
+
+- Sources were checked against stable KOReader commit `9192014` (release v2026.07.1) and development commit `b539d24`. The installed SDL runtime identifies itself as v2026.07.2; physical-device CSS cascade and large-document memory checks remain open.
+- Authenticated Raindrop mutations, cancellation against a live account and physical Kindle/Kobo behavior still need verification before release.
 - No release version bump is included until live Raindrop and physical-device gates pass.
 
 ---

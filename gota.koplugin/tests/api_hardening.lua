@@ -1,0 +1,324 @@
+return function(test, equal, truthy, contains)
+    -- The main suite replaces package.loaded.gota_api for UI tests. Always
+    -- exercise the implementation here rather than that stand-in.
+    local API = dofile("gota_api.lua")
+    local TLS = dofile("gota_tls.lua")
+
+    local function settings(token)
+        return {
+            token = token or "account-a",
+            getToken = function(self) return self.token end,
+            setToken = function(self, value) self.token = value end,
+        }
+    end
+
+    test("Trash explicitly PUTs collection -99 after concurrent remote movement", function()
+        local api = API:new(settings())
+        local method, body
+        function api:makeRequest(_, value, payload)
+            method, body = value, payload
+            return { result = true, item = { _id = 7, collection = { ["$id"] = -99 } } }
+        end
+        truthy(api:trashRaindrop(7, 42), "move from stale local collection")
+        equal(method, "PUT", "safe method")
+        contains(body, '"$id":-99', "explicit Trash destination")
+        equal(api:trashRaindrop(7, -99), nil, "already trashed")
+    end)
+
+    test("changing a token invalidates cached account responses", function()
+        local config = settings()
+        local api = API:new(config)
+        local calls = 0
+        function api:makeRequest()
+            calls = calls + 1
+            return { result = true, user = { name = config.token } }
+        end
+        equal(api:getUser().user.name, "account-a")
+        equal(api:getUser().user.name, "account-a")
+        equal(calls, 1, "cached first account")
+        config:setToken("account-b")
+        equal(api:getUser().user.name, "account-b")
+        equal(calls, 2, "new account fetched")
+        equal(api.session_generation, 1, "session generation")
+    end)
+
+    test("cache insertion removes all expired entries and evicts least recently used", function()
+        local api = API:new(settings())
+        api.cache_max_entries = 2
+        function api:makeRequest(endpoint) return { value = endpoint } end
+        api:cachedRequest("/a")
+        api:cachedRequest("/b")
+        api:cachedRequest("/a")
+        api:cachedRequest("/c")
+        truthy(api.response_cache["/a"], "recently used entry")
+        equal(api.response_cache["/b"], nil, "least recently used entry")
+        api.response_cache["/a"].timestamp = os.time() - api.cache_ttl - 1
+        api.response_cache["/c"].timestamp = os.time() - api.cache_ttl - 1
+        api:cachedRequest("/d")
+        equal(api.response_cache["/a"], nil, "expired a")
+        equal(api.response_cache["/c"], nil, "expired c")
+        equal(api.cache_entry_count, 1, "live count")
+    end)
+
+    test("cache budget rejects oversized decoded tables and handles cycles", function()
+        local api = API:new(settings())
+        api.cache_max_bytes = 1024
+        function api:makeRequest(endpoint)
+            if endpoint == "/large" then return { value = string.rep("x", 1024) } end
+            local result = { value = "small" }
+            result.circular = result
+            return result
+        end
+        truthy(api:cachedRequest("/large"), "uncached result still usable")
+        equal(api.response_cache["/large"], nil, "oversized entry omitted")
+        for index = 1, 8 do api:cachedRequest("/small" .. index) end
+        truthy(api.cache_size_bytes <= api.cache_max_bytes, "bounded bytes")
+        truthy(api.cache_entry_count <= api.cache_max_entries, "bounded count")
+        equal(api.cache_entry_count, 1, "budget evicts older cyclic entries")
+    end)
+
+    test("normal JSON has a default byte limit before parsing", function()
+        local api = API:new(settings())
+        local limit
+        function api:_performRequest(_, _, _, _, _, options)
+            limit = options.max_response_bytes
+            return '{"ok":true}', nil, 200, { ["Content-Length"] = tostring(limit + 1) }
+        end
+        local result, err = api:makeRequest("/user")
+        equal(result, nil, "declared overflow")
+        equal(limit, 2 * 1024 * 1024, "default JSON limit")
+        contains(err, "size limit")
+    end)
+
+    test("normal JSON streaming aborts an oversized body without Content-Length", function()
+        local https = require("ssl.https")
+        local original_request = https.request
+        local config = settings()
+        config.isTLSVerificationEnabled = function() return false end
+        local api = API:new(config)
+        local ok, err = pcall(function()
+            https.request = function(request)
+                equal(request.sink(string.rep("x", API.DEFAULT_JSON_RESPONSE_BYTES)), 1)
+                local result, sink_error = request.sink("x")
+                return result, sink_error
+            end
+            local result, request_error = api:makeRequest("/user")
+            equal(result, nil)
+            contains(request_error, "size limit")
+        end)
+        https.request = original_request
+        if not ok then error(err, 0) end
+    end)
+
+    test("normal JSON gzip expansion uses the same default response bound", function()
+        local compression = require("gota_compression")
+        local original = compression.inflateGzipString
+        local ok, err = pcall(function()
+            compression.inflateGzipString = function(_, limit)
+                equal(limit, API.DEFAULT_JSON_RESPONSE_BYTES, "decompressed JSON limit")
+                return nil, "too large", true
+            end
+            local api = API:new(settings())
+            function api:_performRequest()
+                return "\31\139test", nil, 200, { ["Content-Encoding"] = "gzip" }
+            end
+            local result, request_error = api:makeRequest("/user")
+            equal(result, nil)
+            contains(request_error, "Decompressed response exceeds")
+        end)
+        compression.inflateGzipString = original
+        if not ok then error(err, 0) end
+    end)
+
+    test("lost mutation response clears cache and never retries the write", function()
+        local api = API:new(settings())
+        api:_cacheResponse("/user", { result = true, user = {} })
+        local calls = 0
+        function api:makeRequest()
+            calls = calls + 1
+            return nil, "connection lost", nil, {}, true
+        end
+        local result, err = api:updateRaindrop(7, { important = true })
+        equal(result, nil)
+        equal(calls, 1, "write attempts")
+        equal(next(api.response_cache), nil, "uncertain cache invalidated")
+        contains(err, "server may have applied", "uncertain result guidance")
+    end)
+
+    test("executor wraps all read retries and returns cache data to the parent", function()
+        local api = API:new(settings())
+        local runs, calls = 0, 0
+        function api:makeRequest()
+            calls = calls + 1
+            if calls == 1 then return nil, "temporary", 503 end
+            return { result = true, user = { name = "reader" } }
+        end
+        api.sleep = function() end
+        api:setRequestExecutor(function(task, context)
+            runs = runs + 1
+            equal(context.method, "GET")
+            equal(context.endpoint, "/user")
+            return task()
+        end)
+        equal(api:getUser().user.name, "reader")
+        equal(api:getUser().user.name, "reader")
+        equal(runs, 1, "executor calls")
+        equal(calls, 2, "HTTP retries")
+        truthy(api.transport_security_info, "child transport metadata")
+    end)
+
+    test("session changes during an operation discard its stale response", function()
+        local config = settings()
+        local api = API:new(config)
+        api:setRequestExecutor(function()
+            config:setToken("account-b")
+            return { result = true, user = { name = "account-a" } }
+        end)
+        local result, err = api:getUser()
+        equal(result, nil, "stale response")
+        contains(err, "Account changed")
+        equal(next(api.response_cache), nil, "stale result not cached")
+    end)
+
+    test("token validation uses a separate session without modifying saved credentials", function()
+        local config = settings()
+        local changes = 0
+        config.setToken = function() changes = changes + 1 end
+        local api = API:new(config)
+        api:_cacheResponse("/user", { result = true, user = { name = "account-a" } })
+        local original = API.makeRequest
+        local ok, err = pcall(function()
+            API.makeRequest = function(self)
+                return { result = true, user = { name = self.settings:getToken() } }
+            end
+            local response = api:testToken("candidate")
+            equal(response.user.name, "candidate", "candidate credential")
+            equal(config:getToken(), "account-a", "active credential")
+            equal(changes, 0, "shared token mutations")
+            equal(api:getUser().user.name, "account-a", "live cache preserved")
+        end)
+        API.makeRequest = original
+        if not ok then error(err, 0) end
+    end)
+
+    test("cancellation markers abort writes and token validation unchanged", function()
+        local api = API:new(settings())
+        api:_cacheResponse("/user", { result = true, user = {} })
+        local marker = { gota_operation_cancelled = true }
+        api:setRequestExecutor(function() error(marker, 0) end)
+        local ok, err = pcall(function() api:updateRaindrop(7, { important = true }) end)
+        equal(ok, false, "cancelled mutation")
+        equal(err, marker, "mutation cancellation marker")
+        equal(next(api.response_cache), nil, "uncertain cache cleared")
+        ok, err = pcall(function() api:testToken("candidate") end)
+        equal(ok, false, "cancelled token test")
+        equal(err, marker, "token cancellation marker")
+    end)
+
+    test("TLS hostname matching rejects partial and multi-label wildcards", function()
+        truthy(TLS.matchesDNSName("API.RAINDROP.IO", "api.raindrop.io"), "case insensitive")
+        truthy(TLS.matchesDNSName("api.raindrop.io", "*.raindrop.io"), "one label wildcard")
+        equal(TLS.matchesDNSName("a.b.raindrop.io", "*.raindrop.io"), false)
+        equal(TLS.matchesDNSName("raindrop.io", "*.raindrop.io"), false)
+        equal(TLS.matchesDNSName("api.raindrop.io", "a*.raindrop.io"), false)
+        equal(TLS.matchesDNSName("example.com", "*.com"), false)
+        equal(TLS.matchesDNSName("api.raindrop.io", "api.raindrop.io\0.attacker.test"), false)
+        equal(TLS.matchesDNSName("api.raindrop.io", "api.raindrop.io.attacker.test"), false)
+    end)
+
+    test("TLS requires SAN and an explicit IP SAN for an IPv4 literal", function()
+        local function certificate(san)
+            return { extensions = function() return { ["2.5.29.17"] = san } end }
+        end
+        equal(TLS.certificateMatchesHost(certificate({}), "api.raindrop.io"), false)
+        truthy(TLS.certificateMatchesHost(certificate({ dNSName = { "api.raindrop.io" } }),
+            "api.raindrop.io"), "DNS SAN")
+        equal(TLS.certificateMatchesHost(certificate({ dNSName = { "127.0.0.1" } }),
+            "127.0.0.1"), false, "DNS SAN cannot authenticate IP")
+        truthy(TLS.certificateMatchesHost(certificate({ iPAddress = { "127.0.0.1" } }),
+            "127.0.0.1"), "IP SAN")
+    end)
+
+    local function withTransport(callback)
+        local http, https = require("socket.http"), require("ssl.https")
+        local old_request, old_tcp = http.request, https.tcp
+        local fixture = "/tmp/gota_test_tls_ca.pem"
+        local file = assert(io.open(fixture, "wb"))
+        file:write("mock CA store\n")
+        file:close()
+        local ok, err = pcall(callback, http, https, fixture)
+        http.request, https.tcp = old_request, old_tcp
+        os.remove(fixture)
+        if not ok then error(err, 0) end
+    end
+
+    test("secure TLS validates the hostname before HTTP sends any credentials", function()
+        withTransport(function(http, https, fixture)
+            local sent, closed = false, false
+            local config = settings()
+            config.getTLSCAFile = function() return fixture end
+            local tls = TLS:new(config)
+            https.tcp = function(parameters)
+                equal(parameters.verify, "peer", "chain verification")
+                equal(parameters.cafile, fixture, "CA store")
+                return function()
+                    return {
+                        connect = function() return 1 end,
+                        close = function() closed = true end,
+                        getpeercertificate = function()
+                            return { extensions = function()
+                                return { ["2.5.29.17"] = { dNSName = { "attacker.test" } } }
+                            end }
+                        end,
+                    }
+                end
+            end
+            http.request = function(request)
+                local connection = request.create()
+                local ok, err = connection:connect("api.raindrop.io", 443)
+                if not ok then return nil, err end
+                sent = true
+                return 1, 200
+            end
+            local result, err = tls:request({ url = "https://api.raindrop.io/", headers = {
+                Authorization = "Bearer test-token",
+            } })
+            equal(result, nil)
+            contains(err, "hostname")
+            equal(sent, false, "HTTP did not begin")
+            equal(closed, true, "rejected TLS connection closed")
+            equal(tls:getSecurityInfo().validation_observed, false)
+        end)
+    end)
+
+    test("secure TLS observes matching certificates and fails closed without a CA store", function()
+        withTransport(function(http, https, fixture)
+            local config = settings()
+            config.getTLSCAFile = function() return fixture end
+            local tls = TLS:new(config)
+            https.tcp = function()
+                return function()
+                    return {
+                        connect = function() return 1 end,
+                        getpeercertificate = function()
+                            return { extensions = function()
+                                return { ["2.5.29.17"] = { dNSName = { "*.raindrop.io" } } }
+                            end }
+                        end,
+                    }
+                end
+            end
+            http.request = function(request)
+                local result, err = request.create():connect("api.raindrop.io", 443)
+                if not result then return nil, err end
+                return 1, 200
+            end
+            equal(tls:request({ url = "https://api.raindrop.io/" }), 1)
+            equal(tls:getSecurityInfo().validation_observed, true)
+            config.getTLSCAFile = function() return fixture .. ".missing" end
+            local result, err = tls:request({ url = "https://api.raindrop.io/" })
+            equal(result, nil)
+            contains(err, "certificate store")
+        end)
+    end)
+end
