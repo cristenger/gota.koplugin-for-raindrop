@@ -166,7 +166,12 @@ end
 
 -- Resolve the offline copy: the one already on disk when there is one,
 -- otherwise the deterministic name a download should create. Also reports
--- whether the resolved file is one of Gota's own annotated exports.
+-- whether the resolved file is one of Gota's own annotated exports. For a
+-- download, returns nil plus ANNOTATED_CONFLICT when the only name available
+-- belongs to an annotated export.
+local ANNOTATED_CONFLICT = "annotated_conflict"
+ArticleManager.ANNOTATED_CONFLICT = ANNOTATED_CONFLICT
+
 function ArticleManager:getOfflinePath(raindrop, for_download)
     if not raindrop then return nil end
     local safe_id = offlineIdFor(raindrop._id)
@@ -187,7 +192,11 @@ function ArticleManager:getOfflinePath(raindrop, for_download)
 
     local name = OfflineLibrary.canonicalName(safe_id, safe_title)
     if not name then return nil end
-    return (dir:gsub("/+$", "")) .. "/" .. name, false
+    local target = (dir:gsub("/+$", "")) .. "/" .. name
+    -- The canonical name may be an annotated export written before the title
+    -- changed; the atomic rename would replace the user's notes with it.
+    if existing == target and annotated then return nil, ANNOTATED_CONFLICT end
+    return target, false
 end
 
 function ArticleManager:getOfflineState(raindrop)
@@ -699,7 +708,11 @@ function ArticleManager:downloadHTML(raindrop)
     -- Deterministic path, reusing an existing copy when there is one. A stable
     -- path is what lets KOReader keep the reading position across downloads,
     -- and it stops repeated saves from piling up numbered duplicates.
-    local filename = self:getOfflinePath(raindrop, true)
+    local filename, path_error = self:getOfflinePath(raindrop, true)
+    if path_error == ANNOTATED_CONFLICT then
+        self.callbacks.notify(_("An export with notes already uses this file name. Rename or move it to save the original copy."))
+        return nil
+    end
     if not filename then
         -- The directory check above already passed; the article itself lacks a
         -- usable identifier.

@@ -629,6 +629,20 @@ test("a canonical hit is never mistaken for an annotated export", function()
     equal(annotated, false, "the canonical name is what downloadHTML writes")
 end)
 
+test("find classifies a marked canonical file as annotated", function()
+    -- Bookmark 7 was exported as "7_Read_notes.html", then renamed to
+    -- "Read_notes": its canonical original name is now that export.
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["7_Read_notes.html"] = 10 })
+    local marked = function() return '<meta name="generator" content="Gota annotated export">' end
+    local path, annotated = OfflineLibrary.find(dir, 7, "Read_notes", lfs, { read_header = marked })
+    equal(path, dir .. "/7_Read_notes.html", "canonical hit")
+    equal(annotated, true, "Gota's marker identifies the export")
+    local plain = function() return "<html><head><title>Release notes</title>" end
+    local _, original = OfflineLibrary.find(dir, 7, "Read_notes", lfs, { read_header = plain })
+    equal(original, false, "an unmarked page stays a publisher copy")
+end)
+
 test("an annotated export is still readable when it is the only copy", function()
     -- A title that sanitizes to something ending in "_notes" (for example
     -- "Release notes") must not make its own copy invisible.
@@ -1366,6 +1380,71 @@ test("offline download reuses an existing copy instead of duplicating", function
     end)
     equal(written, "/tmp/exports/123_Old_Title_1.html",
         "reuses the located copy so the reading position survives")
+end)
+
+local function realExportFolder(files)
+    local dir = os.tmpname()
+    os.remove(dir)
+    os.execute("mkdir -p '" .. dir .. "'")
+    for name, contents in pairs(files) do
+        local file = assert(io.open(dir .. "/" .. name, "wb"))
+        file:write(contents)
+        file:close()
+    end
+    local function read(name)
+        local file = io.open(dir .. "/" .. name, "rb")
+        if not file then return nil end
+        local contents = file:read("*a")
+        file:close()
+        return contents
+    end
+    local function remove()
+        for name in pairs(files) do os.remove(dir .. "/" .. name) end
+        os.remove(dir)
+    end
+    return dir, read, remove
+end
+
+local function renamedTitleDownload(existing_contents)
+    local dir, read, remove = realExportFolder({ ["7_Read_notes.html"] = existing_contents })
+    local notices, saved = {}
+    local ok, failure = pcall(withExportFolder, { ["7_Read_notes.html"] = 10 }, function()
+        local manager = ArticleManager:new({
+            downloadRaindropCache = function(_, _, path)
+                local file = assert(io.open(path, "wb"))
+                file:write("<html>NEW RAW ARTICLE</html>")
+                file:close()
+                return path
+            end,
+        }, {}, {}, {
+            showProgress = noop, hideProgress = noop,
+            notify = function(text) notices[#notices + 1] = text end,
+        })
+        manager:setSettings({
+            getFullDownloadPath = function() return dir .. "/" end,
+            getMaxCacheFileBytes = function() return 128 * 1024 * 1024 end,
+        })
+        saved = manager:downloadHTML({ _id = 7, title = "Read_notes", cache = { status = "ready" } })
+    end)
+    local contents = read("7_Read_notes.html")
+    remove()
+    if not ok then error(failure, 0) end
+    return saved, contents, notices
+end
+
+test("a title renamed to <old>_notes never replaces the annotated export", function()
+    local export = '<html><head><meta name="generator" content="Gota annotated export"></head>'
+        .. "<body>my notes</body></html>"
+    local saved, contents, notices = renamedTitleDownload(export)
+    equal(saved, nil, "download refused")
+    equal(contents, export, "annotated export intact")
+    contains(notices[1] or "", "notes", "user told why")
+end)
+
+test("a genuine original whose title ends in _notes is still updated", function()
+    local saved, contents = renamedTitleDownload("<html><body>old publisher copy</body></html>")
+    truthy(saved, "download allowed")
+    equal(contents, "<html>NEW RAW ARTICLE</html>", "original copy refreshed")
 end)
 
 test("offline paths require a documented integer id", function()

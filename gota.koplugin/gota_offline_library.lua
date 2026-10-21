@@ -79,8 +79,13 @@ end
     wrote itself. An annotated export is only offered when nothing else
     matches, which keeps a legitimate copy whose title ends in "_notes"
     reachable instead of invisible.
+
+    The canonical name can itself be an older export: bookmark 7 exported as
+    "7_Read_notes.html" and later renamed to "Read_notes". The file name cannot
+    tell them apart, so such a hit is classified by Gota's export marker.
+    options.read_header is an injectable reader for the dependency-free suite.
 ]]
-function OfflineLibrary.find(dir, safe_id, safe_title, lfs)
+function OfflineLibrary.find(dir, safe_id, safe_title, lfs, options)
     if type(dir) ~= "string" or dir == "" or safe_id == nil then return nil end
     if type(lfs) ~= "table" or type(lfs.attributes) ~= "function" then return nil end
 
@@ -90,9 +95,13 @@ function OfflineLibrary.find(dir, safe_id, safe_title, lfs)
     local canonical_name = OfflineLibrary.canonicalName(id, safe_title)
     if canonical_name then
         local canonical_path = joinPath(dir, canonical_name)
-        -- Never annotated by construction: this is the exact name downloadHTML
-        -- writes, even when the article's own title ends in "_notes".
-        if isFile(lfs, canonical_path) then return canonical_path, false end
+        -- This is the exact name downloadHTML writes, even when the article's
+        -- own title ends in "_notes"; only the export marker overrides that.
+        if isFile(lfs, canonical_path) then
+            local annotated = isAnnotatedExport(canonical_name) and
+                OfflineLibrary.isAnnotatedFile(canonical_path, options and options.read_header)
+            return canonical_path, annotated == true
+        end
     end
 
     if type(lfs.dir) ~= "function" then return nil end
@@ -149,6 +158,14 @@ local function isAnnotatedHeader(header)
         (header:find(".notes-section", 1, true) ~= nil and
          header:find(".highlights-section", 1, true) ~= nil and
          header:find(".source-url", 1, true) ~= nil)
+end
+
+-- Whether the file at path is one of Gota's own annotated exports, judged by
+-- its bounded header rather than by its name.
+function OfflineLibrary.isAnnotatedFile(path, read_header)
+    local reader = type(read_header) == "function" and read_header or readHeader
+    local ok, header = pcall(reader, path, HEADER_BYTES)
+    return ok and isAnnotatedHeader(header) == true
 end
 
 local function titleFromHeader(header, decode_entities)
