@@ -2026,6 +2026,7 @@ test("settings normalize manipulated paths and unsupported sort values", functio
                 saveSetting = function(_, key, value) saved[key] = value end,
                 flush = function()
                     if fail_flush then error("simulated flush failure") end
+                    for key, value in pairs(saved) do stored[key] = value end
                 end,
             }
         end,
@@ -2087,6 +2088,67 @@ test("settings normalize manipulated paths and unsupported sort values", functio
     settings:setDownloadPath("link/folder")
     equal(settings:getFullDownloadPath(), "/tmp/gota_articles/", "symlink escape fallback")
 end)
+
+-- A LuaSettings double backed by one simulated file: open() reads the file,
+-- flush() writes the instance's data unless the write is made to fail
+-- silently, as util.writeToFile does when io.open fails.
+local function simulatedSettingsFile(initial)
+    local control = { file = {}, silent_failure = false }
+    for key, value in pairs(initial or {}) do control.file[key] = value end
+    control.module = { open = function()
+        local data = {}
+        for key, value in pairs(control.file) do data[key] = value end
+        return {
+            readSetting = function(_, key) return data[key] end,
+            saveSetting = function(_, key, value) data[key] = value end,
+            flush = function(self)
+                if control.silent_failure then return self end
+                control.file = {}
+                for key, value in pairs(data) do control.file[key] = value end
+                return self
+            end,
+        }
+    end }
+    return control
+end
+
+local function withSimulatedSettings(initial, body)
+    local control = simulatedSettingsFile(initial)
+    local previous = package.loaded["luasettings"]
+    package.loaded["luasettings"] = control.module
+    local ok, failure = pcall(function() body(dofile("gota_settings.lua"), control) end)
+    package.loaded["luasettings"] = previous
+    if not ok then error(failure, 0) end
+end
+
+test("a stale Settings instance cannot roll back newer preferences", function()
+    withSimulatedSettings({ download_path = "old", sort_order = "title" }, function(Settings, control)
+        local reader_instance, manager_instance = Settings:new(), Settings:new()
+        manager_instance:setDownloadPath("new")
+        manager_instance:setSortOrder("domain")
+        truthy(manager_instance:save(), "newer preferences saved")
+        equal(reader_instance:getDownloadPath(), "new", "stale instance sees the current folder")
+        reader_instance:setMaxCacheFileBytes(256 * 1024 * 1024)
+        truthy(reader_instance:save(), "stale instance saves")
+        equal(control.file.download_path, "new", "folder not rolled back")
+        equal(control.file.sort_order, "domain", "sort not rolled back")
+        equal(control.file.max_cache_file_bytes, 256 * 1024 * 1024, "limit saved")
+    end)
+end)
+
+test("save reports failure when the settings file was not written", function()
+    withSimulatedSettings({}, function(Settings, control)
+        local settings = Settings:new()
+        settings:setSortOrder("title")
+        control.silent_failure = true
+        local saved, save_error = settings:save()
+        equal(saved, false, "silent write failure detected")
+        truthy(save_error, "reason reported")
+        control.silent_failure = false
+        truthy(settings:save(), "a later successful write is reported")
+    end)
+end)
+
 
 local reader_calls = {}
 local ReaderUI = {}
@@ -2420,6 +2482,36 @@ test("plugin init releases a finished reader request before cleaning the cache",
     equal(GotaReader.current_path, nil, "request released")
     equal(keep and #keep, 0, "nothing protected once the reader is gone")
     ReaderUI.instance = previous_instance
+end)
+
+test("a failed sort or limit save restores the previous preference", function()
+    withSimulatedSettings({ sort_order = "title" }, function(Settings, control)
+        local Gota = require("main")
+        local notices, buttons = {}, {}
+        local settings = Settings:new()
+        package.loaded["ui/widget/buttondialog"] = { new = function(_, options)
+            for _, row in ipairs(options.buttons) do
+                for _, button in ipairs(row) do buttons[#buttons + 1] = button end
+            end
+            return options
+        end }
+        local fake = setmetatable({ settings = settings, widgets = {},
+            notify = function(_, text) notices[#notices + 1] = text end,
+            toast = function() end }, { __index = Gota })
+        control.silent_failure = true
+        Gota.showSortPicker(fake)
+        for _, button in ipairs(buttons) do
+            if tostring(button.text):find("^Domain") then
+                button.callback(); break
+            end
+        end
+        equal(settings:getSortOrder(), "title", "sort restored after failed save")
+        buttons = {}
+        Gota.showCacheLimitPicker(fake)
+        buttons[#buttons - 1].callback() -- file limit 512 MiB
+        equal(settings:getMaxCacheFileBytes(), 128 * 1024 * 1024, "limit restored after failed save")
+        truthy(#notices >= 2, "both failures reported")
+    end)
 end)
 
 test("PreRenderDocument applies styles before the after-open state", function()

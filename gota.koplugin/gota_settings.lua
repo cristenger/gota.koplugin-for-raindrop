@@ -11,6 +11,9 @@ local session_generation = 0
 local session_security_initialized = false
 local session_tls_verify = true
 local session_ca_file
+-- Folder, sort and limits are shared the same way: save() writes every key,
+-- so a per-instance copy would let an older instance roll back newer values.
+local session_preferences
 local DEFAULT_DOWNLOAD_PATH = "gota_articles"
 local DEFAULT_SORT_ORDER = "-created"
 local MIB = 1024 * 1024
@@ -115,24 +118,45 @@ function Settings:new()
             session_ca_file = o.config:readSetting("tls_ca_file")
             session_security_initialized = true
         end
-        o.download_path = normalizeDownloadPath(o.config:readSetting("download_path"))
-        o.sort_order = normalizeSortOrder(o.config:readSetting("sort_order"))
-        o.max_cache_memory_bytes = normalizePreset(o.config:readSetting("max_cache_memory_bytes"),
-            CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
-        o.max_cache_file_bytes = normalizePreset(o.config:readSetting("max_cache_file_bytes"),
-            CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
+        if not session_preferences then
+            session_preferences = {
+                download_path = normalizeDownloadPath(o.config:readSetting("download_path")),
+                sort_order = normalizeSortOrder(o.config:readSetting("sort_order")),
+                max_cache_memory_bytes = normalizePreset(o.config:readSetting("max_cache_memory_bytes"),
+                    CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES),
+                max_cache_file_bytes = normalizePreset(o.config:readSetting("max_cache_file_bytes"),
+                    CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES),
+            }
+        end
     else
         logger.warn("Gota Settings: could not open config, using defaults")
         if session_token == nil then session_token = "" end
         session_security_initialized = true
-        o.download_path = DEFAULT_DOWNLOAD_PATH
-        o.sort_order = DEFAULT_SORT_ORDER
-        o.max_cache_memory_bytes = DEFAULT_CACHE_MEMORY_BYTES
-        o.max_cache_file_bytes = DEFAULT_CACHE_FILE_BYTES
+    end
+    if not session_preferences then
+        session_preferences = {
+            download_path = DEFAULT_DOWNLOAD_PATH,
+            sort_order = DEFAULT_SORT_ORDER,
+            max_cache_memory_bytes = DEFAULT_CACHE_MEMORY_BYTES,
+            max_cache_file_bytes = DEFAULT_CACHE_FILE_BYTES,
+        }
     end
 
     logger.dbg("Gota Settings: loaded, token:", o:getToken() ~= "" and "present" or "empty")
     return o
+end
+
+-- The values save() writes, read from the shared session state.
+function Settings:persistedValues()
+    return {
+        token = self:getToken(),
+        tls_verify = self:isTLSVerificationEnabled(),
+        tls_ca_file = self:getTLSCAFile(),
+        download_path = self:getDownloadPath(),
+        sort_order = self:getSortOrder(),
+        max_cache_memory_bytes = self:getMaxCacheMemoryBytes(),
+        max_cache_file_bytes = self:getMaxCacheFileBytes(),
+    }
 end
 
 function Settings:save()
@@ -141,27 +165,32 @@ function Settings:save()
         return false, "configuration is not initialized"
     end
 
+    local values = self:persistedValues()
     local saved, save_error = pcall(function()
-        self.download_path = normalizeDownloadPath(self.download_path)
-        self.config:saveSetting("token", self:getToken())
-        self.config:saveSetting("tls_verify", self:isTLSVerificationEnabled())
-        self.config:saveSetting("tls_ca_file", self:getTLSCAFile())
-        self.config:saveSetting("download_path", self.download_path)
-        self.sort_order = normalizeSortOrder(self.sort_order)
-        self.config:saveSetting("sort_order", self.sort_order)
-        self.max_cache_memory_bytes = normalizePreset(self.max_cache_memory_bytes,
-            CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
-        self.max_cache_file_bytes = normalizePreset(self.max_cache_file_bytes,
-            CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
-        self.config:saveSetting("max_cache_memory_bytes", self.max_cache_memory_bytes)
-        self.config:saveSetting("max_cache_file_bytes", self.max_cache_file_bytes)
-        -- LuaSettings:flush() returns self, not an I/O success boolean. Treat
-        -- exceptions as failures without claiming stronger durability guarantees.
+        for key, value in pairs(values) do self.config:saveSetting(key, value) end
+        self.config:saveSetting("tls_ca_file", values.tls_ca_file)
         self.config:flush()
     end)
     if not saved then
         logger.err("Gota Settings: could not save configuration:", save_error)
         return false, tostring(save_error)
+    end
+
+    -- LuaSettings:flush() ignores util.writeToFile's result and returns self,
+    -- so a failed open is silent. Read the file back before reporting success.
+    local reread_ok, written = pcall(LuaSettings.open, LuaSettings, self.settings_path)
+    if not reread_ok or not written then
+        logger.err("Gota Settings: could not verify saved configuration")
+        return false, "settings file was not written"
+    end
+    for key, value in pairs(values) do
+        if written:readSetting(key) ~= value then
+            logger.err("Gota Settings: saved configuration does not match:", key)
+            return false, "settings file was not written"
+        end
+    end
+    if written:readSetting("tls_ca_file") ~= values.tls_ca_file then
+        return false, "settings file was not written"
     end
     return true
 end
@@ -214,7 +243,7 @@ function Settings:isTokenValid()
 end
 
 function Settings:getDownloadPath()
-    return normalizeDownloadPath(self.download_path)
+    return normalizeDownloadPath(session_preferences and session_preferences.download_path)
 end
 
 function Settings:validateDownloadPath(path)
@@ -224,7 +253,7 @@ end
 function Settings:setDownloadPath(path)
     local normalized, validation_error = validateDownloadPath(path)
     if not normalized then return nil, validation_error end
-    self.download_path = normalized
+    session_preferences.download_path = normalized
     return normalized, nil
 end
 
@@ -248,7 +277,7 @@ function Settings:getFullDownloadPath()
         if canonical_data and canonical_probe and
             not pathIsInside(canonical_data, canonical_probe) then
             logger.warn("Gota Settings: download path escapes DataStorage through a symlink")
-            self.download_path = DEFAULT_DOWNLOAD_PATH
+            session_preferences.download_path = DEFAULT_DOWNLOAD_PATH
             candidate = data_dir .. "/" .. DEFAULT_DOWNLOAD_PATH
         end
     end
@@ -261,33 +290,35 @@ function Settings:getSettingsPath()
 end
 
 function Settings:getSortOrder()
-    return normalizeSortOrder(self.sort_order)
+    return normalizeSortOrder(session_preferences and session_preferences.sort_order)
 end
 
 function Settings:setSortOrder(sort)
-    self.sort_order = normalizeSortOrder(sort)
+    session_preferences.sort_order = normalizeSortOrder(sort)
 end
 
 function Settings:getMaxCacheMemoryBytes()
-    return normalizePreset(self.max_cache_memory_bytes, CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
+    return normalizePreset(session_preferences and session_preferences.max_cache_memory_bytes,
+        CACHE_MEMORY_PRESETS, DEFAULT_CACHE_MEMORY_BYTES)
 end
 
 function Settings:setMaxCacheMemoryBytes(value)
     local normalized = normalizePreset(value, CACHE_MEMORY_PRESETS, nil)
     if not normalized then return nil end
-    self.max_cache_memory_bytes = normalized
+    session_preferences.max_cache_memory_bytes = normalized
     return normalized
 end
 
 
 function Settings:getMaxCacheFileBytes()
-    return normalizePreset(self.max_cache_file_bytes, CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
+    return normalizePreset(session_preferences and session_preferences.max_cache_file_bytes,
+        CACHE_FILE_PRESETS, DEFAULT_CACHE_FILE_BYTES)
 end
 
 function Settings:setMaxCacheFileBytes(value)
     local normalized = normalizePreset(value, CACHE_FILE_PRESETS, nil)
     if not normalized then return nil end
-    self.max_cache_file_bytes = normalized
+    session_preferences.max_cache_file_bytes = normalized
     return normalized
 end
 
@@ -300,8 +331,8 @@ function Settings:getDebugInfo()
         settings_file = settings_path,
         file_exists = attr ~= nil,
         file_size = attr and attr.size or 0,
-        sort_order = self.sort_order,
-        download_path = self.download_path,
+        sort_order = self:getSortOrder(),
+        download_path = self:getDownloadPath(),
         max_cache_memory_bytes = self:getMaxCacheMemoryBytes(),
         max_cache_file_bytes = self:getMaxCacheFileBytes(),
         max_cache_memory_mib = self:getMaxCacheMemoryBytes() / MIB,

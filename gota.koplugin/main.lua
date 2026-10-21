@@ -713,9 +713,14 @@ function Gota:showCacheLimitPicker()
             text = string.format("%s: %d MiB%s", kind == "memory" and _("Text") or _("Reader"),
                 mib, current == mib * 1048576 and " *" or ""),
             callback = function()
-                if kind == "memory" then self.settings:setMaxCacheMemoryBytes(mib * 1048576)
-                else self.settings:setMaxCacheFileBytes(mib * 1048576) end
-                self.settings:save()
+                local setter = kind == "memory" and self.settings.setMaxCacheMemoryBytes
+                    or self.settings.setMaxCacheFileBytes
+                setter(self.settings, mib * 1048576)
+                local saved, save_error = self.settings:save()
+                if not saved then
+                    setter(self.settings, current)
+                    self:notify(_("Error saving configuration: ") .. tostring(save_error), 4)
+                end
                 UIManager:close(dialog)
                 self:showCacheLimitPicker()
             end,
@@ -1000,7 +1005,12 @@ function Gota:showSortPicker()
                 UIManager:close(self.widgets.sort_dialog)
                 self.widgets.sort_dialog = nil
                 self.settings:setSortOrder(value)
-                self.settings:save()
+                local saved, save_error = self.settings:save()
+                if not saved then
+                    self.settings:setSortOrder(current)
+                    self:notify(_("Error saving configuration: ") .. tostring(save_error), 4)
+                    return
+                end
                 self:toast(_("Sort order: ") .. label)
             end,
         }
