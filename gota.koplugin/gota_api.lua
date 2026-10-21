@@ -344,8 +344,15 @@ local function getHeader(headers, name)
     return nil
 end
 
+-- KOReader's luajson decodes null as a sentinel function by default. Worker
+-- results travel back to the UI through Trapper's string.buffer pipe, which
+-- cannot serialize functions, so a single null in a Raindrop response would
+-- lose the whole result. decode.simple maps null to nil, as KOReader's own
+-- translator does.
+local JSON_DECODE_OPTIONS = type(JSON.decode) == "table" and JSON.decode.simple or nil
+
 local function safeJsonDecode(payload)
-    local ok, data, decode_error = pcall(JSON.decode, payload)
+    local ok, data, decode_error = pcall(JSON.decode, payload, JSON_DECODE_OPTIONS)
     if not ok then
         return nil, tostring(data)
     end

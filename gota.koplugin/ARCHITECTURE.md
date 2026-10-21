@@ -160,7 +160,7 @@ Cada llamada inicial incluye `Authorization: Bearer <token>`. Gota solicita `Acc
 
 ### Errores y reintentos
 
-`JSON.decode` está protegido con `pcall`. Los bodies JSON de error aportan `errorMessage`, `message` o `error.message` cuando existen. Los timeouts de `socketutil` se restauran incluso si LuaSec lanza una excepción.
+`JSON.decode` está protegido con `pcall` y usa `JSON.decode.simple`: luajson representa `null` con una función centinela, que el `string.buffer` de Trapper no puede serializar de vuelta desde el worker. Los bodies JSON de error aportan `errorMessage`, `message` o `error.message` cuando existen. Los timeouts de `socketutil` se restauran incluso si LuaSec lanza una excepción.
 
 Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `X-RateLimit-Reset` (epoch UTC documentado) o `Retry-After` si llega, aunque no forma parte del contrato publicado. El retraso por intento sigue limitado a tres segundos; si el servidor pide más, solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
 

@@ -77,6 +77,32 @@ return function(test, equal, truthy, contains)
         equal(api.cache_entry_count, 1, "budget evicts older cyclic entries")
     end)
 
+    test("JSON nulls decode to nil so worker results cross the subprocess pipe", function()
+        -- KOReader's luajson decodes null as a sentinel function unless the
+        -- caller asks for decode.simple; LuaJIT's string.buffer, which Trapper
+        -- uses to return worker results, cannot serialize functions.
+        local null_sentinel = function() end
+        local fake_json = { encode = function() return "{}" end }
+        fake_json.decode = setmetatable({ simple = {} }, { __call = function(_, payload, options)
+            local null = null_sentinel
+            if options == fake_json.decode.simple then null = nil end
+            return { result = true, items = { { _id = 1, title = payload, cover = null } }, count = 1 }
+        end })
+        local previous = package.loaded["json"]
+        package.loaded["json"] = fake_json
+        local ok, failure = pcall(function()
+            local FreshAPI = dofile("gota_api.lua")
+            local api = FreshAPI:new(settings())
+            function api:_performRequest() return "A", nil, 200, {} end
+            local data, err = api:makeRequest("/raindrops/0")
+            equal(err, nil, "decoded")
+            equal(data.items[1].title, "A", "item kept")
+            equal(data.items[1].cover, nil, "null becomes nil, not a function")
+        end)
+        package.loaded["json"] = previous
+        if not ok then error(failure, 0) end
+    end)
+
     test("server wait is reported uncapped", function()
         equal(API.serverWaitSeconds({ ["Retry-After"] = "120" }, 1000), 120, "Retry-After seconds")
         equal(API.serverWaitSeconds({ ["X-RateLimit-Reset"] = "1060" }, 1000), 60, "documented UTC reset")
