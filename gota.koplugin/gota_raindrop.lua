@@ -21,4 +21,13 @@ function Raindrop.highlightReference(highlight)
     return reference
 end
 
+-- Raindrop's documented collection access.level: 1 public read-only,
+-- 2 collaborator read-only, 3 collaborator with write access, 4 owner.
+-- Returns nil when the level is unknown so the server stays the authority.
+function Raindrop.canWrite(level)
+    level = tonumber(level)
+    if not level then return nil end
+    return level >= 3
+end
+
 return Raindrop

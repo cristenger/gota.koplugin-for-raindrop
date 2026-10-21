@@ -418,7 +418,8 @@ function UIBuilder:buildCollectionItems(collections, on_select_callback, options
         return items
     end
     
-    for _, entry in ipairs(flattened) do
+    -- Not "_": that name is gettext here, used below for labels.
+    for _entry_index, entry in ipairs(flattened) do
         if entry.kind == "group" then
             local indicator = entry.informational and "• " or
                 (entry.collapsed and "▸ " or "▾ ")
@@ -436,9 +437,16 @@ function UIBuilder:buildCollectionItems(collections, on_select_callback, options
             local prefix = entry.depth > 0 and
                 (string.rep("  ", entry.depth) .. "↳ ") or ""
             local count = tonumber(collection.count)
+            -- Only destination pickers pass access_for; browsing stays open.
+            local read_only = options.access_for and
+                Raindrop.canWrite(options.access_for(collection)) == false
             table.insert(items, {
-                text = prefix .. title .. (count and string.format(" (%d)", count) or ""),
+                text = prefix .. title .. (count and string.format(" (%d)", count) or "")
+                    .. (read_only and _(" (read-only)") or ""),
+                enabled = not read_only,
+                select_enabled = not read_only,
                 callback = function()
+                    if read_only then return end
                     on_select_callback(collection._id, title, collection)
                 end,
             })
@@ -480,6 +488,13 @@ function UIBuilder:buildArticleMenu(raindrop, cache_available, callbacks, offlin
         callback = callbacks.show_info,
     }
 
+    if callbacks.read_only then
+        items[#items + 1] = {
+            text = _("Read-only shared collection"),
+            enabled = false,
+            select_enabled = false,
+        }
+    end
     if callbacks.toggle_favorite then
         table.insert(items, { text = raindrop.important and _("Remove from favorites") or
             _("Add to favorites"), callback = callbacks.toggle_favorite })

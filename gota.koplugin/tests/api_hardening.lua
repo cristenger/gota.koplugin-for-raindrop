@@ -149,6 +149,16 @@ return function(test, equal, truthy, contains)
         API.clearRateLimit()
     end)
 
+    test("403 explains the permission problem", function()
+        local api = API:new(settings())
+        function api:_performRequest()
+            return '{"result":false,"errorMessage":"forbidden"}', nil, 403, {}
+        end
+        local _, err = api:makeRequest("/raindrop/7", "PUT", { important = true })
+        contains(err, "permission", "permission explained")
+        contains(err, "forbidden", "server detail kept")
+    end)
+
     test("normal JSON has a default byte limit before parsing", function()
         local api = API:new(settings())
         local limit

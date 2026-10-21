@@ -39,6 +39,13 @@ local function copyPlainTable(value)
     return copy
 end
 
+-- Collection id -> documented access.level, from the last collection
+-- structure loaded in this process. Shared by the FileManager and ReaderUI
+-- instances and forgotten on an account change.
+local collection_access = {}
+-- System collections are not part of API responses and belong to the user.
+local OWN_SYSTEM_COLLECTIONS = { [0] = true, [-1] = true, [-99] = true }
+
 local function searchSort(settings, term, context)
     if context and context.sort then return context.sort end
     if tostring(term or ""):find("%S") then return "score" end
@@ -213,6 +220,7 @@ end
 
 function Gota:resetAuthenticatedNavigation()
     self.api:clearCache()
+    for id in pairs(collection_access) do collection_access[id] = nil end
     if self.api.clearRateLimit then self.api:clearRateLimit() end
     self.last_advanced_search = nil
     self.collapsed_collection_groups = {}
@@ -241,6 +249,25 @@ function Gota:networkCallback(callback)
         end
         return callback(unpack(args, 1, args.n))
     end
+end
+
+function Gota:rememberCollectionAccess(structure)
+    if type(structure) ~= "table" then return end
+    for _, list in ipairs({ structure.roots, structure.children }) do
+        for _, collection in ipairs(type(list) == "table" and list or {}) do
+            local id = type(collection) == "table" and tonumber(collection._id)
+            local access = id and collection.access
+            local level = type(access) == "table" and tonumber(access.level) or nil
+            if id then collection_access[id] = level end
+        end
+    end
+end
+
+function Gota:collectionAccessLevel(collection_id)
+    local id = tonumber(collection_id)
+    if not id then return nil end
+    if OWN_SYSTEM_COLLECTIONS[id] then return 4 end
+    return collection_access[id]
 end
 
 function Gota:buildCollectionSourceContext(collection_id, collection_name, page)
@@ -775,6 +802,7 @@ end
 function Gota:showCollections()
     self:showProgress(_("Loading collections..."))
     local structure, err = self.api:getCollectionStructure()
+    Gota.rememberCollectionAccess(self, structure)
     local stats = structure and self.api:getUserStats() or nil
     self:hideProgress()
 
@@ -1155,6 +1183,15 @@ function Gota:showRaindropContent(raindrop, source_context)
             self:confirmTrashRaindrop(raindrop, current_collection_id, source_context)
         end,
     }
+    -- Raindrop rejects edits in shared read-only collections; do not offer
+    -- them. An unknown level keeps the actions and the server decides.
+    if Raindrop.canWrite(Gota.collectionAccessLevel(self, current_collection_id)) == false then
+        for _, name in ipairs({ "toggle_favorite", "edit_note", "edit_tags",
+            "move_collection", "move_to_trash" }) do
+            article_callbacks[name] = nil
+        end
+        article_callbacks.read_only = true
+    end
     if self.operations then
         for name, callback in pairs(article_callbacks) do
             if type(callback) == "function" then
@@ -1432,6 +1469,7 @@ function Gota:chooseRaindropCollection(raindrop, source_context)
     self:showProgress(_("Loading collections..."))
     local structure, err = self.api:getCollectionStructure()
     self:hideProgress()
+    Gota.rememberCollectionAccess(self, structure)
     if not structure then
         self:notify(_("Error retrieving collections:") .. "\n" .. (err or _("Unknown error")), 4)
         return
@@ -1460,7 +1498,8 @@ function Gota:chooseRaindropCollection(raindrop, source_context)
                 self:closeWidget("collection_actions_menu")
             end
         end))
-    end), { collapsed_groups = {}, expand_all_groups = true })
+    end), { collapsed_groups = {}, expand_all_groups = true,
+        access_for = function(collection) return Gota.collectionAccessLevel(self, collection._id) end })
     for _, item in ipairs(collection_items) do items[#items + 1] = item end
     self:closeWidget("collection_picker")
     self.widgets.collection_picker = self.ui_builder:createMenu(_("Move to collection"), items)

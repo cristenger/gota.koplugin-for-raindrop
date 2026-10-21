@@ -858,6 +858,11 @@ function API:makeRequest(endpoint, method, body, request_options)
             elseif status_line and status_line ~= "" then
                 message = message .. " - " .. compactText(status_line)
             end
+            if status == 403 then
+                -- Typically a shared collection where this account only reads.
+                message = _("Raindrop denied permission for this item or collection.") ..
+                    "\n" .. message
+            end
             local remaining = rateLimitRemaining(headers)
             if remaining then
                 message = message .. _(" (rate limit remaining: ") .. tostring(remaining) .. ")"

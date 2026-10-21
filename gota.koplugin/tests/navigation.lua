@@ -187,6 +187,64 @@ return function(test, equal, truthy, contains)
         return state
     end
 
+    local function rowsWithText(rows, text)
+        for _, row in ipairs(rows or {}) do
+            if tostring(row.text):find(text, 1, true) then return row end
+        end
+    end
+
+    test("read-only shared collections hide edit actions", function()
+        local state = sessionFixture()
+        Gota.rememberCollectionAccess(state.fake, { roots = {
+            { _id = 44, title = "Shared", access = { level = 2, draggable = false } } } })
+        Gota.showRaindropContent(state.fake, state.article)
+        local callbacks = state.article_callbacks
+        for _, name in ipairs({ "toggle_favorite", "edit_note", "edit_tags", "move_collection", "move_to_trash" }) do
+            equal(callbacks[name], nil, name .. " hidden")
+        end
+        equal(callbacks.read_only, true, "read-only flag")
+        local rows = UIBuilder:new():buildArticleMenu(state.article, false, callbacks, nil)
+        local notice = rowsWithText(rows, "Read-only shared collection")
+        truthy(notice, "read-only row shown")
+        equal(notice and notice.select_enabled, false, "row is informational")
+        Gota.resetAuthenticatedNavigation(state.fake)
+    end)
+
+    test("unknown or writable access keeps edit actions", function()
+        local state = sessionFixture()
+        Gota.resetAuthenticatedNavigation(state.fake)
+        Gota.showRaindropContent(state.fake, state.article)
+        truthy(state.article_callbacks.edit_note, "unknown access keeps actions")
+        Gota.rememberCollectionAccess(state.fake, { children = { { _id = 44, access = { level = 3 } } } })
+        Gota.showRaindropContent(state.fake, state.article)
+        truthy(state.article_callbacks.move_collection, "collaborator with write access keeps actions")
+        equal(Gota.collectionAccessLevel(state.fake, -1), 4, "Unsorted is the user's own")
+        equal(Gota.collectionAccessLevel(state.fake, -99), 4, "Trash is the user's own")
+        Gota.resetAuthenticatedNavigation(state.fake)
+    end)
+
+    test("account reset forgets collection permissions", function()
+        local state = sessionFixture()
+        Gota.rememberCollectionAccess(state.fake, { roots = { { _id = 44, access = { level = 1 } } } })
+        Gota.resetAuthenticatedNavigation(state.fake)
+        equal(Gota.collectionAccessLevel(state.fake, 44), nil, "old account level dropped")
+    end)
+
+    test("move destinations disable read-only collections", function()
+        local state = sessionFixture()
+        state.structure = { groups = {}, children = {}, roots = {
+            { _id = 45, title = "Viewer only", access = { level = 1 } },
+            { _id = 46, title = "Mine", access = { level = 4 } },
+        } }
+        Gota.chooseRaindropCollection(state.fake, state.article)
+        local blocked, allowed = rowsWithText(state.rows, "Viewer only"), rowsWithText(state.rows, "Mine")
+        truthy(blocked, "read-only destination listed")
+        equal(blocked and blocked.select_enabled, false, "read-only destination disabled")
+        contains(blocked and blocked.text or "", "read-only", "reason shown")
+        truthy(allowed and allowed.select_enabled ~= false, "owned destination enabled")
+        Gota.resetAuthenticatedNavigation(state.fake)
+    end)
+
     local function withNetworkCallback(callback, body)
         local manager = require("ui/network/manager")
         local previous = manager.runWhenOnline
