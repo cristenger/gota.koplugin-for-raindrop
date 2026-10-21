@@ -149,6 +149,38 @@ return function(test, equal, truthy, contains)
         API.clearRateLimit()
     end)
 
+    test("a skewed device clock cannot lock Gota out for hours", function()
+        -- E-readers often wake with a clock far behind Raindrop's; its reset
+        -- epoch then looks hours away although the window is one minute.
+        local wait = API.serverWaitSeconds({ ["X-RateLimit-Reset"] = tostring(1000 + 86400) }, 1000)
+        truthy(wait <= 120, "reset-derived wait bounded: " .. tostring(wait))
+        API.clearRateLimit()
+        local api = API:new(settings())
+        function api:makeRequest()
+            return nil, "rate limited", 429, { ["X-RateLimit-Reset"] = tostring(os.time() + 86400) }
+        end
+        api:makeRequestWithRetry("/user")
+        local remaining = API.rateLimitWait(nil, "account-a")
+        truthy(remaining and remaining <= 120, "recorded cooldown bounded: " .. tostring(remaining))
+        equal(API.rateLimitWait(os.time() - 3600, "account-a"), nil, "clock moved back: cooldown dropped")
+        API.clearRateLimit()
+    end)
+
+    test("a rate limit on one token does not block testing another", function()
+        API.clearRateLimit()
+        local limited = API:new(settings("account-a"))
+        function limited:makeRequest()
+            return nil, "rate limited", 429, { ["Retry-After"] = "60" }
+        end
+        limited:makeRequestWithRetry("/user")
+        local other, calls = API:new(settings("account-b")), 0
+        function other:makeRequest() calls = calls + 1; return { result = true } end
+        truthy(other:makeRequestWithRetry("/user"), "other token proceeds")
+        equal(calls, 1, "request sent for the other token")
+        equal(limited:makeRequestWithRetry("/user"), nil, "limited token still waits")
+        API.clearRateLimit()
+    end)
+
     test("403 explains the permission problem", function()
         local api = API:new(settings())
         function api:_performRequest()

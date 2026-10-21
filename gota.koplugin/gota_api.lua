@@ -19,10 +19,14 @@ local API = {}
 local MAX_REDIRECTS = 3
 local MAX_RETRY_DELAY = 30
 local MAX_BLOCKING_RETRY_DELAY = 3
--- Epoch second before which Raindrop asked not to be called again. Shared by
+-- Raindrop's limit is per user over a one-minute window. Waits are bounded
+-- by twice that: e-readers often wake with a clock far behind the server's,
+-- which would turn the documented UTC reset epoch into hours of lockout.
+local MAX_RATE_LIMIT_WAIT = 120
+-- Cooldown Raindrop requested, keyed by the token it applies to. Shared by
 -- every API instance in the UI process (FileManager and ReaderUI each create
 -- one); requests run in forked workers, so only the parent may record it.
-local rate_limited_until = 0
+local rate_limit = { until_time = 0, key = nil }
 local MAX_PER_PAGE = 50
 local DEFAULT_DECOMPRESSED_RESPONSE_BYTES = 16 * 1024 * 1024
 local DEFAULT_JSON_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -419,12 +423,17 @@ end
 -- when present although it is not part of the published contract.
 local function serverWaitSeconds(headers, now)
     now = tonumber(now) or os.time()
+    local wait
     local retry_after = tonumber(getHeader(headers, "Retry-After"))
-    if retry_after and retry_after >= 0 then return math.max(retry_after, 1) end
-    local reset_at = tonumber(getHeader(headers, "X-RateLimit-Reset")
-        or getHeader(headers, "RateLimit-Reset"))
-    if reset_at then return math.max(reset_at - now, 1) end
-    return nil
+    if retry_after and retry_after >= 0 then
+        wait = retry_after
+    else
+        local reset_at = tonumber(getHeader(headers, "X-RateLimit-Reset")
+            or getHeader(headers, "RateLimit-Reset"))
+        if reset_at then wait = reset_at - now end
+    end
+    if not wait or wait ~= wait then return nil end
+    return math.min(math.max(wait, 1), MAX_RATE_LIMIT_WAIT)
 end
 
 local function retryDelay(attempt, status, headers)
@@ -450,16 +459,24 @@ local function retryDelay(attempt, status, headers)
     return math.min(math.max(base_delay, 1), MAX_RETRY_DELAY)
 end
 
--- Seconds left in a cooldown Raindrop requested, or nil when requests may go out.
-function API.rateLimitWait(now)
-    local remaining = rate_limited_until - (tonumber(now) or os.time())
+-- Seconds left in the cooldown Raindrop requested for this token, or nil
+-- when requests may go out. A remaining time beyond the bound means the
+-- clock moved backwards since it was recorded, so the cooldown is dropped.
+function API.rateLimitWait(now, key)
+    if rate_limit.key ~= key then return nil end
+    local remaining = rate_limit.until_time - (tonumber(now) or os.time())
+    if remaining > MAX_RATE_LIMIT_WAIT then
+        rate_limit.until_time = 0
+        return nil
+    end
     return remaining > 0 and remaining or nil
 end
 
 -- A new account has its own limit. Callable as API.clearRateLimit() or
 -- api:clearRateLimit(); the instance argument is ignored.
 function API.clearRateLimit()
-    rate_limited_until = 0
+    rate_limit.until_time = 0
+    rate_limit.key = nil
 end
 
 -- Pure helpers are public so they can be unit-tested without a KOReader runtime.
@@ -944,7 +961,8 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
     method = tostring(method or "GET"):upper()
     self:_synchronizeSession()
     local session_generation = self.session_generation
-    local cooldown = API.rateLimitWait()
+    local rate_limit_key = self.settings and self.settings.getToken and self.settings:getToken() or nil
+    local cooldown = API.rateLimitWait(nil, rate_limit_key)
     if cooldown then
         -- Nothing is sent, so this is safe for writes too.
         return nil, string.format(_("Raindrop rate limit reached. Try again in %d seconds."), cooldown)
@@ -975,7 +993,10 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
         self.transport_security_info = self.tls:getSecurityInfo()
     end
     if result == nil and tonumber(retry_at) then
-        rate_limited_until = math.max(rate_limited_until, tonumber(retry_at))
+        local until_time = tonumber(retry_at)
+        if rate_limit.key ~= rate_limit_key then rate_limit.until_time = 0 end
+        rate_limit.key = rate_limit_key
+        rate_limit.until_time = math.max(rate_limit.until_time, until_time)
     end
     if method ~= "GET" and method ~= "HEAD" then
         -- A response can be lost after the server commits a change. Discard
