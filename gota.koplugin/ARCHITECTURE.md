@@ -53,7 +53,11 @@ flowchart LR
 
 ## Navegación y coherencia de pantalla
 
-Cada detalle de artículo recibe un `SourceContext` pequeño con `kind`, página remota y una función `reload(focus_raindrop_id)`. La closure captura solo IDs, nombre, término, filtros normalizados y alcance; no conserva envelopes, HTML ni widgets. Tras editar favorito, nota, etiquetas o colección, el proceso padre adopta la respuesta, cierra el detalle y reconstruye la lista autoritativa. Las filas llevan `gota_raindrop_id`, y `Menu:switchItemTable` localiza su página sin escribir campos internos de KOReader. Mover a Papelera recarga sin foco porque el elemento ya no debe aparecer en el origen.
+Cada detalle de artículo recibe un `SourceContext` pequeño con `kind`, página remota y una función `reload(focus_raindrop_id)`. La closure captura solo IDs, nombre, término, filtros normalizados y alcance; no conserva envelopes, HTML ni widgets. Tras editar favorito, nota, etiquetas o colección, el proceso padre adopta la respuesta, cierra el detalle y reconstruye la lista autoritativa. Las filas llevan `gota_raindrop_id`, y `Menu:switchItemTable` localiza su página sin escribir campos internos de KOReader. En un `Menu` normal KOReader solo restaura la página: el foco exacto del D-pad sobre la fila no está garantizado (la estable lo restaura únicamente cuando el menú tiene `path`, como FileChooser). Mover a Papelera recarga sin foco porque el elemento ya no debe aparecer en el origen. Si una mutación vacía la última página remota (mover su único elemento), la lista recarga la última página que aún tiene elementos.
+
+Cada `SourceContext` incluye además un `descriptor` de datos planos (`kind`, IDs, nombre, término, filtros, página). Es lo que sobrevive al lector: KOReader sustituye la instancia del plugin al abrir y cerrar `ReaderUI`, así que el retorno no puede capturar `self`.
+
+Las colecciones informan `access.level` (1–2 solo lectura, 3 escritura, 4 propietario). Gota recuerda ese nivel por proceso al cargar la estructura y lo olvida al cambiar de cuenta. En una colección compartida de solo lectura el detalle no ofrece favorito, nota, etiquetas, mover ni Papelera, y el selector de destino atenúa y deshabilita esas colecciones. Si el nivel es desconocido (el artículo se abrió desde una búsqueda antes de cargar colecciones, o la respuesta no trae `access`) se ofrecen todas las acciones y decide el servidor; un 403 se explica como falta de permiso.
 
 Las instancias de FileManager y ReaderUI comparten token, generación de sesión y preferencias TLS. Guardar o borrar un token invalida las respuestas y la navegación de la cuenta; los callbacks capturan la generación al crearse. Una respuesta o acción de una generación anterior se descarta, incluso si otra entrada ya actualizó la pantalla. La validación de un token candidato usa una instancia API independiente.
 
@@ -69,7 +73,7 @@ Las tres acciones de Dispatcher son:
 - `gota_search` → `GotaSearch`;
 - `gota_collections` → `GotaShowCollections`.
 
-El menú usa `registerToMainMenu`/`addToMainMenu` y `sorting_hint = "more_tools"`. Gota no escribe en `reader.menu.menu_table`.
+El menú usa `registerToMainMenu`/`addToMainMenu` sin `sorting_hint`, de modo que KOReader conserva la ubicación de nivel superior que Gota ha tenido siempre (lo fija una prueba). Gota no escribe en `reader.menu.menu_table`.
 
 ### Apertura y retorno del lector
 
@@ -83,7 +87,7 @@ sequenceDiagram
     UI->>AM: openInReader(raindrop)
     AM->>AM: comprueba cache.size y límite de archivo
     AM->>AM: transmite /cache a un .part acotado
-    AM->>GR: show(path, callback, normalize_styles)
+    AM->>GR: show(path, return_target, normalize_styles)
     GR->>GR: DocumentRegistry:getProvider(path)
     alt ReaderUI ya existe
         GR->>RU: switchDocument(path, nil, callback, provider, forced)
@@ -98,12 +102,18 @@ sequenceDiagram
     RU-->>GR: after_open_callback
     Note over GR: activa “Back to Gota” solo para ese path
     GR->>RU: onHome()
-    GR-->>UI: callback de retorno
-    RU-->>UI: CloseDocument
-    UI->>AM: cleanupManagedReaderPath(path)
+    RU-->>UI: CloseDocument (no borra nada)
+    Note over UI: FileManager crea una instancia nueva de Gota
+    UI->>GR: onOwnerInit(nil): libera la petición
+    UI->>AM: cleanupOrphanReaderFiles(rutas protegidas)
+    GR->>UI: PluginLoader:getPluginInstance("gota"):resumeFromReader(return_target)
 ```
 
-`DocumentRegistry:getProvider` solo selecciona el proveedor. `ReaderUI` conserva la propiedad exclusiva de abrir y cerrar el documento; Gota no llama `DocumentRegistry:openDocument` por anticipado. La limpieza se centraliza en `CloseDocument`, por lo que volver con «Back to Gota» y salir por Home siguen el mismo ciclo.
+`DocumentRegistry:getProvider` solo selecciona el proveedor. `ReaderUI` conserva la propiedad exclusiva de abrir y cerrar el documento; Gota no llama `DocumentRegistry:openDocument` por anticipado.
+
+`CloseDocument` no distingue una recarga nativa de una salida: `ReaderUI:reloadDocument` lo emite y después reabre la misma ruta en una `ReaderUI` nueva. Por eso Gota nunca borra al recibirlo. Cada instancia nueva del plugin —una por FileManager y otra por ReaderUI— llama primero a `GotaReader:onOwnerInit(documento_activo)`, que libera la petición pendiente (retorno, normalización) solo si el nuevo propietario muestra otro documento y `ReaderUI` ya no conserva el pedido. Después limpia los temporales que no estén protegidos: el documento propio, la petición pendiente y lo que `ReaderUI.instance` tenga abierto. Así, una recarga conserva archivo, «Back to Gota» y normalización; Home o abrir otro libro retiran el temporal, y un cierre forzado lo deja hasta la siguiente inicialización de Gota.
+
+«Back to Gota» guarda un `return_target` de datos planos —vista, instantánea del artículo sin el texto cargado, `descriptor` de origen y generación de cuenta— y, tras `onHome`, lo resuelve contra la instancia viva con `PluginLoader:getPluginInstance("gota")`. Si la cuenta cambió mientras se leía, no reabre el artículo antiguo. «Abrir carpeta» tras guardar sigue el mismo orden que `ReaderUI:onHome`: cierra el lector y después muestra el gestor con el archivo enfocado, sin dejar un lector vivo debajo.
 
 ### Normalización tipográfica del full reader
 
@@ -152,7 +162,11 @@ Cada llamada inicial incluye `Authorization: Bearer <token>`. Gota solicita `Acc
 
 `JSON.decode` está protegido con `pcall`. Los bodies JSON de error aportan `errorMessage`, `message` o `error.message` cuando existen. Los timeouts de `socketutil` se restauran incluso si LuaSec lanza una excepción.
 
-Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `Retry-After` o las variantes documentadas de la cabecera de reset. El retraso por intento sigue limitado a tres segundos; si el servidor pide más, solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
+Solo las lecturas `GET`/`HEAD` reintentan errores de transporte, 429 y 5xx, hasta tres intentos. `POST`, `PUT`, `PATCH` y `DELETE` hacen exactamente un intento. El retraso es exponencial y, para 429, calcula `X-RateLimit-Reset` (epoch UTC documentado) o `Retry-After` si llega, aunque no forma parte del contrato publicado. El retraso por intento sigue limitado a tres segundos; si el servidor pide más, solicita reintentar más tarde. Los demás 4xx no se reintentan sin modificar la petición.
+
+Tras un 429 el worker devuelve al proceso padre el instante permitido —el estado del subprocess se descarta— y el padre rechaza nuevas peticiones de ese token, lecturas y escrituras, sin abrir otro worker hasta que pasa. El mensaje muestra la espera real. La espera se acota a 120 s (dos ventanas de un minuto de Raindrop) porque los e-readers despiertan a menudo con el reloj atrasado y el epoch de reset parecería estar a horas; si el reloj retrocede, el bloqueo se descarta. Validar otro token no queda bloqueado y cambiar de cuenta lo limpia.
+
+Una respuesta 2xx de `/raindrop/{id}/cache` que sea el envelope de error documentado (`{"result": false, …}`) se trata como error y no se guarda como artículo.
 
 Todas las entradas de red de la UI ejecutan el flujo completo dentro de una coroutine de `Trapper`. El ejecutor mueve transporte, reintentos, descompresión y JSON a `dismissableRunInSubprocess`; el padre conserva widgets, navegación y caché. Solo la coroutine propietaria puede anidar llamadas, y un bloqueo de proceso impide operaciones simultáneas entre instancias. Cancelar aborta también endpoints opcionales y fallback de datos. Las descargas canceladas retiran `.part` y `.part.decoded`. Si se interrumpe una escritura, Gota invalida la caché y explica que el servidor puede haberla guardado; no vuelve a enviarla automáticamente.
 
@@ -212,11 +226,12 @@ Los IDs de sistema usados por la UI son `0` para todos los marcadores, `-1` para
 
 | Dato | Ubicación | Duración |
 |---|---|---|
-| Token, política TLS, carpeta, orden y límites de caché | `DataStorage:getSettingsDir()/gota.lua` | persistente; el token puede borrarse desde Gota |
+| Token, política TLS, carpeta, orden y límites de caché | `DataStorage:getSettingsDir()/gota.lua` | persistente; el token puede borrarse desde Gota. En memoria es estado de sesión compartido por todas las instancias, y cada guardado relee el archivo antes de confirmar |
 | HTML exportado | `DataStorage:getDataDir()/<download_path>/` | persistente |
-| HTML usado por ReaderUI | `DataStorage:getDataDir()/cache/gota/` | temporal; `CloseDocument` y el siguiente arranque retiran solo `raindrop_<id>.html`, `.part` y `.part.decoded` |
+| HTML usado por ReaderUI | `DataStorage:getDataDir()/cache/gota/` | temporal; la siguiente instancia de Gota cuyo propietario muestra otro documento retira solo `raindrop_<id>.html`, `.part` y `.part.decoded` no protegidos |
 | Respuestas API | tabla de `API.response_cache` | sesión, TTL 5 min, 32 entradas y 4 MiB estimados |
-| Estado de retorno del lector | singleton `GotaReader` | proceso y documento actual |
+| Estado de retorno del lector | singleton `GotaReader` (`return_target` de datos planos) | proceso; sobrevive a recargas nativas |
+| Niveles de acceso de colecciones y bloqueo por 429 | módulos `main.lua` y `gota_api.lua` | proceso; se limpian al cambiar de cuenta |
 
 Cada módulo usa `gota_gettext`, que carga `l10n/<idioma>/gota.mo` en diccionarios temporales y restaura traducciones, contextos y regla de plurales de KOReader. Un idioma regional puede usar el catálogo base, por ejemplo `es_ES` → `es`.
 
@@ -224,7 +239,7 @@ El diálogo muestra el token como contraseña, pero `LuaSettings` lo guarda en t
 
 La allowlist de limpieza exige el directorio canónico y el nombre exacto. Nunca borra exports, otros archivos de caché ni directorios `.sdr`; los sidecars de lectura se conservan. La carpeta de exportación siempre queda bajo `DataStorage`, acepta espacios y segmentos anidados y rechaza rutas absolutas, `.`/`..`, controles y escapes mediante symlink.
 
-El ajuste `download_path` conserva su clave en `gota.lua` por compatibilidad, pero la UI lo llama «carpeta de exportación» porque solo gobierna «Descargar para leer sin conexión» y «Exportar con notas y resaltados». El lector completo escribe en `cache/gota/` y borra su archivo al cerrar, de modo que abrir un artículo nunca sobrescribe una copia guardada a propósito. La UI evita el verbo «descargar» en esa acción para no prometer un archivo persistente.
+El ajuste `download_path` conserva su clave en `gota.lua` por compatibilidad, pero la UI lo llama «carpeta de exportación» porque solo gobierna «Descargar para leer sin conexión» y «Exportar con notas y resaltados». El lector completo escribe en `cache/gota/` y retira su archivo cuando el lector pasa a otro documento o al gestor, de modo que abrir un artículo nunca sobrescribe una copia guardada a propósito. La UI evita el verbo «descargar» en esa acción para no prometer un archivo persistente.
 
 ### Lectura offline y reanudación
 
@@ -242,13 +257,15 @@ El menú «Guardados en este dispositivo» enumera originales y exportaciones an
 
 Dos reglas que el escaneo debe respetar. El guion bajo delimita el ID, de modo que `12_` nunca captura `123_…`. Y las exportaciones anotadas se llaman `<id>_<título>_notes.html` y comparten el prefijo: el sufijo es solo un indicio, no una prueba, porque un título que sanea a algo terminado en `_notes` («Release notes») produce la misma forma. Por eso el escaneo **ordena** en vez de descartar: prefiere la copia original y solo ofrece una exportación anotada cuando no hay ninguna otra candidata. `find` devuelve además si el resultado parece anotado, para que no se le imponga la política de estilos de editores a un documento que escribió Gota.
 
+El nombre canónico también puede ser una exportación anterior: el marcador 7 exportado como `7_Read_notes.html` y renombrado después a «Read_notes» —o «Read_Notes» en el FAT/exFAT sin distinción de mayúsculas de casi todos los e-readers— apunta al mismo archivo. Por eso cada acierto canónico se clasifica por el marcador `generator` de Gota en una lectura acotada de cabecera, y una descarga que caería sobre una exportación anotada se rechaza con un aviso en lugar de sustituir las notas del usuario.
+
 El desempate entre candidatas con el mismo `mtime` —habitual, porque la granularidad es de segundos enteros— usa el orden de nombre, nunca el orden de enumeración del directorio, que varía entre sistemas de archivos.
 
 `percent_finished` se guarda como fracción `0..1`; el progreso se trunca con `math.floor`, que nunca exagera lo leído, y se degrada a «sin porcentaje» ante cualquier fallo de `DocSettings`.
 
 «Continuar leyendo» no depende de `cache_available`: el archivo ya está en disco y debe seguir siendo legible aunque Raindrop deje de servir la copia web o la cuenta pierda PRO. Es el único punto del menú de artículo que no está gobernado por el estado remoto.
 
-Estas copias viven en la carpeta de exportación, así que `isManagedReaderPath` las rechaza y `CloseDocument` no borra ni el archivo ni su sidecar. La normalización tipográfica se aplica igual que en el lector transitorio, de modo que la experiencia de lectura es idéntica en ambos modos.
+Estas copias viven en la carpeta de exportación, así que `isManagedReaderPath` las rechaza y la limpieza del lector nunca toca ni el archivo ni su sidecar. La normalización tipográfica se aplica igual que en el lector transitorio, de modo que la experiencia de lectura es idéntica en ambos modos.
 
 ## Pruebas y validación
 

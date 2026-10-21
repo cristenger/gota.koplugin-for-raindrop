@@ -25,7 +25,7 @@ Important: Notes and highlights work with both free and PRO accounts. However, v
 - **Verified HTTPS**: Certificate chain and server hostname checks enabled by default
 - **Internationalization**: Isolated plugin catalogs, including Spanish and regional fallback
 - **Configurable**: Customizable export folder with visual folder picker
-- **KOReader Compatibility**: Targets KOReader 2026.07 and later
+- **KOReader Compatibility**: Targets KOReader 2026.07.1 and later (verified against stable v2026.07.1)
 
 ## Installation
 

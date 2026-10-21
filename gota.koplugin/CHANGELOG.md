@@ -39,8 +39,18 @@
 - Documented numeric highlight references open their related bookmarks, and search summaries show the actual relevance ordering.
 - Plain text preserves editorial headers, list separators and numbering, table boundaries and code spacing. HTML scanning is iterative with bounded list state; valid UTF-8 avoids per-character table allocations.
 - Annotated exports carry a generator marker; cleanup also handles decoded partial files and protects an open reader document.
+- A native reload (F5 or a setting that reloads the document) no longer deletes the temporary article before KOReader reopens it, and keeps “Back to Gota” and style normalization. Temporary files are released when the next Gota instance shows another document or the file browser, never on `CloseDocument`.
+- The web-copy text view shows its actions again (open in reader, article URL, save copies): they are passed as `TextViewer.buttons_table`, the option KOReader reads.
+- “Open folder” after saving closes the reader through its own lifecycle before showing the file browser, instead of leaving a reader alive underneath.
+- “Back to Gota” resumes on the plugin instance that exists after the reader closes, from plain data (article snapshot, source page, account generation), instead of a stale instance with outdated settings.
+- Export folder, sort order and size limits are shared session state like the token, so an older instance cannot roll back newer values. Saving reads the file back, because `LuaSettings:flush` ignores write errors; the sort and limit pickers restore the previous value when it fails.
+- Saving an original copy never replaces an annotated export whose name now matches the article (a title renamed to “…_notes”, including case-only differences on FAT/exFAT); the canonical file is classified by Gota’s export marker.
+- Rate-limit messages show Raindrop’s real wait from `X-RateLimit-Reset`, and further requests for that token wait in the UI process, bounded to 120 s against skewed e-reader clocks.
+- Articles in read-only shared collections (`access.level` 1–2) no longer offer edit, favorite, move or Trash actions, and move pickers dim read-only destinations; a 403 explains the permission problem.
+- Highlights with a note or without text, untitled articles and untitled collection groups no longer crash their lists (loop variables shadowed gettext).
+- Moving the only item of the last remote page reloads the last page with items instead of an empty page with an inverted range; impossible search dates are rejected; a JSON error envelope from the permanent-copy endpoint is not saved as an article.
 
-- Temporary ReaderUI files are cleaned through `CloseDocument` and startup recovery with an exact canonical-path/name allowlist; `.sdr` sidecars and permanent exports are preserved.
+- Temporary ReaderUI files are cleaned with an exact canonical-path/name allowlist; `.sdr` sidecars and permanent exports are preserved.
 - Successful bookmark edits close stale detail/collection screens and reload their authoritative source page; failures keep the current detail open.
 - The token dialog describes the verified HTTPS default and the explicit compatibility setting; diagnostics separately record whether validation occurred.
 - Plain-text loading reports the specific download or size error, avoids duplicate notices and retries when the user explicitly selects the action again.
@@ -49,7 +59,7 @@
 
 ### Validation and open gates
 
-- 186 regression cases pass with the bundled LuaJIT runtime. Coverage includes session isolation, cancellation of composite calls, bounded JSON/cache, local library, HTML structure and isolated gettext.
+- 234 regression cases pass with the bundled LuaJIT runtime, including KOReader-contract cases for reader reload, return and folder navigation, `TextViewer` options and silent settings write failures. Coverage includes session isolation, cancellation of composite calls, bounded JSON/cache, local library, HTML structure and isolated gettext.
 - Real Trapper yields while a subprocess runs and cancellation aborts the parent flow. Real gettext loads Spanish and regional fallback without altering the core dictionary.
 - Real LuaSec accepts a trusted local certificate and rejects a mismatched hostname and an unknown CA before sending HTTP. A token-free public Raindrop request returned 401 with verified TLS; an expired public certificate was also rejected.
 
