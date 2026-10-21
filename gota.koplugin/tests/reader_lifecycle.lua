@@ -166,4 +166,73 @@ return function(test, equal, truthy, contains)
             equal(GotaReader.current_path, path, "session kept while open")
         end)
     end)
+
+    local function withFileManager(file_manager, body)
+        local previous = package.loaded["apps/filemanager/filemanager"]
+        local old_instance = ReaderUI.instance
+        package.loaded["apps/filemanager/filemanager"] = file_manager
+        local ok, failure = pcall(body)
+        package.loaded["apps/filemanager/filemanager"] = previous
+        ReaderUI.instance = old_instance
+        GotaReader:reset()
+        if not ok then error(failure, 0) end
+    end
+
+    test("open folder from the reader closes ReaderUI before FileManager", function()
+        local order, shown = {}, nil
+        withFileManager({ showFiles = function() order[#order + 1] = "showFiles" end }, function()
+            armReader("/exports/7_Item.html")
+            ReaderUI.instance = {
+                document = { file = "/exports/7_Item.html" },
+                onClose = function() order[#order + 1] = "close" end,
+                showFileManager = function(_, file) order[#order + 1] = "filemanager"; shown = file end,
+            }
+            truthy(GotaReader:showFolder("/exports/7_Item.html"), "folder shown")
+            equal(table.concat(order, ","), "close,filemanager", "reader closed first")
+            equal(shown, "/exports/7_Item.html", "export focused")
+            equal(GotaReader.current_path, nil, "Gota request released")
+        end)
+    end)
+
+    test("open folder from FileManager focuses the export", function()
+        local changed
+        local file_manager = {
+            instance = { file_chooser = { changeToPath = function(_, dir, file) changed = { dir, file } end } },
+        }
+        withFileManager(file_manager, function()
+            ReaderUI.instance = nil
+            truthy(GotaReader:showFolder("/exports/7_Item.html"), "folder shown")
+            equal(changed[1], "/exports", "export directory")
+            equal(changed[2], "/exports/7_Item.html", "export focused")
+        end)
+    end)
+
+    test("open folder without any FileManager starts one on the export", function()
+        local started
+        withFileManager({ showFiles = function(_, dir, file) started = { dir, file } end }, function()
+            ReaderUI.instance = nil
+            truthy(GotaReader:showFolder("/exports/7_Item.html"), "folder shown")
+            equal(started[1], "/exports", "export directory")
+            equal(started[2], "/exports/7_Item.html", "export focused")
+        end)
+    end)
+
+    test("saved-file Open folder goes through the reader adapter", function()
+        local requested
+        local previous = GotaReader.showFolder
+        GotaReader.showFolder = function(_, path) requested = path; return true end
+        local ok, failure = pcall(function()
+            package.loaded["ui/widget/buttondialog"] = { new = function(_, opts) return opts end }
+            local fake = { widgets = {}, closeWidget = function() end, closeAllWidgets = function() end }
+            Gota.showSavedFileActions(fake, "/exports/7_Item.html", {})
+            for _, row in ipairs(fake.widgets.saved_file_dialog.buttons) do
+                for _, button in ipairs(row) do
+                    if button.text == "Open folder" then button.callback() end
+                end
+            end
+        end)
+        GotaReader.showFolder = previous
+        if not ok then error(failure, 0) end
+        equal(requested, "/exports/7_Item.html", "adapter receives the export")
+    end)
 end

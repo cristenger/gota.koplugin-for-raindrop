@@ -216,6 +216,39 @@ function GotaReader:onReturn()
 end
 
 --[[
+    Show the folder that holds file_path in KOReader's file browser, with the
+    file focused. From the reader this follows ReaderUI:onHome: close the
+    reader through its own lifecycle first, so no ReaderUI is left alive under
+    the FileManager (and no FileManager-side cleanup races an open document).
+]]
+function GotaReader:showFolder(file_path)
+    if type(file_path) ~= "string" or file_path == "" then return false end
+    local directory = file_path:match("^(.*)/[^/]+$")
+    if not directory or directory == "" then return false end
+
+    local ok, err = pcall(function()
+        local reader = ReaderUI.instance
+        if reader then
+            self:reset()
+            reader:onClose()
+            reader:showFileManager(file_path)
+            return
+        end
+        local FileManager = require("apps/filemanager/filemanager")
+        if FileManager.instance then
+            FileManager.instance.file_chooser:changeToPath(directory, file_path)
+        else
+            FileManager:showFiles(directory, file_path)
+        end
+    end)
+    if not ok then
+        logger.err("GotaReader: could not open folder:", err)
+        return false
+    end
+    return true
+end
+
+--[[
     KOReader creates a plugin instance for every FileManager and ReaderUI.
     CloseDocument cannot tell a native reload (ReaderUI:reloadDocument closes
     and then reopens the same path in a new ReaderUI) from leaving the

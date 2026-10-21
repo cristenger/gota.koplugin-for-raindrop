@@ -340,11 +340,7 @@ function Gota:showSavedFileActions(filename, options)
                 callback = function()
                     if not directory then return end
                     self:closeAllWidgets()
-                    UIManager:nextTick(function()
-                        local FileManager = require("apps/filemanager/filemanager")
-                        if FileManager.instance then FileManager.instance:reinit(directory)
-                        else FileManager:showFiles(directory) end
-                    end)
+                    UIManager:nextTick(function() GotaReader:showFolder(filename) end)
                 end,
             },
         }},
