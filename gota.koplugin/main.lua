@@ -83,9 +83,11 @@ function Gota:init()
             return self.operations:execute(task, context)
         end)
     end
-    local active_path = self.ui and self.ui.document and self.ui.document.file
+    -- Release a finished reader request before cleaning, so the cleanup
+    -- below can remove its temporary document; a reload keeps both.
+    GotaReader:onOwnerInit(self.ui and self.ui.document and self.ui.document.file)
     local removed_count, cleanup_warnings =
-        self.article_manager:cleanupOrphanReaderFiles(active_path)
+        self.article_manager:cleanupOrphanReaderFiles(self:readerPathsToKeep())
     if removed_count > 0 then
         logger.dbg("Gota: removed orphan reader cache files:", removed_count)
     end
@@ -500,19 +502,16 @@ function Gota:onPreRenderDocument()
     end
 end
 
--- ReaderUI emits CloseDocument before releasing the active document. Keep the
--- singleton return state in sync without coupling GotaReader to ReaderUI internals.
-function Gota:onCloseDocument()
-    local path = self.ui and self.ui.document and self.ui.document.file
-    GotaReader:onReaderUIClose(path)
-    if self.article_manager and self.article_manager:isManagedReaderPath(path) then
-        UIManager:nextTick(function()
-            local cleaned, cleanup_error = self.article_manager:cleanupManagedReaderPath(path)
-            if not cleaned then
-                logger.warn("Gota: could not clean closed reader document:", cleanup_error)
-            end
-        end)
-    end
+-- Reader documents the orphan cleanup must keep for this owner: its own
+-- document plus the pending Gota request and anything still open in ReaderUI.
+-- Temporary articles are deliberately not removed on CloseDocument: a native
+-- reload emits it and then reopens the same path (see GotaReader:onOwnerInit).
+function Gota:readerPathsToKeep()
+    local keep = {}
+    local active_path = self.ui and self.ui.document and self.ui.document.file
+    if type(active_path) == "string" then keep[1] = active_path end
+    for _, path in ipairs(GotaReader:getProtectedPaths()) do keep[#keep + 1] = path end
+    return keep
 end
 
 -- ========== DIALOGS ==========

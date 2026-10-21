@@ -1624,7 +1624,7 @@ test("reader cleanup is confined, idempotent, and preserves sidecars", function(
         equal(manager:isManagedReaderPath("/tmp/gota_articles/raindrop_1.html"), false, "export")
         equal(manager:isManagedReaderPath(cache_dir .. "/raindrop_1.sdr"), false, "sidecar")
 
-        local removed_count, warnings = manager:cleanupOrphanReaderFiles(active)
+        local removed_count, warnings = manager:cleanupOrphanReaderFiles({ active })
         equal(removed_count, 3, "orphan entries")
         equal(#warnings, 0, "cleanup warnings")
         equal(files[active], true, "active document preserved")
@@ -2274,10 +2274,13 @@ test("GotaReader ignores unrelated documents", function()
     equal(GotaReader:applyStyleNormalization(plain_ui), false, "no normalization")
     equal(#plain_calls.style, 0, "no stylesheet call")
 
-    -- Closing the document retires the pending request.
+    -- The next owner showing another document retires the pending request.
     armGotaReader("/tmp/article.html", true)
-    GotaReader:onReaderUIClose("/tmp/article.html")
-    equal(GotaReader:shouldNormalize("/tmp/article.html"), false, "cleared on close")
+    local previous_instance = ReaderUI.instance
+    ReaderUI.instance = nil
+    GotaReader:onOwnerInit(nil)
+    ReaderUI.instance = previous_instance
+    equal(GotaReader:shouldNormalize("/tmp/article.html"), false, "cleared when the reader is gone")
 end)
 
 test("ReaderUI document identity gates destructive refreshes", function()
@@ -2683,7 +2686,8 @@ test("collection screen reads documented nested user statistics counts", functio
 end)
 
 for _, path in ipairs({ "tests/api_hardening.lua", "tests/reading_localization.lua",
-    "tests/offline_library.lua", "tests/operations.lua", "tests/navigation.lua" }) do
+    "tests/offline_library.lua", "tests/operations.lua", "tests/navigation.lua",
+    "tests/reader_lifecycle.lua" }) do
     dofile(path)(test, equal, truthy, contains)
 end
 

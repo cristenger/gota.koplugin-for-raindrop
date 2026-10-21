@@ -215,10 +215,34 @@ function GotaReader:onReturn()
     return true
 end
 
-function GotaReader:onReaderUIClose(path)
-    if path and path == self.current_path then
-        self:reset()
+--[[
+    KOReader creates a plugin instance for every FileManager and ReaderUI.
+    CloseDocument cannot tell a native reload (ReaderUI:reloadDocument closes
+    and then reopens the same path in a new ReaderUI) from leaving the
+    article, so the request is released here instead: when the next owner is
+    initialized with another document, or with none, and ReaderUI no longer
+    holds the requested path.
+]]
+function GotaReader:onOwnerInit(active_path)
+    if self.current_path == nil then return end
+    if active_path == self.current_path or self:isDocumentOpen(self.current_path) then
+        return
     end
+    self:reset()
+end
+
+-- Documents a reader-cache cleanup must keep: the pending or active Gota
+-- request and whatever ReaderUI currently holds open, even when the caller
+-- is a FileManager instance that has no document of its own.
+function GotaReader:getProtectedPaths()
+    local paths = {}
+    if type(self.current_path) == "string" then paths[#paths + 1] = self.current_path end
+    local reader = ReaderUI.instance
+    local open_path = reader and reader.document and reader.document.file
+    if type(open_path) == "string" and open_path ~= self.current_path then
+        paths[#paths + 1] = open_path
+    end
+    return paths
 end
 
 return GotaReader

@@ -205,7 +205,7 @@ return function(test, equal, truthy, contains)
                 },
             }, function()
                 truthy(manager:isManagedReaderPath(cache_dir .. "/raindrop_1.html.part.decoded"), "owned decoded part")
-                local _, warnings = manager:cleanupOrphanReaderFiles(active)
+                local _, warnings = manager:cleanupOrphanReaderFiles({ active })
                 equal(#warnings, 0, "cleanup warnings")
                 equal(files[cache_dir .. "/raindrop_1.html.part.decoded"], nil, "cancelled inflation removed")
                 equal(files[cache_dir .. "/raindrop_3.html"], nil, "orphan document removed")

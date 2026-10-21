@@ -337,7 +337,9 @@ function ArticleManager:cleanupManagedReaderPath(path)
     return true
 end
 
-function ArticleManager:cleanupOrphanReaderFiles(active_path)
+-- keep_paths lists documents that are open or about to be opened; their
+-- transfer siblings are kept too.
+function ArticleManager:cleanupOrphanReaderFiles(keep_paths)
     local lfs = require("libs/libkoreader-lfs")
     local cache_dir = self:getReaderCacheDir()
     if lfs.attributes(cache_dir, "mode") ~= "directory" then return 0, {} end
@@ -348,13 +350,16 @@ function ArticleManager:cleanupOrphanReaderFiles(active_path)
         return 0, { "could not enumerate Gota reader cache" }
     end
 
-    local active_canonical = type(active_path) == "string" and canonicalPath(active_path) or nil
+    local keep = {}
+    for _, path in ipairs(type(keep_paths) == "table" and keep_paths or {}) do
+        if type(path) == "string" then keep[canonicalPath(path)] = true end
+    end
     local removed_count, warnings = 0, {}
     for name in iterator_or_error, directory_state do
         if isManagedReaderName(name) then
             local path = cache_dir .. "/" .. name
             local document_path = path:gsub("%.part%.decoded$", ""):gsub("%.part$", "")
-            if canonicalPath(document_path) ~= active_canonical then
+            if not keep[canonicalPath(document_path)] then
                 local cleaned, clean_error = self:cleanupManagedReaderPath(path)
                 if cleaned then
                     removed_count = removed_count + 1
