@@ -216,6 +216,23 @@ return function(test, equal, truthy, contains)
         truthy(first and tonumber(first) <= tonumber(last), "range in order: " .. tostring(subtitle))
     end)
 
+    test("list builders label missing titles and notes without crashing", function()
+        local builder = UIBuilder:new()
+        local ok, rows = pcall(builder.buildHighlightItems, builder,
+            { items = { { note = "A thought", raindropRef = 7 } } }, function() end)
+        truthy(ok, "highlight with a note and no text: " .. tostring(rows))
+        contains(ok and rows[1].text or "", "Highlight without text", "missing text labelled")
+        contains(ok and rows[1].text or "", "Note", "note marker")
+        local raindrop_ok, raindrop_rows = pcall(builder.buildRaindropItems, builder,
+            { items = { { _id = 7 } } }, function() end, function() end)
+        truthy(raindrop_ok, "untitled article: " .. tostring(raindrop_rows))
+        contains(raindrop_ok and raindrop_rows[1].text or "", "Untitled", "missing title labelled")
+        local group_ok, group_rows = pcall(builder.buildCollectionItems, builder,
+            { groups = { { collections = { 44 } } }, roots = { { _id = 44, title = "A" } }, children = {} },
+            function() end)
+        truthy(group_ok, "untitled group: " .. tostring(group_rows))
+    end)
+
     local function rowsWithText(rows, text)
         for _, row in ipairs(rows or {}) do
             if tostring(row.text):find(text, 1, true) then return row end
@@ -269,6 +286,7 @@ return function(test, equal, truthy, contains)
         local blocked, allowed = rowsWithText(state.rows, "Viewer only"), rowsWithText(state.rows, "Mine")
         truthy(blocked, "read-only destination listed")
         equal(blocked and blocked.select_enabled, false, "read-only destination disabled")
+        equal(blocked and blocked.dim, true, "rendered dimmed by Menu")
         contains(blocked and blocked.text or "", "read-only", "reason shown")
         truthy(allowed and allowed.select_enabled ~= false, "owned destination enabled")
         Gota.resetAuthenticatedNavigation(state.fake)

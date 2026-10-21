@@ -299,7 +299,7 @@ local function flattenCollectionStructure(structure, collapsed_groups, expand_al
         for _, child in ipairs(children_by_parent[key] or {}) do markGroupedBranch(child) end
     end
 
-    for _, wrapped in ipairs(groups) do
+    for _group_index, wrapped in ipairs(groups) do
         local group = wrapped.group
         local key = tostring(group._id or group.title or wrapped.index)
         local collapsed = false
@@ -357,7 +357,7 @@ function UIBuilder:buildRaindropItems(raindrops, on_select_callback, on_hold_cal
         return items
     end
 
-    for _, raindrop in ipairs(raindrops.items) do
+    for _item_index, raindrop in ipairs(raindrops.items) do
         local title = normalizeMenuText(raindrop.title or _("Untitled"))
         local domain = normalizeMenuText(raindrop.domain)
         local excerpt = ""
@@ -418,7 +418,8 @@ function UIBuilder:buildCollectionItems(collections, on_select_callback, options
         return items
     end
     
-    -- Not "_": that name is gettext here, used below for labels.
+    -- Loop variables here are never named "_": that is gettext, and the
+    -- bodies call it for fallback labels.
     for _entry_index, entry in ipairs(flattened) do
         if entry.kind == "group" then
             local indicator = entry.informational and "• " or
@@ -445,6 +446,8 @@ function UIBuilder:buildCollectionItems(collections, on_select_callback, options
                     .. (read_only and _(" (read-only)") or ""),
                 enabled = not read_only,
                 select_enabled = not read_only,
+                -- Menu ignores "enabled"; "dim" is what greys the row out.
+                dim = read_only or nil,
                 callback = function()
                     if read_only then return end
                     on_select_callback(collection._id, title, collection)
@@ -683,7 +686,7 @@ end
 
 function UIBuilder:buildHighlightItems(response, on_select_callback)
     local items = {}
-    for _, highlight in ipairs(response and response.items or {}) do
+    for _highlight_index, highlight in ipairs(response and response.items or {}) do
         local preview, truncated = truncateUTF8ByCharacters(
             normalizeMenuText(highlight.text or _("Highlight without text")), 90)
         local details = {}
