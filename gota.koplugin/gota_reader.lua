@@ -15,9 +15,13 @@ local ReaderStyles = require("gota_reader_styles")
 local GotaReader = {
     current_path = nil,
     is_showing = false,
-    on_return_callback = nil,
+    return_target = nil,
     normalize_styles = false,
 }
+
+-- PluginLoader registers each plugin instance under its name.
+local PLUGIN_NAME = "gota"
+local MAX_TARGET_DEPTH = 16
 
 local function showError(text)
     UIManager:show(InfoMessage:new{
@@ -29,8 +33,58 @@ end
 function GotaReader:reset()
     self.current_path = nil
     self.is_showing = false
-    self.on_return_callback = nil
+    self.return_target = nil
     self.normalize_styles = false
+end
+
+-- Copy decoded JSON-like data only: closures, userdata and metatables would
+-- pin the plugin instance that opened the reader, which KOReader replaces.
+local function plainCopy(value, depth)
+    local kind = type(value)
+    if kind == "string" or kind == "number" or kind == "boolean" then return value end
+    if kind ~= "table" or depth > MAX_TARGET_DEPTH then return nil end
+    local copy = {}
+    for key, item in pairs(value) do
+        local key_kind = type(key)
+        if key_kind == "string" or key_kind == "number" then
+            copy[key] = plainCopy(item, depth + 1)
+        end
+    end
+    return copy
+end
+
+local function positiveInteger(value)
+    local number = tonumber(value)
+    if not number or number ~= number or number <= 0 or number >= 2 ^ 53 or
+       number ~= math.floor(number) then
+        return nil
+    end
+    return number
+end
+
+--[[
+    A return target describes where "Back to Gota" lands, as data resolved
+    against whichever Gota instance is alive after the reader closes:
+      { view = "offline_library" }
+      { view = "article", raindrop = <item>, source = <descriptor>, generation = <n> }
+    The article snapshot keeps returning possible without a network request;
+    loaded web-copy text is dropped so the reader does not retain it.
+]]
+local function sanitizeReturnTarget(target)
+    if type(target) ~= "table" then return nil end
+    if target.view == "offline_library" then return { view = "offline_library" } end
+    if target.view ~= "article" or type(target.raindrop) ~= "table" or
+       not positiveInteger(target.raindrop._id) then
+        return nil
+    end
+    local raindrop = plainCopy(target.raindrop, 1)
+    if type(raindrop.cache) == "table" then raindrop.cache.text = nil end
+    return {
+        view = "article",
+        raindrop = raindrop,
+        source = type(target.source) == "table" and plainCopy(target.source, 1) or nil,
+        generation = tonumber(target.generation),
+    }
 end
 
 function GotaReader:show(options)
@@ -66,7 +120,7 @@ function GotaReader:show(options)
 
     self.current_path = options.path
     self.is_showing = false
-    self.on_return_callback = options.on_return_callback
+    self.return_target = sanitizeReturnTarget(options.return_target)
     -- Callers opt in explicitly; the path or extension is never used to infer
     -- the policy, so this module stays reusable and the intent stays visible.
     self.normalize_styles = options.normalize_styles == true
@@ -176,7 +230,7 @@ end
 function GotaReader:canReturn()
     local reader = ReaderUI.instance
     return self.is_showing
-        and self.on_return_callback ~= nil
+        and self.return_target ~= nil
         and self.current_path ~= nil
         and reader ~= nil
         and reader.document ~= nil
@@ -189,12 +243,13 @@ function GotaReader:onReturn()
     end
 
     local reader = ReaderUI.instance
-    local done_callback = self.on_return_callback
+    local target = self.return_target
     self:reset()
 
     -- onHome is ReaderUI's supported path for closing the document and
-    -- restoring FileManager. Run the Gota callback on the following UI tick,
-    -- once the FileManager plugin instance has been restored.
+    -- restoring FileManager, which creates a new Gota instance. Resolve that
+    -- instance on the following tick instead of the one that opened the
+    -- reader: its widgets, settings snapshot and article manager are gone.
     UIManager:nextTick(function()
         local ok, err = pcall(function()
             reader:onHome()
@@ -205,9 +260,15 @@ function GotaReader:onReturn()
         end
 
         UIManager:nextTick(function()
-            local callback_ok, callback_err = pcall(done_callback)
-            if not callback_ok then
-                logger.err("GotaReader: return callback failed:", callback_err)
+            local loader_ok, PluginLoader = pcall(require, "pluginloader")
+            local owner = loader_ok and PluginLoader and PluginLoader:getPluginInstance(PLUGIN_NAME)
+            if not owner or type(owner.resumeFromReader) ~= "function" then
+                logger.warn("GotaReader: no active Gota instance to return to")
+                return
+            end
+            local resume_ok, resume_err = pcall(owner.resumeFromReader, owner, target)
+            if not resume_ok then
+                logger.err("GotaReader: return failed:", resume_err)
             end
         end)
     end)

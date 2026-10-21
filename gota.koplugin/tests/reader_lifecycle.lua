@@ -66,7 +66,7 @@ return function(test, equal, truthy, contains)
         truthy(GotaReader:show({
             path = path,
             normalize_styles = true,
-            on_return_callback = function() end,
+            return_target = { view = "offline_library" },
         }), "reader opened")
     end
 
@@ -234,5 +234,154 @@ return function(test, equal, truthy, contains)
         GotaReader.showFolder = previous
         if not ok then error(failure, 0) end
         equal(requested, "/exports/7_Item.html", "adapter receives the export")
+    end)
+
+    local function withPluginInstance(instance, body)
+        local previous = package.loaded["pluginloader"]
+        package.loaded["pluginloader"] = {
+            getPluginInstance = function(_, name) return name == "gota" and instance or nil end,
+        }
+        local old_instance = ReaderUI.instance
+        local ok, failure = pcall(body)
+        package.loaded["pluginloader"] = previous
+        ReaderUI.instance = old_instance
+        GotaReader:reset()
+        if not ok then error(failure, 0) end
+    end
+
+    local function openForReturn(target)
+        GotaReader:reset()
+        ReaderUI.instance = nil
+        ReaderUI.showReader = function(self, file, _, _, _, after_open)
+            self.instance = { document = { file = file }, onHome = function() end }
+            after_open()
+        end
+        return GotaReader:show({ path = "/exports/7_Item.html", return_target = target })
+    end
+
+    test("return resumes on the active Gota instance, not the opener", function()
+        local old, new = {}, {}
+        old.resumeFromReader = function(_, target) old.resumed = target end
+        new.resumeFromReader = function(_, target) new.resumed = target end
+        withPluginInstance(new, function()
+            truthy(openForReturn({
+                view = "article", raindrop = { _id = 7, title = "Item" },
+                source = { kind = "collection", collection_id = 5, collection_name = "Inbox", page = 2 },
+            }), "reader opened")
+            equal(GotaReader:canReturn(), true, "Back to Gota offered")
+            equal(GotaReader:onReturn(), true, "return started")
+            equal(new.resumed and new.resumed.raindrop._id, 7, "article resumed")
+            equal(new.resumed and new.resumed.source.page, 2, "source page kept")
+            equal(old.resumed, nil, "stale opener untouched")
+        end)
+    end)
+
+    test("return target keeps only plain data", function()
+        withPluginInstance(nil, function()
+            openForReturn({
+                view = "article",
+                raindrop = { _id = 7, title = "Item", cache = { status = "ready", text = "large body" } },
+                source = { kind = "collection", collection_id = 5, page = 0, reload = function() end },
+            })
+            local target = GotaReader.return_target
+            equal(target.source.reload, nil, "closure dropped")
+            equal(target.raindrop.cache.text, nil, "loaded text not retained")
+            equal(target.raindrop.cache.status, "ready", "metadata kept")
+        end)
+    end)
+
+    test("a malformed return target disables Back to Gota", function()
+        withPluginInstance(nil, function()
+            openForReturn({ view = "article", raindrop = { _id = "x" } })
+            equal(GotaReader:canReturn(), false, "invalid article id")
+            openForReturn({ view = "elsewhere" })
+            equal(GotaReader:canReturn(), false, "unknown view")
+            openForReturn(function() end)
+            equal(GotaReader:canReturn(), false, "callbacks are not accepted")
+        end)
+    end)
+
+    test("return without a live Gota instance does not fail", function()
+        withPluginInstance(nil, function()
+            openForReturn({ view = "offline_library" })
+            equal(GotaReader:onReturn(), true, "reader still closed")
+        end)
+    end)
+
+    local function fakeGota(generation)
+        local calls = {}
+        local fake = setmetatable({
+            calls = calls, widgets = {},
+            settings = { getSessionGeneration = function() return generation end },
+            showRaindrops = function(_, ...) calls.raindrops = { ... } end,
+            searchRaindrops = function(_, ...) calls.search = { ... } end,
+            showHighlights = function(_, ...) calls.highlights = { ... } end,
+            showRaindropContent = function(_, raindrop, context) calls.content = { raindrop, context } end,
+            showOfflineLibrary = function() calls.library = true end,
+            notify = function(_, text) calls.notice = text end,
+            resetAuthenticatedNavigation = function() end,
+        }, { __index = Gota })
+        return fake, calls
+    end
+
+    test("source descriptors rebuild an equivalent context", function()
+        local fake, calls = fakeGota(1)
+        local collection = fake:buildCollectionSourceContext(5, "Inbox", 2)
+        local rebuilt = fake:sourceContextFromDescriptor(collection.descriptor)
+        equal(rebuilt.kind, "collection", "collection kind")
+        equal(rebuilt.page, 2, "collection page")
+        rebuilt.reload(7)
+        equal(table.concat({ tostring(calls.raindrops[1]), calls.raindrops[2],
+            tostring(calls.raindrops[3]), tostring(calls.raindrops[4]) }, "|"), "5|Inbox|2|7", "collection reload")
+
+        local search = fake:buildSearchSourceContext("word", 1, { tag = "t" }, { sort = "title" })
+        local rebuilt_search = fake:sourceContextFromDescriptor(search.descriptor)
+        rebuilt_search.reload(9)
+        equal(calls.search[1], "word", "search term")
+        equal(calls.search[2], 1, "search page")
+        equal(calls.search[3].tag, "t", "search filters")
+        equal(calls.search[4].sort, "title", "search context")
+        equal(calls.search[5], 9, "search focus")
+
+        local highlights = fake:buildHighlightsSourceContext(nil, "All highlights", 3)
+        local rebuilt_highlights = fake:sourceContextFromDescriptor(highlights.descriptor)
+        rebuilt_highlights.reload(4)
+        equal(calls.highlights[2], "All highlights", "highlights name")
+        equal(calls.highlights[3], 3, "highlights page")
+        equal(fake:sourceContextFromDescriptor({ kind = "other" }), nil, "unknown kind")
+        equal(fake:sourceContextFromDescriptor(nil), nil, "no descriptor")
+    end)
+
+    test("resume opens the article snapshot with a rebuilt source", function()
+        local fake, calls = fakeGota(1)
+        fake:resumeFromReader({
+            view = "article", generation = 1, raindrop = { _id = 7, title = "Item" },
+            source = { kind = "collection", collection_id = 5, collection_name = "Inbox", page = 2 },
+        })
+        equal(calls.content and calls.content[1].title, "Item", "article snapshot shown")
+        equal(calls.content and calls.content[2].page, 2, "source context rebuilt")
+    end)
+
+    test("resume after an account change does not reopen the old article", function()
+        local fake, calls = fakeGota(2)
+        fake:resumeFromReader({ view = "article", generation = 1, raindrop = { _id = 7 } })
+        equal(calls.content, nil, "old account article not shown")
+        truthy(calls.notice, "user told why")
+    end)
+
+    test("offline library return reopens the library", function()
+        local fake, calls = fakeGota(1)
+        fake:resumeFromReader({ view = "offline_library" })
+        equal(calls.library, true, "library shown")
+    end)
+
+    test("article reader actions hand over a return target, not a closure", function()
+        local fake = fakeGota(3)
+        local target = fake:readerReturnTarget({ _id = 7, title = "Item" },
+            fake:buildCollectionSourceContext(5, "Inbox", 2))
+        equal(target.view, "article", "article view")
+        equal(target.raindrop._id, 7, "article snapshot")
+        equal(target.source.collection_id, 5, "source descriptor")
+        equal(target.generation, 3, "account generation")
     end)
 end

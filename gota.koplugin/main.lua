@@ -249,6 +249,8 @@ function Gota:buildCollectionSourceContext(collection_id, collection_name, page)
     return {
         kind = "collection",
         page = captured_page,
+        descriptor = { kind = "collection", collection_id = captured_id,
+            collection_name = captured_name, page = captured_page },
         reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:showRaindrops(captured_id, captured_name, captured_page, focus_raindrop_id)
         end),
@@ -263,6 +265,8 @@ function Gota:buildSearchSourceContext(term, page, filters, search_context)
     return {
         kind = "search",
         page = captured_page,
+        descriptor = { kind = "search", term = captured_term, page = captured_page,
+            filters = copyPlainTable(captured_filters), search_context = copyPlainTable(captured_context) },
         reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:searchRaindrops(captured_term, captured_page, captured_filters,
                 captured_context, focus_raindrop_id)
@@ -277,10 +281,60 @@ function Gota:buildHighlightsSourceContext(collection_id, collection_name, page)
     return {
         kind = "highlights",
         page = captured_page,
+        descriptor = { kind = "highlights", collection_id = captured_id,
+            collection_name = captured_name, page = captured_page },
         reload = Gota.networkCallback(self, function(focus_raindrop_id)
             self:showHighlights(captured_id, captured_name, captured_page, focus_raindrop_id)
         end),
     }
+end
+
+-- Rebuild a SourceContext on this instance from the plain descriptor a
+-- previous instance stored before handing the screen to ReaderUI.
+function Gota:sourceContextFromDescriptor(descriptor)
+    if type(descriptor) ~= "table" then return nil end
+    if descriptor.kind == "collection" then
+        return self:buildCollectionSourceContext(descriptor.collection_id,
+            descriptor.collection_name, descriptor.page)
+    elseif descriptor.kind == "search" then
+        return self:buildSearchSourceContext(descriptor.term, descriptor.page,
+            descriptor.filters, descriptor.search_context)
+    elseif descriptor.kind == "highlights" then
+        return self:buildHighlightsSourceContext(descriptor.collection_id,
+            descriptor.collection_name, descriptor.page)
+    end
+    return nil
+end
+
+-- Where "Back to Gota" lands after reading this article. Data only: KOReader
+-- replaces this plugin instance while the reader is open.
+function Gota:readerReturnTarget(raindrop, source_context)
+    return {
+        view = "article",
+        raindrop = raindrop,
+        source = source_context and source_context.descriptor or nil,
+        generation = self.settings and self.settings.getSessionGeneration
+            and self.settings:getSessionGeneration() or nil,
+    }
+end
+
+-- Called by GotaReader on the instance that is alive after the reader closed.
+function Gota:resumeFromReader(target)
+    if type(target) ~= "table" then return end
+    if target.view == "offline_library" then
+        self:showOfflineLibrary()
+        return
+    end
+    if target.view ~= "article" or type(target.raindrop) ~= "table" then return end
+    local generation = self.settings and self.settings.getSessionGeneration
+        and self.settings:getSessionGeneration() or nil
+    if target.generation ~= nil and target.generation ~= generation then
+        self:notify(_("The account changed; reopen the article before continuing"), 4)
+        return
+    end
+    Gota.networkCallback(self, function()
+        self:showRaindropContent(target.raindrop, self:sourceContextFromDescriptor(target.source))
+    end)()
 end
 
 function Gota:handleSavedFile(filename, options)
@@ -321,7 +375,7 @@ function Gota:showSavedFileActions(filename, options)
                     self.article_manager:openSavedFile(filename, {
                         normalize_styles = options.normalize_styles == true,
                         before_open_callback = function() self:closeAllWidgets() end,
-                        on_return_callback = refresh,
+                        return_target = options.return_target,
                     })
                 end,
             },
@@ -569,7 +623,7 @@ function Gota:showOfflineLibrary()
                 self.article_manager:openSavedFile(saved.path, {
                     normalize_styles = not saved.annotated,
                     before_open_callback = function() self:closeAllWidgets() end,
-                    on_return_callback = function() self:showOfflineLibrary() end,
+                    return_target = { view = "offline_library" },
                 })
             end,
         }
@@ -1001,16 +1055,17 @@ function Gota:showRaindropContent(raindrop, source_context)
     local current_collection_id = raindrop.collection and raindrop.collection["$id"]
     local in_trash = tonumber(current_collection_id) == -99
     local offline_state = self.article_manager:getOfflineState(raindrop)
-    local return_to_article = Gota.networkCallback(self, function(rd)
-        self:showRaindropContent(rd or raindrop, source_context)
+    local return_to_article = Gota.networkCallback(self, function()
+        self:showRaindropContent(raindrop, source_context)
     end)
+    local reader_return = Gota.readerReturnTarget(self, raindrop, source_context)
     local article_callbacks = {
         continue_reading = function()
             -- Deliberately independent of cache_available: the copy is on disk.
             self.article_manager:openOfflineCopy(
                 raindrop,
                 function() self:closeAllWidgets() end,
-                return_to_article
+                reader_return
             )
         end,
         open_reader = function()
@@ -1018,7 +1073,7 @@ function Gota:showRaindropContent(raindrop, source_context)
                 self.article_manager:openInReader(
                     raindrop,
                     function() self:closeAllWidgets() end,
-                    return_to_article
+                    reader_return
                 )
             else
                 self:notify(_("Content is not available yet"))
@@ -1055,6 +1110,7 @@ function Gota:showRaindropContent(raindrop, source_context)
             self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
                 normalize_styles = true,
                 on_return = return_to_article,
+                return_target = reader_return,
             })
         end,
         save_html_with_notes = function()
@@ -1062,6 +1118,7 @@ function Gota:showRaindropContent(raindrop, source_context)
                 -- Gota authors this document; its own stylesheet must survive.
                 normalize_styles = false,
                 on_return = return_to_article,
+                return_target = reader_return,
             })
         end,
         show_link = function()
@@ -1134,6 +1191,7 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
         self:closeWidget("text_viewer")
         self:showRaindropContent(raindrop, source_context)
     end)
+    local reader_return = Gota.readerReturnTarget(self, raindrop, source_context)
 
     local viewer_callbacks = {
         close = function()
@@ -1143,7 +1201,7 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
             self.article_manager:openInReader(
                 raindrop,
                 function() self:closeAllWidgets() end,
-                return_to_article
+                reader_return
             )
         end,
         show_link = function()
@@ -1154,12 +1212,14 @@ function Gota:showRaindropCachedContent(raindrop, source_context)
             self:handleSavedFile(self.article_manager:downloadHTML(raindrop), {
                 normalize_styles = true,
                 on_return = return_to_article,
+                return_target = reader_return,
             })
         end,
         save_html_with_notes = function()
             self:handleSavedFile(self.article_manager:downloadHTMLWithNotes(raindrop), {
                 normalize_styles = false,
                 on_return = return_to_article,
+                return_target = reader_return,
             })
         end,
     }

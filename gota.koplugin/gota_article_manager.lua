@@ -220,11 +220,11 @@ function ArticleManager:openSavedFile(path, options)
         path = path,
         normalize_styles = options.normalize_styles == true,
         before_open_callback = options.before_open_callback,
-        on_return_callback = options.on_return_callback,
+        return_target = options.return_target,
     }) == true
 end
 
-function ArticleManager:openOfflineCopy(raindrop, close_all_callback, on_return_callback)
+function ArticleManager:openOfflineCopy(raindrop, close_all_callback, return_target)
     local state = self:getOfflineState(raindrop)
     if not state then
         self.callbacks.notify(_("The offline copy is no longer available; download it again"))
@@ -235,9 +235,7 @@ function ArticleManager:openOfflineCopy(raindrop, close_all_callback, on_return_
         -- An annotated export is Gota's own document, not a publisher's page.
         normalize_styles = not state.annotated,
         before_open_callback = close_all_callback,
-        on_return_callback = function()
-            if on_return_callback then on_return_callback(raindrop) end
-        end,
+        return_target = return_target,
     })
 end
 
@@ -507,7 +505,7 @@ end
 
 -- ========== OPEN IN READER ==========
 
-function ArticleManager:openInReader(raindrop, close_all_callback, on_return_callback)
+function ArticleManager:openInReader(raindrop, close_all_callback, return_target)
     if not self:getCacheState(raindrop).metadata_available then
         self.callbacks.notify(_("No content available"))
         return false
@@ -559,10 +557,7 @@ function ArticleManager:openInReader(raindrop, close_all_callback, on_return_cal
         -- first render. The downloaded file itself stays untouched.
         normalize_styles = true,
         before_open_callback = close_all_callback,
-        on_return_callback = function()
-            logger.dbg("ArticleManager: Usuario volvió del lector")
-            on_return_callback(raindrop)
-        end,
+        return_target = return_target,
     }) == true
 
     if opened then

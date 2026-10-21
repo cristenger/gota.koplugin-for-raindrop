@@ -2119,9 +2119,13 @@ test("ReaderUI open uses the current positional signature", function()
         after_open()
     end
     local returned = false
+    local previous_loader = package.loaded["pluginloader"]
+    package.loaded["pluginloader"] = { getPluginInstance = function()
+        return { resumeFromReader = function() returned = true end }
+    end }
     truthy(GotaReader:show({
         path = "/tmp/article.html",
-        on_return_callback = function() returned = true end,
+        return_target = { view = "offline_library" },
     }), "reader open")
     equal(reader_calls.show[1], "/tmp/article.html", "file argument")
     equal(reader_calls.show[3], nil, "seamless argument")
@@ -2130,7 +2134,8 @@ test("ReaderUI open uses the current positional signature", function()
     equal(GotaReader:canReturn(), true, "return availability")
     equal(GotaReader:onReturn(), true, "return action")
     equal(reader_calls.home, true, "ReaderUI:onHome")
-    equal(returned, true, "return callback")
+    package.loaded["pluginloader"] = previous_loader
+    equal(returned, true, "active instance resumed")
 end)
 
 test("ReaderUI switch uses the current positional signature", function()
@@ -2144,7 +2149,7 @@ test("ReaderUI switch uses the current positional signature", function()
         end,
     }
     ReaderUI.instance = instance
-    truthy(GotaReader:show({ path = "/tmp/article.html", on_return_callback = noop }))
+    truthy(GotaReader:show({ path = "/tmp/article.html", return_target = { view = "offline_library" } }))
     equal(reader_calls.switch[1], "/tmp/article.html", "file argument")
     equal(reader_calls.switch[2], nil, "seamless argument")
     equal(type(reader_calls.switch[3]), "function", "after-open argument")
@@ -2161,7 +2166,7 @@ test("ReaderUI provider failure leaves Gota navigation open", function()
     local opened = GotaReader:show({
         path = "/tmp/article.html",
         before_open_callback = function() closed = true end,
-        on_return_callback = noop,
+        return_target = { view = "offline_library" },
     })
     registry.getProvider = original_get_provider
     equal(opened, false, "reader result")
@@ -2208,7 +2213,7 @@ local function armGotaReader(path, normalize, defer_after_open)
     local opened = GotaReader:show({
         path = path,
         normalize_styles = normalize,
-        on_return_callback = noop,
+        return_target = { view = "offline_library" },
     })
     return opened, pending
 end
@@ -2389,6 +2394,32 @@ test("plugin init registers Dispatcher actions and settings ownership", function
     local menu = {}
     Gota:addToMainMenu(menu)
     equal(menu.gota.sorting_hint, nil, "legacy top-level menu placement")
+end)
+
+test("plugin init releases a finished reader request before cleaning the cache", function()
+    local keep
+    package.loaded["gota_article_manager"] = { new = function()
+        return {
+            setSettings = noop,
+            cleanupOrphanReaderFiles = function(_, paths) keep = paths; return 0, {} end,
+        }
+    end }
+    package.loaded["main"] = nil
+    local Gota = require("main")
+    local previous_instance = ReaderUI.instance
+    -- Native reload: the new ReaderUI owner shows the requested article.
+    armGotaReader("/tmp/raindrop_7.html", true)
+    ReaderUI.instance = nil
+    Gota.ui = { document = { file = "/tmp/raindrop_7.html" }, menu = { registerToMainMenu = noop } }
+    Gota:init()
+    equal(GotaReader.current_path, "/tmp/raindrop_7.html", "reload keeps the request")
+    equal(keep and keep[1], "/tmp/raindrop_7.html", "own document kept")
+    -- Home: the FileManager owner has no document and the reader is gone.
+    Gota.ui = { menu = { registerToMainMenu = noop } }
+    Gota:init()
+    equal(GotaReader.current_path, nil, "request released")
+    equal(keep and #keep, 0, "nothing protected once the reader is gone")
+    ReaderUI.instance = previous_instance
 end)
 
 test("PreRenderDocument applies styles before the after-open state", function()
@@ -2581,17 +2612,16 @@ test("reading a saved file keeps a way back into Gota", function()
         closeAllWidgets = function() torn_down = true end,
         article_manager = { openSavedFile = function(_, path, opts) opened = { path, opts } end },
     }
-    local returned = false
+    local target = { view = "article", raindrop = { _id = 7 } }
     local buttons = savedFileDialog(fake, "/tmp/articles/7_Item.html",
-        { on_return = function() returned = true end })
+        { on_return = function() end, return_target = target })
     truthy(buttons["Read now"], "read-now button present")
     buttons["Read now"].callback()
     equal(opened[1], "/tmp/articles/7_Item.html", "opens the file that was just saved")
-    -- Without a return callback GotaReader:canReturn() is false and the
+    -- Without a return target GotaReader:canReturn() is false and the
     -- "Back to Gota" entry never appears, stranding the user.
-    equal(type(opened[2].on_return_callback), "function", "return path provided")
-    opened[2].on_return_callback()
-    equal(returned, true, "returning refreshes the article screen")
+    equal(opened[2].return_target, target, "return path provided")
+    equal(opened[2].on_return_callback, nil, "no closure over this instance")
     -- Teardown must be deferred to before_open_callback, which GotaReader only
     -- runs once the file and provider checks pass.
     equal(torn_down, false, "UI not destroyed before the reader accepts the file")
