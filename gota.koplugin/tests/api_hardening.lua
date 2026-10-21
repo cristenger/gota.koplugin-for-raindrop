@@ -77,6 +77,78 @@ return function(test, equal, truthy, contains)
         equal(api.cache_entry_count, 1, "budget evicts older cyclic entries")
     end)
 
+    test("server wait is reported uncapped", function()
+        equal(API.serverWaitSeconds({ ["Retry-After"] = "120" }, 1000), 120, "Retry-After seconds")
+        equal(API.serverWaitSeconds({ ["X-RateLimit-Reset"] = "1060" }, 1000), 60, "documented UTC reset")
+        equal(API.serverWaitSeconds({ ["X-RateLimit-Reset"] = "990" }, 1000), 1, "elapsed reset waits briefly")
+        equal(API.serverWaitSeconds({}, 1000), nil, "no rate-limit headers")
+    end)
+
+    test("429 message shows the server wait, not the worker budget", function()
+        API.clearRateLimit()
+        local api = API:new(settings())
+        function api:_performRequest()
+            return '{"result":false}', nil, 429, { ["Retry-After"] = "120" }
+        end
+        local _, err = api:makeRequest("/user")
+        contains(err, "120", "real server wait")
+        API.clearRateLimit()
+    end)
+
+    -- The executor runs in a forked subprocess whose memory is discarded, so
+    -- anything the request records in module state must reach the parent
+    -- through the returned values. Simulate that loss after each task.
+    local function subprocessExecutor(counter)
+        return function(task)
+            counter.runs = counter.runs + 1
+            local results = { n = 0 }
+            local function pack(...) return { n = select("#", ...), ... } end
+            results = pack(task())
+            API.clearRateLimit()
+            return unpack(results, 1, results.n)
+        end
+    end
+
+    test("a recorded rate limit blocks the next request without network", function()
+        API.clearRateLimit()
+        local api = API:new(settings())
+        local counter, calls = { runs = 0 }, 0
+        function api:makeRequest()
+            calls = calls + 1
+            return nil, "rate limited", 429, { ["Retry-After"] = "120" }
+        end
+        api.sleep = function() end
+        api:setRequestExecutor(subprocessExecutor(counter))
+        local first = api:makeRequestWithRetry("/user")
+        equal(first, nil, "rate limited")
+        local second, err = api:makeRequestWithRetry("/collections")
+        equal(second, nil, "blocked")
+        equal(calls, 1, "no second HTTP request")
+        equal(counter.runs, 1, "no second subprocess")
+        contains(err, "rate limit", "explains the wait")
+        API.clearRateLimit()
+    end)
+
+    test("a 429 on a mutation is not retried and still sets the cooldown", function()
+        API.clearRateLimit()
+        local api = API:new(settings())
+        local calls = 0
+        function api:makeRequest()
+            calls = calls + 1
+            return nil, "rate limited", 429, { ["X-RateLimit-Reset"] = tostring(os.time() + 60) }
+        end
+        api.sleep = function() end
+        api:setRequestExecutor(subprocessExecutor({ runs = 0 }))
+        equal(api:makeRequestWithRetry("/raindrop/1", "PUT", { important = true }), nil, "write failed")
+        equal(calls, 1, "write sent once")
+        equal(api:makeRequestWithRetry("/user"), nil, "read blocked")
+        equal(calls, 1, "no request during the cooldown")
+        API.clearRateLimit()
+        api:makeRequestWithRetry("/user")
+        equal(calls, 2, "cleared cooldown allows requests")
+        API.clearRateLimit()
+    end)
+
     test("normal JSON has a default byte limit before parsing", function()
         local api = API:new(settings())
         local limit

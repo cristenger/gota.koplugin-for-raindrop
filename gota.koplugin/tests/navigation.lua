@@ -42,6 +42,15 @@ return function(test, equal, truthy, contains)
         contains(subtitle, "Sort: title A-Z", "subtitle shows actual selected order")
     end)
 
+    test("account reset clears the rate-limit cooldown", function()
+        local cleared = false
+        local fake = { widgets = {}, closeWidget = function() end,
+            settings = { getSessionGeneration = function() return 1 end },
+            api = { clearCache = function() end, clearRateLimit = function() cleared = true end } }
+        Gota.resetAuthenticatedNavigation(fake)
+        equal(cleared, true, "new account starts without the old cooldown")
+    end)
+
     test("saved library opens and returns without account or network calls", function()
         local items, opened, reloaded= nil, nil, 0
         local fake = setmetatable({widgets={}, closeWidget=function() end, closeAllWidgets=function() end,

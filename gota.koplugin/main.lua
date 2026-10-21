@@ -213,6 +213,7 @@ end
 
 function Gota:resetAuthenticatedNavigation()
     self.api:clearCache()
+    if self.api.clearRateLimit then self.api:clearRateLimit() end
     self.last_advanced_search = nil
     self.collapsed_collection_groups = {}
     self.session_generation = self.settings.getSessionGeneration

@@ -19,6 +19,10 @@ local API = {}
 local MAX_REDIRECTS = 3
 local MAX_RETRY_DELAY = 30
 local MAX_BLOCKING_RETRY_DELAY = 3
+-- Epoch second before which Raindrop asked not to be called again. Shared by
+-- every API instance in the UI process (FileManager and ReaderUI each create
+-- one); requests run in forked workers, so only the parent may record it.
+local rate_limited_until = 0
 local MAX_PER_PAGE = 50
 local DEFAULT_DECOMPRESSED_RESPONSE_BYTES = 16 * 1024 * 1024
 local DEFAULT_JSON_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -410,6 +414,19 @@ local function rateLimitRemaining(headers)
         or getHeader(headers, "RateLimit-Remaining")
 end
 
+-- Seconds Raindrop asks the client to wait, without the worker's sleep cap.
+-- Raindrop documents X-RateLimit-Reset as a UTC epoch; Retry-After is honored
+-- when present although it is not part of the published contract.
+local function serverWaitSeconds(headers, now)
+    now = tonumber(now) or os.time()
+    local retry_after = tonumber(getHeader(headers, "Retry-After"))
+    if retry_after and retry_after >= 0 then return math.max(retry_after, 1) end
+    local reset_at = tonumber(getHeader(headers, "X-RateLimit-Reset")
+        or getHeader(headers, "RateLimit-Reset"))
+    if reset_at then return math.max(reset_at - now, 1) end
+    return nil
+end
+
 local function retryDelay(attempt, status, headers)
     local base_delay = math.min(0.5 * (2 ^ math.max(0, attempt - 1)), 4)
     if status ~= 429 then
@@ -433,12 +450,25 @@ local function retryDelay(attempt, status, headers)
     return math.min(math.max(base_delay, 1), MAX_RETRY_DELAY)
 end
 
+-- Seconds left in a cooldown Raindrop requested, or nil when requests may go out.
+function API.rateLimitWait(now)
+    local remaining = rate_limited_until - (tonumber(now) or os.time())
+    return remaining > 0 and remaining or nil
+end
+
+-- A new account has its own limit. Callable as API.clearRateLimit() or
+-- api:clearRateLimit(); the instance argument is ignored.
+function API.clearRateLimit()
+    rate_limited_until = 0
+end
+
 -- Pure helpers are public so they can be unit-tested without a KOReader runtime.
 API.urlEncode = urlEncode
 API.buildSearchExpression = buildSearchExpression
 API.isSafeHttpsUrl = isSafeHttpsUrl
 API.getHeader = getHeader
 API.retryDelay = retryDelay
+API.serverWaitSeconds = serverWaitSeconds
 API.normalizePagination = normalizePagination
 API.normalizeDateExpression = normalizeDateExpression
 API.boundedSink = boundedSink
@@ -833,8 +863,9 @@ function API:makeRequest(endpoint, method, body, request_options)
                 message = message .. _(" (rate limit remaining: ") .. tostring(remaining) .. ")"
             end
             if status == 429 then
+                local wait = serverWaitSeconds(headers) or retryDelay(1, status, headers)
                 message = message .. _(" (retry after ") ..
-                    tostring(math.ceil(retryDelay(1, status, headers))) .. _(" seconds)")
+                    tostring(math.ceil(wait)) .. _(" seconds)")
             end
             return nil, message, status, headers
         end
@@ -851,6 +882,9 @@ function API:_makeRequestWithRetry(endpoint, method, body, max_retries, request_
         max_retries = math.max(1, math.floor(tonumber(max_retries) or 3))
     end
     local last_error
+    -- Returned as a third value on failure so the parent process can record
+    -- the cooldown (see makeRequestWithRetry).
+    local retry_at
 
     for attempt = 1, max_retries do
         if attempt > 1 then
@@ -863,6 +897,10 @@ function API:_makeRequestWithRetry(endpoint, method, body, max_retries, request_
             return result, nil
         end
         last_error = err
+        if status == 429 then
+            local wait = serverWaitSeconds(headers)
+            retry_at = wait and os.time() + math.ceil(wait) or nil
+        end
 
         if not is_read and (transient_transport_error == true or
             (status and status >= 500 and status <= 599)) then
@@ -884,7 +922,7 @@ function API:_makeRequestWithRetry(endpoint, method, body, max_retries, request_
         -- return control so the user can retry later; the standalone API also
         -- remains usable without an asynchronous executor.
         if delay > MAX_BLOCKING_RETRY_DELAY then
-            return nil, tostring(err) .. _("; please retry later")
+            return nil, tostring(err) .. _("; please retry later"), retry_at
         end
         logger.warn("Gota API: transient error; retrying in", delay, "seconds:", err)
         local sleep_ok, sleep_error = pcall(self.sleep, delay)
@@ -893,21 +931,27 @@ function API:_makeRequestWithRetry(endpoint, method, body, max_retries, request_
         end
     end
 
-    return nil, _("Failed after ") .. tostring(max_retries) .. _(" attempts: ") .. tostring(last_error)
+    return nil, _("Failed after ") .. tostring(max_retries) .. _(" attempts: ") .. tostring(last_error),
+        retry_at
 end
 
 function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
     method = tostring(method or "GET"):upper()
     self:_synchronizeSession()
     local session_generation = self.session_generation
-    local result, err
+    local cooldown = API.rateLimitWait()
+    if cooldown then
+        -- Nothing is sent, so this is safe for writes too.
+        return nil, string.format(_("Raindrop rate limit reached. Try again in %d seconds."), cooldown)
+    end
+    local result, err, retry_at
     if self.request_executor then
         local security_info
         local executor_ok
-        executor_ok, result, err, security_info = pcall(self.request_executor, function()
-            local value, request_error = self:_makeRequestWithRetry(
+        executor_ok, result, err, security_info, retry_at = pcall(self.request_executor, function()
+            local value, request_error, request_retry_at = self:_makeRequestWithRetry(
                 endpoint, method, body, max_retries, request_options)
-            return value, request_error, self.tls:getSecurityInfo()
+            return value, request_error, self.tls:getSecurityInfo(), request_retry_at
         end, {
             endpoint = endpoint,
             method = method,
@@ -922,8 +966,11 @@ function API:makeRequestWithRetry(endpoint, method, body, max_retries, request_o
         end
         if type(security_info) == "table" then self.transport_security_info = security_info end
     else
-        result, err = self:_makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
+        result, err, retry_at = self:_makeRequestWithRetry(endpoint, method, body, max_retries, request_options)
         self.transport_security_info = self.tls:getSecurityInfo()
+    end
+    if result == nil and tonumber(retry_at) then
+        rate_limited_until = math.max(rate_limited_until, tonumber(retry_at))
     end
     if method ~= "GET" and method ~= "HEAD" then
         -- A response can be lost after the server commits a change. Discard

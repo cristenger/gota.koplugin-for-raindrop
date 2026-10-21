@@ -881,6 +881,7 @@ test("long rate-limit windows do not freeze the UI thread", function()
     equal(attempts, 1, "attempt count")
     equal(slept, false, "sleep")
     contains(err, "retry later", "retry guidance")
+    API.clearRateLimit()
 end)
 
 test("HTTPS requests bypass and restore KOReader's unsupported HTTP proxy", function()
