@@ -643,6 +643,16 @@ test("find classifies a marked canonical file as annotated", function()
     equal(original, false, "an unmarked page stays a publisher copy")
 end)
 
+test("a canonical hit differing only in case is still checked for the export marker", function()
+    -- FAT/exFAT e-reader storage is case-insensitive: renaming bookmark 7 to
+    -- "Read_Notes" makes "7_Read_Notes.html" resolve to "7_Read_notes.html".
+    local dir = "/tmp/exports"
+    local lfs = offlineLfs(dir, { ["7_Read_Notes.html"] = 10 })
+    local marked = function() return '<meta name="generator" content="Gota annotated export">' end
+    local _, annotated = OfflineLibrary.find(dir, 7, "Read_Notes", lfs, { read_header = marked })
+    equal(annotated, true, "marker found regardless of name case")
+end)
+
 test("an annotated export is still readable when it is the only copy", function()
     -- A title that sanitizes to something ending in "_notes" (for example
     -- "Release notes") must not make its own copy invisible.

@@ -47,6 +47,7 @@ end
 -- something ending in "_notes" ("Release notes") produces the same shape. So
 -- this ranks candidates rather than discarding them outright.
 local function isAnnotatedExport(name)
+    name = name:lower()
     return name:match("_notes%.html$") ~= nil
         or name:match("_notes_%d+%.html$") ~= nil
 end
@@ -81,8 +82,10 @@ end
     reachable instead of invisible.
 
     The canonical name can itself be an older export: bookmark 7 exported as
-    "7_Read_notes.html" and later renamed to "Read_notes". The file name cannot
-    tell them apart, so such a hit is classified by Gota's export marker.
+    "7_Read_notes.html" and later renamed to "Read_notes" (or "Read_Notes" on
+    the case-insensitive FAT/exFAT storage of most e-readers). The file name
+    cannot tell them apart, so every canonical hit is classified by Gota's
+    export marker, a bounded header read.
     options.read_header is an injectable reader for the dependency-free suite.
 ]]
 function OfflineLibrary.find(dir, safe_id, safe_title, lfs, options)
@@ -98,9 +101,8 @@ function OfflineLibrary.find(dir, safe_id, safe_title, lfs, options)
         -- This is the exact name downloadHTML writes, even when the article's
         -- own title ends in "_notes"; only the export marker overrides that.
         if isFile(lfs, canonical_path) then
-            local annotated = isAnnotatedExport(canonical_name) and
+            return canonical_path,
                 OfflineLibrary.isAnnotatedFile(canonical_path, options and options.read_header)
-            return canonical_path, annotated == true
         end
     end
 

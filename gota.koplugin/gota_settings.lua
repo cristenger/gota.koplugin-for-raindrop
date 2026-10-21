@@ -178,6 +178,8 @@ function Settings:save()
 
     -- LuaSettings:flush() ignores util.writeToFile's result and returns self,
     -- so a failed open is silent. Read the file back before reporting success.
+    -- open() falls back to gota.lua.old, so an unchanged save can pass while
+    -- only the backup holds the values; the next start reads that backup too.
     local reread_ok, written = pcall(LuaSettings.open, LuaSettings, self.settings_path)
     if not reread_ok or not written then
         logger.err("Gota Settings: could not verify saved configuration")
