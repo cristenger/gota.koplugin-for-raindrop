@@ -59,7 +59,7 @@
 
 ### Validation and open gates
 
-- 234 regression cases pass with the bundled LuaJIT runtime, including KOReader-contract cases for reader reload, return and folder navigation, `TextViewer` options and silent settings write failures. Coverage includes session isolation, cancellation of composite calls, bounded JSON/cache, local library, HTML structure and isolated gettext.
+- 235 regression cases pass with the bundled LuaJIT runtime, including KOReader-contract cases for reader reload, return and folder navigation, `TextViewer` options and silent settings write failures. Coverage includes session isolation, cancellation of composite calls, bounded JSON/cache, local library, HTML structure and isolated gettext.
 - Real Trapper yields while a subprocess runs and cancellation aborts the parent flow. Real gettext loads Spanish and regional fallback without altering the core dictionary.
 - Real LuaSec accepts a trusted local certificate and rejects a mismatched hostname and an unknown CA before sending HTTP. A token-free public Raindrop request returned 401 with verified TLS; an expired public certificate was also rejected.
 

@@ -92,6 +92,7 @@ function Gota:init()
     end
     -- Release a finished reader request before cleaning, so the cleanup
     -- below can remove its temporary document; a reload keeps both.
+    GotaReader:setPluginName(self.name)
     GotaReader:onOwnerInit(self.ui and self.ui.document and self.ui.document.file)
     local removed_count, cleanup_warnings =
         self.article_manager:cleanupOrphanReaderFiles(self:readerPathsToKeep())

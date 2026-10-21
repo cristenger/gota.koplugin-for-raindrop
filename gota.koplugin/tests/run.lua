@@ -2567,10 +2567,16 @@ test("plugin init releases a finished reader request before cleaning the cache",
     equal(GotaReader.current_path, "/tmp/raindrop_7.html", "reload keeps the request")
     equal(keep and keep[1], "/tmp/raindrop_7.html", "own document kept")
     -- Home: the FileManager owner has no document and the reader is gone.
+    -- PluginLoader names the instance after its folder, not main.lua's name.
     Gota.ui = { menu = { registerToMainMenu = noop } }
+    local declared_name = Gota.name
+    Gota.name = "raindrop"
     Gota:init()
+    Gota.name = declared_name
     equal(GotaReader.current_path, nil, "request released")
     equal(keep and #keep, 0, "nothing protected once the reader is gone")
+    equal(GotaReader.plugin_name, "raindrop", "registered name used for the return")
+    GotaReader:setPluginName(nil)
     ReaderUI.instance = previous_instance
 end)
 

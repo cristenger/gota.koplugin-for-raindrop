@@ -276,6 +276,27 @@ return function(test, equal, truthy, contains)
         end)
     end)
 
+    test("return finds Gota under the folder name KOReader registered", function()
+        -- PluginLoader names a plugin after its folder (raindrop.koplugin ->
+        -- "raindrop"), overriding the name declared in main.lua.
+        local resumed
+        local renamed = { resumeFromReader = function(_, target) resumed = target end }
+        local previous = package.loaded["pluginloader"]
+        package.loaded["pluginloader"] = {
+            getPluginInstance = function(_, name) return name == "raindrop" and renamed or nil end,
+        }
+        local ok, failure = pcall(function()
+            GotaReader:setPluginName("raindrop")
+            openForReturn({ view = "offline_library" })
+            GotaReader:onReturn()
+        end)
+        GotaReader:setPluginName(nil)
+        package.loaded["pluginloader"] = previous
+        GotaReader:reset()
+        if not ok then error(failure, 0) end
+        equal(resumed and resumed.view, "offline_library", "renamed install resumes")
+    end)
+
     test("return target keeps only plain data", function()
         withPluginInstance(nil, function()
             openForReturn({

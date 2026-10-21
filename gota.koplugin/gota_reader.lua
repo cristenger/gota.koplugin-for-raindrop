@@ -19,8 +19,10 @@ local GotaReader = {
     normalize_styles = false,
 }
 
--- PluginLoader registers each plugin instance under its name.
-local PLUGIN_NAME = "gota"
+-- PluginLoader registers each instance under the plugin's folder name
+-- ("gota.koplugin" -> "gota"), overriding the name declared in main.lua, so
+-- Gota:init reports the name it was actually registered under.
+local DEFAULT_PLUGIN_NAME = "gota"
 local MAX_TARGET_DEPTH = 16
 
 local function showError(text)
@@ -28,6 +30,10 @@ local function showError(text)
         text = text,
         timeout = 3,
     })
+end
+
+function GotaReader:setPluginName(name)
+    self.plugin_name = type(name) == "string" and name ~= "" and name or nil
 end
 
 function GotaReader:reset()
@@ -261,7 +267,8 @@ function GotaReader:onReturn()
 
         UIManager:nextTick(function()
             local loader_ok, PluginLoader = pcall(require, "pluginloader")
-            local owner = loader_ok and PluginLoader and PluginLoader:getPluginInstance(PLUGIN_NAME)
+            local owner = loader_ok and PluginLoader and
+                PluginLoader:getPluginInstance(self.plugin_name or DEFAULT_PLUGIN_NAME)
             if not owner or type(owner.resumeFromReader) ~= "function" then
                 logger.warn("GotaReader: no active Gota instance to return to")
                 return
