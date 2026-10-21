@@ -181,6 +181,27 @@ return function(test, equal, truthy, contains)
         API.clearRateLimit()
     end)
 
+    test("calendar-invalid dates are rejected", function()
+        for _, value in ipairs({ "2026-99-99", "2026-02-30", "2025-02-29", "2026-13", "2026-00-10", "2026-04-31" }) do
+            equal(API.normalizeDateExpression(value), nil, value .. " rejected")
+        end
+        equal(API.normalizeDateExpression("2024-02-29"), "2024-02-29", "leap day")
+        equal(API.normalizeDateExpression(">2026-10"), ">2026-10", "documented month form")
+        equal(API.normalizeDateExpression("<2026-10-20"), "<2026-10-20", "documented day form")
+        equal(API.normalizeDateExpression("2026"), "2026", "year form kept")
+    end)
+
+    test("a JSON error envelope from the cache endpoint is not saved as an article", function()
+        API.clearRateLimit()
+        local api = API:new(settings())
+        function api:_performRequest()
+            return '{"result":false,"errorMessage":"rejected"}', nil, 200, {}
+        end
+        local body, err = api:makeRequest("/raindrop/7/cache")
+        equal(body, nil, "error envelope not returned as content")
+        contains(err or "", "rejected", "server reason kept")
+    end)
+
     test("403 explains the permission problem", function()
         local api = API:new(settings())
         function api:_performRequest()

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Gota Plugin 2.3.0\n"
 "Report-Msgid-Bugs-To: https://github.com/cristenger/gota.koplugin-for-raindrop/issues\n"
-"POT-Creation-Date: 2026-10-20 23:06-0400\n"
+"POT-Creation-Date: 2026-10-20 23:08-0400\n"
 "PO-Revision-Date: 2026-08-15 23:58-0400\n"
 "Last-Translator: Christian Stenger\n"
 "Language-Team: Spanish\n"
@@ -24,256 +24,256 @@ msgstr "Gota"
 msgid "Read and manage your Raindrop.io bookmarks with Gota from KOReader!"
 msgstr "¡Lee y gestiona tus marcadores de Raindrop.io con Gota desde KOReader!"
 
-#: gota_api.lua:233
+#: gota_api.lua:255
 msgid "Page must be a non-negative integer"
 msgstr "La página debe ser un entero no negativo"
 
-#: gota_api.lua:238
+#: gota_api.lua:260
 msgid "Items per page must be between 1 and 50"
 msgstr "Los elementos por página deben estar entre 1 y 50"
 
-#: gota_api.lua:246
+#: gota_api.lua:268
 msgid "Invalid collection ID"
 msgstr "ID de colección no válido"
 
-#: gota_api.lua:254
+#: gota_api.lua:276
 msgid "Invalid raindrop ID"
 msgstr "ID de marcador no válido"
 
-#: gota_api.lua:263
+#: gota_api.lua:285
 msgid "Invalid sort order"
 msgstr "Orden no válido"
 
-#: gota_api.lua:270 gota_api.lua:1137
+#: gota_api.lua:292 gota_api.lua:1192
 msgid "Invalid API response envelope for "
 msgstr "Respuesta de API no válida para "
 
-#: gota_api.lua:277
+#: gota_api.lua:299
 msgid "Invalid search filters"
 msgstr "Filtros de búsqueda no válidos"
 
-#: gota_api.lua:281
+#: gota_api.lua:303
 msgid "Invalid content type"
 msgstr "Tipo de contenido no válido"
 
-#: gota_api.lua:287 gota_dialogs.lua:600
+#: gota_api.lua:309 gota_dialogs.lua:600
 msgid "Invalid date filter; use YYYY, YYYY-MM, or YYYY-MM-DD"
 msgstr "Filtro de fecha no válido; usa AAAA, AAAA-MM o AAAA-MM-DD"
 
-#: gota_api.lua:546
+#: gota_api.lua:581
 msgid "Authentication token is missing"
 msgstr "Falta el token de autenticación"
 
-#: gota_api.lua:556
+#: gota_api.lua:591
 msgid "Invalid download target"
 msgstr "Destino de descarga no válido"
 
-#: gota_api.lua:564
+#: gota_api.lua:599
 msgid "Could not create temporary download file: "
 msgstr "No se pudo crear el archivo temporal de descarga: "
 
-#: gota_api.lua:613 gota_api.lua:739
+#: gota_api.lua:648 gota_api.lua:783
 msgid "Response exceeds the configured size limit"
 msgstr "La respuesta supera el límite de tamaño configurado"
 
-#: gota_api.lua:618 gota_api.lua:623 gota_api.lua:628 gota_api.lua:1516
+#: gota_api.lua:653 gota_api.lua:658 gota_api.lua:663 gota_api.lua:1571
 msgid "HTTP error: "
 msgstr "Error HTTP: "
 
-#: gota_api.lua:659
-msgid "Invalid API endpoint"
-msgstr "Endpoint de API no válido"
-
-#: gota_api.lua:664
-msgid "Unsupported HTTP method: "
-msgstr "Método HTTP no compatible: "
-
-#: gota_api.lua:670
-msgid "Unsupported response mode"
-msgstr "Modo de respuesta no compatible"
-
-#: gota_api.lua:674
-msgid "Invalid response size limit"
-msgstr "Límite de tamaño de respuesta no válido"
-
-#: gota_api.lua:684
-msgid "File response mode is only supported for permanent copies"
-msgstr "El modo de archivo solo se admite para copias permanentes"
-
-#: gota_api.lua:711
-msgid "Unexpected redirect from server: "
-msgstr "Redirección inesperada del servidor: "
-
-#: gota_api.lua:714
-msgid "Too many redirects while downloading the web copy"
-msgstr "Demasiadas redirecciones al descargar la copia web"
-
-#: gota_api.lua:717
-msgid "Refused an unsafe web-copy redirect"
-msgstr "Se rechazó una redirección no segura de la copia web"
-
-#: gota_api.lua:731
-msgid "HTTP response did not include a status code"
-msgstr "La respuesta HTTP no incluyó un código de estado"
-
-#: gota_api.lua:748 gota_api.lua:817 gota_article_manager.lua:476
-msgid "Empty server response"
-msgstr "Respuesta vacía del servidor"
-
-#: gota_api.lua:761
-msgid "Unsupported server content encoding: "
-msgstr "Codificación de contenido del servidor no compatible: "
-
-#: gota_api.lua:778 gota_api.lua:805
-msgid "Decompressed response exceeds the configured size limit"
-msgstr "La respuesta descomprimida supera el límite de tamaño configurado"
-
-#: gota_api.lua:781 gota_api.lua:808
-msgid "Could not decode gzip response: "
-msgstr "No se pudo descomprimir la respuesta gzip: "
-
-#: gota_api.lua:791
-msgid "Could not finalize decompressed response: "
-msgstr "No se pudo finalizar la respuesta descomprimida: "
-
-#: gota_api.lua:828
-msgid "Could not finalize downloaded file: "
-msgstr "No se pudo finalizar el archivo descargado: "
-
-#: gota_api.lua:840
+#: gota_api.lua:687 gota_api.lua:891
 msgid "Raindrop rejected the request"
 msgstr "Raindrop rechazó la solicitud"
 
-#: gota_api.lua:841
+#: gota_api.lua:703
+msgid "Invalid API endpoint"
+msgstr "Endpoint de API no válido"
+
+#: gota_api.lua:708
+msgid "Unsupported HTTP method: "
+msgstr "Método HTTP no compatible: "
+
+#: gota_api.lua:714
+msgid "Unsupported response mode"
+msgstr "Modo de respuesta no compatible"
+
+#: gota_api.lua:718
+msgid "Invalid response size limit"
+msgstr "Límite de tamaño de respuesta no válido"
+
+#: gota_api.lua:728
+msgid "File response mode is only supported for permanent copies"
+msgstr "El modo de archivo solo se admite para copias permanentes"
+
+#: gota_api.lua:755
+msgid "Unexpected redirect from server: "
+msgstr "Redirección inesperada del servidor: "
+
+#: gota_api.lua:758
+msgid "Too many redirects while downloading the web copy"
+msgstr "Demasiadas redirecciones al descargar la copia web"
+
+#: gota_api.lua:761
+msgid "Refused an unsafe web-copy redirect"
+msgstr "Se rechazó una redirección no segura de la copia web"
+
+#: gota_api.lua:775
+msgid "HTTP response did not include a status code"
+msgstr "La respuesta HTTP no incluyó un código de estado"
+
+#: gota_api.lua:792 gota_api.lua:861 gota_article_manager.lua:476
+msgid "Empty server response"
+msgstr "Respuesta vacía del servidor"
+
+#: gota_api.lua:805
+msgid "Unsupported server content encoding: "
+msgstr "Codificación de contenido del servidor no compatible: "
+
+#: gota_api.lua:822 gota_api.lua:849
+msgid "Decompressed response exceeds the configured size limit"
+msgstr "La respuesta descomprimida supera el límite de tamaño configurado"
+
+#: gota_api.lua:825 gota_api.lua:852
+msgid "Could not decode gzip response: "
+msgstr "No se pudo descomprimir la respuesta gzip: "
+
+#: gota_api.lua:835
+msgid "Could not finalize decompressed response: "
+msgstr "No se pudo finalizar la respuesta descomprimida: "
+
+#: gota_api.lua:870 gota_api.lua:892
 msgid "API error: "
 msgstr "Error de API: "
 
-#: gota_api.lua:846
+#: gota_api.lua:879
+msgid "Could not finalize downloaded file: "
+msgstr "No se pudo finalizar el archivo descargado: "
+
+#: gota_api.lua:897
 msgid "Invalid JSON response: "
 msgstr "Respuesta JSON no válida: "
 
-#: gota_api.lua:854
+#: gota_api.lua:905
 msgid "Server error: "
 msgstr "Error del servidor: "
 
-#: gota_api.lua:863
+#: gota_api.lua:914
 msgid "Raindrop denied permission for this item or collection."
 msgstr "Raindrop denegó el permiso para este elemento o colección."
 
-#: gota_api.lua:868
+#: gota_api.lua:919
 msgid " (rate limit remaining: "
 msgstr " (límite de solicitudes restante: "
 
-#: gota_api.lua:872
+#: gota_api.lua:923
 msgid " (retry after "
 msgstr " (reintentar después de "
 
-#: gota_api.lua:873
+#: gota_api.lua:924
 msgid " seconds)"
 msgstr " segundos)"
 
-#: gota_api.lua:913
+#: gota_api.lua:964
 msgid "; the server may have applied this change. Reload the item before trying again"
 msgstr "; el servidor puede haber guardado el cambio. Recarga el elemento antes de intentarlo de nuevo"
 
-#: gota_api.lua:930
+#: gota_api.lua:981
 msgid "; please retry later"
 msgstr "; inténtalo de nuevo más tarde"
 
-#: gota_api.lua:939
+#: gota_api.lua:990
 msgid " attempts: "
 msgstr " intentos: "
 
-#: gota_api.lua:939
+#: gota_api.lua:990
 msgid "Failed after "
 msgstr "Falló después de "
 
-#: gota_api.lua:950
+#: gota_api.lua:1002
 #, lua-format
 msgid "Raindrop rate limit reached. Try again in %d seconds."
 msgstr "Se alcanzó el límite de solicitudes de Raindrop. Vuelve a intentarlo en %d segundos."
 
-#: gota_api.lua:987
+#: gota_api.lua:1042
 msgid "Account changed while the request was running; please reload"
 msgstr "La cuenta cambió durante la petición; vuelve a cargar los datos"
 
-#: gota_api.lua:1194
+#: gota_api.lua:1249
 msgid "Invalid collections response envelope"
 msgstr "Respuesta de colecciones no válida"
 
-#: gota_api.lua:1242
+#: gota_api.lua:1297
 msgid "Collection groups are unavailable"
 msgstr "Los grupos de colecciones no están disponibles"
 
-#: gota_api.lua:1252
+#: gota_api.lua:1307
 msgid "Child collections are unavailable"
 msgstr "Las subcolecciones no están disponibles"
 
-#: gota_api.lua:1323
+#: gota_api.lua:1378
 msgid "Invalid search options"
 msgstr "Opciones de búsqueda no válidas"
 
-#: gota_api.lua:1353
+#: gota_api.lua:1408
 msgid "Invalid filter options"
 msgstr "Opciones de filtro no válidas"
 
-#: gota_api.lua:1356
+#: gota_api.lua:1411
 msgid "Invalid tag sort order"
 msgstr "Orden de etiquetas no válido"
 
-#: gota_api.lua:1365
+#: gota_api.lua:1420
 msgid "Invalid filters response"
 msgstr "Respuesta de filtros no válida"
 
-#: gota_api.lua:1397
+#: gota_api.lua:1452
 msgid "Invalid user statistics response"
 msgstr "Respuesta de estadísticas no válida"
 
-#: gota_api.lua:1403
+#: gota_api.lua:1458
 msgid "Invalid bookmark update"
 msgstr "Actualización de marcador no válida"
 
-#: gota_api.lua:1408
+#: gota_api.lua:1463
 msgid "Unsupported bookmark field: "
 msgstr "Campo de marcador no compatible: "
 
-#: gota_api.lua:1412
+#: gota_api.lua:1467
 msgid "Favorite must be true or false"
 msgstr "Favorito debe ser verdadero o falso"
 
-#: gota_api.lua:1416 gota_dialogs.lua:755
+#: gota_api.lua:1471 gota_dialogs.lua:755
 msgid "Note must contain at most 10,000 characters"
 msgstr "La nota puede contener como máximo 10.000 caracteres"
 
-#: gota_api.lua:1420 gota_api.lua:1426 gota_api.lua:1430
+#: gota_api.lua:1475 gota_api.lua:1481 gota_api.lua:1485
 msgid "Tags must be a list"
 msgstr "Las etiquetas deben ser una lista"
 
-#: gota_api.lua:1433
+#: gota_api.lua:1488
 msgid "Tags must be non-empty text values"
 msgstr "Las etiquetas deben contener texto"
 
-#: gota_api.lua:1444
+#: gota_api.lua:1499
 msgid "Bookmark update cannot be empty"
 msgstr "La actualización del marcador no puede estar vacía"
 
-#: gota_api.lua:1454
+#: gota_api.lua:1509
 msgid "Could not encode bookmark update: "
 msgstr "No se pudo codificar la actualización del marcador: "
 
-#: gota_api.lua:1464
+#: gota_api.lua:1519
 msgid "Invalid bookmark update response"
 msgstr "Respuesta de actualización no válida"
 
-#: gota_api.lua:1474
+#: gota_api.lua:1529
 msgid "Current collection is required before moving to Trash"
 msgstr "Se necesita la colección actual antes de mover a la papelera"
 
-#: gota_api.lua:1479
+#: gota_api.lua:1534
 msgid "Refusing to permanently delete an item already in Trash"
 msgstr "Se rechazó eliminar definitivamente un elemento que ya está en la papelera"
 
-#: gota_api.lua:1486
+#: gota_api.lua:1541
 msgid "Invalid Trash response"
 msgstr "Respuesta de la papelera no válida"
 
@@ -316,8 +316,8 @@ msgstr "Error al recargar el artículo: "
 
 #: gota_article_manager.lua:511 gota_dialogs.lua:86 gota_dialogs.lua:208
 #: gota_dialogs.lua:227 gota_dialogs.lua:253 main.lua:676 main.lua:704
-#: main.lua:810 main.lua:971 main.lua:1078 main.lua:1087 main.lua:1306
-#: main.lua:1379 main.lua:1430 main.lua:1474 main.lua:1532
+#: main.lua:810 main.lua:971 main.lua:1082 main.lua:1091 main.lua:1310
+#: main.lua:1387 main.lua:1438 main.lua:1482 main.lua:1540
 msgid "Unknown error"
 msgstr "Error desconocido"
 
@@ -342,7 +342,7 @@ msgid "Could not download article for reader: "
 msgstr "No se pudo descargar el artículo para el lector: "
 
 #: gota_article_manager.lua:558 gota_article_manager.lua:738
-#: gota_article_manager.lua:787 main.lua:1128
+#: gota_article_manager.lua:787 main.lua:1132
 msgid "unknown error"
 msgstr "error desconocido"
 
@@ -474,7 +474,7 @@ msgstr "Nota: "
 msgid "This article has no highlights"
 msgstr "Este artículo no tiene resaltados"
 
-#: gota_content_processor.lua:1258 main.lua:1407 main.lua:1419
+#: gota_content_processor.lua:1258 main.lua:1415 main.lua:1427
 msgid "Highlight"
 msgstr "Resaltado"
 
@@ -526,7 +526,7 @@ msgstr "Recordatorio: "
 msgid "Link"
 msgstr "Enl."
 
-#: gota_content_processor.lua:1308 gota_dialogs.lua:484 main.lua:1206
+#: gota_content_processor.lua:1308 gota_dialogs.lua:484 main.lua:1210
 msgid "Article"
 msgstr "Artículo"
 
@@ -649,7 +649,7 @@ msgstr ""
 #: gota_dialogs.lua:40 gota_dialogs.lua:111 gota_dialogs.lua:162
 #: gota_dialogs.lua:238 gota_dialogs.lua:261 gota_dialogs.lua:299
 #: gota_dialogs.lua:580 gota_dialogs.lua:635 gota_dialogs.lua:751
-#: gota_dialogs.lua:774 gota_dialogs.lua:791 main.lua:1061
+#: gota_dialogs.lua:774 gota_dialogs.lua:791 main.lua:1065
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -678,7 +678,7 @@ msgstr "Advertencia: el token parece muy corto, pero se guardará de todos modos
 msgid "Token saved successfully"
 msgstr "Token guardado correctamente"
 
-#: gota_dialogs.lua:86 main.lua:623 main.lua:750 main.lua:1040
+#: gota_dialogs.lua:86 main.lua:623 main.lua:750 main.lua:1044
 msgid "Error saving configuration: "
 msgstr "Error al guardar la configuración: "
 
@@ -1259,7 +1259,7 @@ msgstr "Añadir a favoritos"
 msgid "Restore / move to collection"
 msgstr "Restaurar / mover a colección"
 
-#: gota_ui_builder.lua:506 main.lua:1505
+#: gota_ui_builder.lua:506 main.lua:1513
 msgid "Move to collection"
 msgstr "Mover a colección"
 
@@ -1390,11 +1390,11 @@ msgid "Please configure your Raindrop.io token first"
 msgstr "Configura primero tu token de Raindrop.io"
 
 #: main.lua:137 main.lua:498 main.lua:502 main.lua:828 main.lua:829
-#: main.lua:1529
+#: main.lua:1537
 msgid "All articles"
 msgstr "Todos los artículos"
 
-#: main.lua:243 main.lua:360 main.lua:1575
+#: main.lua:243 main.lua:360 main.lua:1583
 msgid "The account changed; reopen the article before continuing"
 msgstr "La cuenta cambió; vuelve a abrir el artículo antes de continuar"
 
@@ -1455,7 +1455,7 @@ msgstr "Ver colecciones"
 msgid "Advanced search"
 msgstr "Búsqueda avanzada"
 
-#: main.lua:530 main.lua:533 main.lua:1391
+#: main.lua:530 main.lua:533 main.lua:1399
 msgid "All highlights"
 msgstr "Todos los resaltados"
 
@@ -1505,7 +1505,7 @@ msgstr "Copia original"
 msgid "No saved articles on this device"
 msgstr "No hay artículos guardados en este dispositivo"
 
-#: main.lua:662 main.lua:998
+#: main.lua:662 main.lua:1002
 msgid "Reload"
 msgstr "Recargar"
 
@@ -1537,15 +1537,15 @@ msgstr "Límites de tamaño del contenido"
 msgid "Text uses the smaller RAM limit; direct reader downloads use the larger file limit."
 msgstr "El texto usa el límite menor de RAM; las descargas directas al lector usan el límite mayor de archivo."
 
-#: main.lua:803 main.lua:1469
+#: main.lua:803 main.lua:1477
 msgid "Loading collections..."
 msgstr "Cargando colecciones…"
 
-#: main.lua:810 main.lua:1474
+#: main.lua:810 main.lua:1482
 msgid "Error retrieving collections:"
 msgstr "Error al obtener las colecciones:"
 
-#: main.lua:832 main.lua:1478
+#: main.lua:832 main.lua:1486
 msgid "Unsorted (inbox)"
 msgstr "Sin clasificar (bandeja de entrada)"
 
@@ -1610,167 +1610,167 @@ msgstr "Cargando artículos…"
 msgid "Error retrieving articles: "
 msgstr "Error al obtener los artículos: "
 
-#: main.lua:1009
+#: main.lua:1013
 msgid "Articles"
 msgstr "Artículos"
 
-#: main.lua:1043
+#: main.lua:1047
 msgid "Sort order: "
 msgstr "Orden: "
 
-#: main.lua:1049
+#: main.lua:1053
 msgid "Sort articles by"
 msgstr "Ordenar artículos por"
 
-#: main.lua:1052
+#: main.lua:1056
 msgid "Newest first"
 msgstr "Más recientes primero"
 
-#: main.lua:1053
+#: main.lua:1057
 msgid "Oldest first"
 msgstr "Más antiguos primero"
 
-#: main.lua:1054
+#: main.lua:1058
 msgid "Title A-Z"
 msgstr "Título A-Z"
 
-#: main.lua:1055
+#: main.lua:1059
 msgid "Title Z-A"
 msgstr "Título Z-A"
 
-#: main.lua:1056
+#: main.lua:1060
 msgid "Domain A-Z"
 msgstr "Dominio A-Z"
 
-#: main.lua:1057
+#: main.lua:1061
 msgid "Domain Z-A"
 msgstr "Dominio Z-A"
 
-#: main.lua:1058
+#: main.lua:1062
 msgid "Custom order"
 msgstr "Orden personalizado"
 
-#: main.lua:1078 main.lua:1087
+#: main.lua:1082 main.lua:1091
 msgid "Error loading article: "
 msgstr "Error al cargar el artículo: "
 
-#: main.lua:1118
+#: main.lua:1122
 msgid "Content is not available yet"
 msgstr "El contenido aún no está disponible"
 
-#: main.lua:1127
+#: main.lua:1131
 msgid "Could not load web copy text: "
 msgstr "No se pudo cargar el texto de la copia web: "
 
-#: main.lua:1134
+#: main.lua:1138
 msgid "Try Open in full reader or increase the text limit."
 msgstr "Prueba «Abrir en el lector completo» o aumenta el límite de texto."
 
-#: main.lua:1176
+#: main.lua:1180
 msgid "Favorite updated"
 msgstr "Favorito actualizado"
 
-#: main.lua:1229
+#: main.lua:1233
 msgid "No web copy text is loaded"
 msgstr "No se ha cargado el texto de la copia web"
 
-#: main.lua:1282
+#: main.lua:1286
 msgid "Web copy text"
 msgstr "Texto de la copia web"
 
-#: main.lua:1297
+#: main.lua:1301
 msgid "Searching articles..."
 msgstr "Buscando artículos…"
 
-#: main.lua:1306
+#: main.lua:1310
 msgid "Search error: "
 msgstr "Error de búsqueda: "
 
-#: main.lua:1358
+#: main.lua:1366
 msgid "Search results"
 msgstr "Resultados de búsqueda"
 
-#: main.lua:1375
+#: main.lua:1383
 msgid "Loading highlights..."
 msgstr "Cargando resaltados..."
 
-#: main.lua:1379
+#: main.lua:1387
 msgid "Error loading highlights: "
 msgstr "Error al cargar resaltados: "
 
-#: main.lua:1391
+#: main.lua:1399
 msgid "Highlights"
 msgstr "Resaltados"
 
-#: main.lua:1405
+#: main.lua:1413
 msgid "View highlight details"
 msgstr "Ver detalles del resaltado"
 
-#: main.lua:1413
+#: main.lua:1421
 msgid "Open related article"
 msgstr "Abrir artículo relacionado"
 
-#: main.lua:1426
+#: main.lua:1434
 msgid "Updating bookmark..."
 msgstr "Actualizando marcador..."
 
-#: main.lua:1430
+#: main.lua:1438
 msgid "Could not update bookmark: "
 msgstr "No se pudo actualizar el marcador: "
 
-#: main.lua:1436
+#: main.lua:1444
 msgid "Bookmark updated"
 msgstr "Marcador actualizado"
 
-#: main.lua:1450
+#: main.lua:1458
 msgid "Note updated"
 msgstr "Nota actualizada"
 
-#: main.lua:1461
+#: main.lua:1469
 msgid "Tags updated"
 msgstr "Etiquetas actualizadas"
 
-#: main.lua:1482 main.lua:1494
+#: main.lua:1490 main.lua:1502
 msgid "Bookmark moved"
 msgstr "Marcador movido"
 
-#: main.lua:1512
+#: main.lua:1520
 msgid "This item is already in Trash; permanent deletion is not supported."
 msgstr "Este elemento ya está en la papelera; no se admite la eliminación permanente."
 
-#: main.lua:1517
+#: main.lua:1525
 msgid "Moving bookmark to Trash..."
 msgstr "Moviendo marcador a la papelera..."
 
-#: main.lua:1522
+#: main.lua:1530
 msgid "Bookmark moved to Trash"
 msgstr "Marcador movido a la papelera"
 
-#: main.lua:1532
+#: main.lua:1540
 msgid "Could not move bookmark to Trash: "
 msgstr "No se pudo mover el marcador a la papelera: "
 
-#: main.lua:1542
+#: main.lua:1550
 msgid "Warning: Empty token, cannot test"
 msgstr "Advertencia: el token está vacío y no se puede probar"
 
-#: main.lua:1547
+#: main.lua:1555
 msgid "Warning: Token seems very short, but it will be tested anyway"
 msgstr "Advertencia: el token parece muy corto, pero se probará de todos modos"
 
-#: main.lua:1550
+#: main.lua:1558
 msgid "Testing token..."
 msgstr "Probando token…"
 
-#: main.lua:1555
+#: main.lua:1563
 msgid "Verified user"
 msgstr "Usuario verificado"
 
-#: main.lua:1556
+#: main.lua:1564
 msgid " (PRO)"
 msgstr " (PRO)"
 
-#: main.lua:1557
+#: main.lua:1565
 msgid ""
 "Valid token!\n"
 "User: "
@@ -1778,11 +1778,11 @@ msgstr ""
 "¡Token válido!\n"
 "Usuario: "
 
-#: main.lua:1559
+#: main.lua:1567
 msgid "Error with token:\n"
 msgstr "Error con el token:\n"
 
-#: main.lua:1559
+#: main.lua:1567
 msgid "Invalid token"
 msgstr "Token no válido"
 

@@ -187,6 +187,35 @@ return function(test, equal, truthy, contains)
         return state
     end
 
+    test("an emptied last page recovers the last page that still has items", function()
+        equal(Raindrop.recoverEmptyPage({ items = {}, count = 25 }, 1, 25), 0, "back to page 1")
+        equal(Raindrop.recoverEmptyPage({ items = {}, count = 60 }, 4, 25), 2, "last valid page")
+        equal(Raindrop.recoverEmptyPage({ items = {}, count = 0 }, 2, 25), 0, "everything gone")
+        equal(Raindrop.recoverEmptyPage({ items = { {} }, count = 26 }, 1, 25), nil, "page still has items")
+        equal(Raindrop.recoverEmptyPage({ items = {}, count = 25 }, 0, 25), nil, "first page stays")
+        equal(Raindrop.recoverEmptyPage({ items = {} }, 3, 25), nil, "unknown total is not guessed")
+    end)
+
+    test("moving the last item of the last page lands on the previous valid page", function()
+        local state = sessionFixture()
+        local pages = {}
+        state.fake.showRaindrops = Gota.showRaindrops
+        state.fake.api.getRaindrops = function(_, _, page)
+            pages[#pages + 1] = page
+            if page == 1 then return { items = {}, count = 25 } end
+            return { items = { state.article }, count = 25 }
+        end
+        state.fake.api.clearCacheFor = function() end
+        Gota.showRaindrops(state.fake, 44, "Inbox", 1, 123)
+        equal(table.concat(pages, ","), "1,0", "reloaded the last valid page")
+    end)
+
+    test("subtitle never shows an inverted range", function()
+        local _, subtitle = UIBuilder:new():buildRemotePagination({ items = {}, count = 25 }, 1, 25, function() end)
+        local first, last = subtitle:match("(%d+)–(%d+)")
+        truthy(first and tonumber(first) <= tonumber(last), "range in order: " .. tostring(subtitle))
+    end)
+
     local function rowsWithText(rows, text)
         for _, row in ipairs(rows or {}) do
             if tostring(row.text):find(text, 1, true) then return row end

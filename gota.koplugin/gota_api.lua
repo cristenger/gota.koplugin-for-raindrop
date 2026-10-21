@@ -145,6 +145,24 @@ local function normalizedContentType(value)
     return CONTENT_TYPES[content_type] and content_type or nil
 end
 
+local DAYS_IN_MONTH = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+
+-- Raindrop documents created:YYYY-MM-DD and created:YYYY-MM (help.raindrop.io
+-- filters); a well-formed but impossible date would only return nothing.
+local function isCalendarDate(date)
+    local year, month, day = date:match("^(%d%d%d%d)%-?(%d?%d?)%-?(%d?%d?)$")
+    if not year then return false end
+    month, day = tonumber(month), tonumber(day)
+    if month and (month < 1 or month > 12) then return false end
+    if day then
+        year = tonumber(year)
+        local leap = (year % 4 == 0 and year % 100 ~= 0) or year % 400 == 0
+        local days = (month == 2 and leap) and 29 or DAYS_IN_MONTH[month]
+        if day < 1 or day > days then return false end
+    end
+    return true
+end
+
 local function normalizeDateExpression(value)
     value = trim(value)
     if value == "" then return nil end
@@ -155,9 +173,9 @@ local function normalizeDateExpression(value)
     else
         operator = ""
     end
-    if date:match("^%d%d%d%d$") or
-       date:match("^%d%d%d%d%-%d%d$") or
-       date:match("^%d%d%d%d%-%d%d%-%d%d$") then
+    if (date:match("^%d%d%d%d$") or
+        date:match("^%d%d%d%d%-%d%d$") or
+        date:match("^%d%d%d%d%-%d%d%-%d%d$")) and isCalendarDate(date) then
         return operator .. date
     end
     return nil
@@ -660,6 +678,15 @@ local function cleanupTransfer(transfer)
     end
 end
 
+-- Raindrop's documented error envelope is {"result": false, ...}. A storage
+-- or API error delivered with a 2xx status must not become an article.
+local function errorEnvelopeMessage(prefix)
+    if type(prefix) ~= "string" or not prefix:match("^%s*{") then return nil end
+    local data = safeJsonDecode(prefix)
+    if type(data) ~= "table" or data.result ~= false then return nil end
+    return responseErrorMessage(prefix) or _("Raindrop rejected the request")
+end
+
 local function readFilePrefix(path, max_bytes)
     if not path then return nil end
     local file = io.open(path, "rb")
@@ -835,6 +862,13 @@ function API:makeRequest(endpoint, method, body, request_options)
                 end
 
                 if is_file_download then
+                    local envelope_error = errorEnvelopeMessage(
+                        (transfer and transfer.response_mode == "file")
+                            and readFilePrefix(transfer.temporary_path) or payload)
+                    if envelope_error then
+                        cleanupTransfer(transfer)
+                        return nil, _("API error: ") .. envelope_error, status, headers
+                    end
                     if transfer and transfer.response_mode == "file" then
                         local renamed, rename_error = os.rename(
                             transfer.temporary_path,

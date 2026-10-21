@@ -971,6 +971,10 @@ function Gota:showRaindrops(collection_id, collection_name, page, focus_raindrop
         self:notify(_("Error retrieving articles: ") .. (err or _("Unknown error")), 4)
         return
     end
+    local recovered_page = Raindrop.recoverEmptyPage(raindrops, page, perpage)
+    if recovered_page then
+        return self:showRaindrops(collection_id, collection_name, recovered_page, focus_raindrop_id)
+    end
 
     local source_context = self:buildCollectionSourceContext(collection_id, collection_name, page)
     local items = self.ui_builder:buildRaindropItems(
@@ -1305,6 +1309,10 @@ function Gota:searchRaindrops(search_term, page, filters, context, focus_raindro
     if not results then
         self:notify(_("Search error: ") .. (err or _("Unknown error")), 4)
         return
+    end
+    local recovered_page = Raindrop.recoverEmptyPage(results, page, perpage)
+    if recovered_page then
+        return self:searchRaindrops(search_term, recovered_page, filters, context, focus_raindrop_id)
     end
     
     local source_context = self:buildSearchSourceContext(search_term, page, filters, context)

@@ -647,8 +647,8 @@ function UIBuilder:buildRemotePagination(data, page, perpage, callback)
 
     local subtitle
     if total_count ~= nil then
-        local first = total_count == 0 and 0 or page * perpage + 1
         local last = math.min((page + 1) * perpage, total_count)
+        local first = item_count == 0 and last or page * perpage + 1
         subtitle = string.format(_("%d–%d of %d articles · Raindrop page %d/%d"),
             first, last, total_count, current_page, math.max(total_pages, 1))
     else
