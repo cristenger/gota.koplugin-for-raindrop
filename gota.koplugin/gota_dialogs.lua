@@ -432,7 +432,10 @@ function Dialogs:showContentViewer(title, content, buttons_table)
         text = content,
         width = Device.screen:getWidth(),
         height = Device.screen:getHeight(),
-        buttons = buttons_table,
+        -- TextViewer reads buttons_table; a "buttons" key is silently ignored
+        -- and leaves only KOReader's default Find/Close row. Gota's first row
+        -- already carries its own Close action.
+        buttons_table = buttons_table,
     }
     
     UIManager:show(text_viewer)

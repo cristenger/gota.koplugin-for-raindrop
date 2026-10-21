@@ -88,7 +88,12 @@ package.preload["ui/widget/menu"] = function()
     end }
 end
 package.preload["ui/widget/inputdialog"] = function() return { new = function(_, value) return value end } end
-package.preload["ui/widget/textviewer"] = function() return { new = function(_, value) return value end } end
+-- TextViewer only builds rows passed as buttons_table (KOReader textviewer.lua
+-- init); an unknown "buttons" option is silently dropped there, so reject it.
+package.preload["ui/widget/textviewer"] = function() return { new = function(_, value)
+    if value.buttons ~= nil then error("TextViewer ignores 'buttons'; use 'buttons_table'") end
+    return value
+end } end
 package.preload["ui/network/manager"] = function()
     return { runWhenOnline = function(_, callback) callback() end }
 end
@@ -1959,6 +1964,14 @@ test("debug information reports TLS limits without exposing token material", fun
     equal(viewer.text:find("do-not-show", 1, true), nil, "secret hidden")
     contains(viewer.text, "TLS encryption: available", "encryption status")
     contains(viewer.text, "Remote TLS authentication: not available", "authentication limit")
+end)
+
+test("content viewer hands Gota actions to TextViewer.buttons_table", function()
+    local rows = { { { text = "Close" }, { text = "Open in reader" } } }
+    local ok, viewer = pcall(Dialogs.showContentViewer, Dialogs:new(), "T", "body", rows)
+    truthy(ok, "viewer built: " .. tostring(viewer))
+    equal(ok and viewer.buttons_table, rows, "actions reach TextViewer")
+    equal(ok and viewer.buttons, nil, "ignored option is not used")
 end)
 
 test("token removal confirmation explains revocation and Cancel is inert", function()
